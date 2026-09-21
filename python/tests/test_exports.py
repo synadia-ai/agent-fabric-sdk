@@ -1,0 +1,40 @@
+"""The package's own export surface.
+
+``__all__`` is what ``from synadia_ai.agent_fabric import *`` promises. A
+name listed there but never imported into ``__init__`` makes the star
+import raise ``AttributeError`` — and the ordinary ``from ... import name``
+fails too.
+"""
+
+from __future__ import annotations
+
+import synadia_ai.agent_fabric as m
+
+PUBLIC = {
+    # The hooks the SDK takes.
+    "fabric_tracing",
+    "FabricTracing",
+    "TraceOptions",
+    # The ambient scope and the proxy headers.
+    "active_trace",
+    "bind_active_trace",
+    "trace_headers",
+    "TraceScope",
+    # The edge record and the record counts.
+    "build_edge_record",
+    "trace_record_counts",
+    "TraceRecordCounts",
+}
+
+
+def test_every_name_in_all_is_importable() -> None:
+    missing = [name for name in m.__all__ if not hasattr(m, name)]
+    assert missing == [], f"__all__ lists names that do not exist: {missing}"
+
+
+def test_star_import_does_not_raise() -> None:
+    exec("from synadia_ai.agent_fabric import *", {})
+
+
+def test_the_public_surface_is_exported() -> None:
+    assert set(m.__all__) >= PUBLIC
