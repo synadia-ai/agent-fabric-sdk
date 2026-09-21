@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synadia.io/agent-fabric/schemas/edge.json",
+  "title": "Edge record",
+  "description": "The caller's lineage claim, one per prompt(), published before the prompt is sent; on TRACE.{account}.edges, signed with Agent-Sender (afo-design.md §6.2).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "schema version of this record kind; additive changes bump it, breaking changes are a new subject"
+    },
+    "kind": {
+      "const": "edge"
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "the Agent-Sender nonce for this signed record; also the Nats-Msg-Id"
+    },
+    "ts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "unix seconds"
+    },
+    "agent": {
+      "type": "string",
+      "pattern": "^A[A-Z2-7]{55}\\.U[A-Z2-7]{55}$",
+      "description": "the writer — the caller, the parent side of the edge"
+    },
+    "thread_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "the new thread, minted by the writer"
+    },
+    "parent_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "the writer's own thread; null for a root — the advertisement of a new tree"
+    },
+    "root_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "128-bit random, lower-case hex, minted by the caller at prompt()"
+    },
+    "tool_call_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the tool call that spawned the thread; null on a root"
+    },
+    "turn_count_hint": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "the writer's model-call count at spawn time; 0 on a root or before the first call; always written by the SDKs (relaxed from omitted-when-0 on 2026-09-16); a hint, never a claim"
+    }
+  },
+  "required": [
+    "version",
+    "kind",
+    "record_id",
+    "ts",
+    "agent",
+    "thread_id",
+    "parent_id",
+    "root_id",
+    "tool_call_id"
+  ]
+}
