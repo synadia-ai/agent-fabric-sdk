@@ -51,15 +51,17 @@ plugins/             placeholder: the fabric versions of the Claude Code, OpenCl
 ## The protocol SDK during development
 
 Until the SDK with the hooks is published, both packages resolve it from
-the worktree of `synadia-agents` on branch `mario/sdk-split`, expected at
-`../wt/synadia-agents-split` next to this repo:
+the checkout of `synadia-agents` on branch `mario/sdk-split`, expected at
+`../synadia-agents` next to this repo:
 
 - TypeScript: `file:` dependencies in `typescript/package.json`. They point
-  at the built packages, so build those first:
-  `(cd ../wt/synadia-agents-split/client-sdk/typescript && npm run build)`,
-  then the same in `agent-sdk/typescript`. Install with **npm** — bun
-  cannot resolve the SDK's own transitive `file:` link. `package-lock.json`
-  is not committed while the links point outside the repo.
+  at the built packages, so build those first, caller then host, as the
+  SDK's READMEs say:
+  `(cd ../synadia-agents/client-sdk/typescript && bun run build)`, then
+  `(cd ../synadia-agents/agent-sdk/typescript && bun install && bun run build)`.
+  Install this repo with **npm** — bun cannot resolve the SDK's own
+  transitive `file:` link. `package-lock.json` is not committed while the
+  links point outside the repo.
 - Python: `[tool.uv.sources]` path sources in `python/pyproject.toml`
   (editable, so no build step); `python/uv.lock` is committed, like the SDK's.
 

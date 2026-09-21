@@ -843,8 +843,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "synadia-ai-agent-service", editable = "../../wt/synadia-agents-split/agent-sdk/python" },
-    { name = "synadia-ai-agents", editable = "../../wt/synadia-agents-split/client-sdk/python" },
+    { name = "synadia-ai-agent-service", editable = "../../synadia-agents/agent-sdk/python" },
+    { name = "synadia-ai-agents", editable = "../../synadia-agents/client-sdk/python" },
 ]
 
 [package.metadata.requires-dev]
@@ -860,7 +860,7 @@ dev = [
 [[package]]
 name = "synadia-ai-agent-service"
 version = "0.5.0"
-source = { editable = "../../wt/synadia-agents-split/agent-sdk/python" }
+source = { editable = "../../synadia-agents/agent-sdk/python" }
 dependencies = [
     { name = "nats-py" },
     { name = "pydantic" },
@@ -872,7 +872,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'examples'", specifier = ">=0.27" },
     { name = "nats-py", specifier = ">=2.7" },
     { name = "pydantic", specifier = ">=2.5" },
-    { name = "synadia-ai-agents", editable = "../../wt/synadia-agents-split/client-sdk/python" },
+    { name = "synadia-ai-agents", editable = "../../synadia-agents/client-sdk/python" },
 ]
 provides-extras = ["examples"]
 
@@ -888,7 +888,7 @@ dev = [
 [[package]]
 name = "synadia-ai-agents"
 version = "0.8.0"
-source = { editable = "../../wt/synadia-agents-split/client-sdk/python" }
+source = { editable = "../../synadia-agents/client-sdk/python" }
 dependencies = [
     { name = "nats-py" },
     { name = "nkeys" },

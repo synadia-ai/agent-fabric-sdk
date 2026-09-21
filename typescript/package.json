@@ -62,8 +62,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@synadia-ai/agent-service": "file:../../wt/synadia-agents-split/agent-sdk/typescript",
-    "@synadia-ai/agents": "file:../../wt/synadia-agents-split/client-sdk/typescript"
+    "@synadia-ai/agent-service": "file:../../synadia-agents/agent-sdk/typescript",
+    "@synadia-ai/agents": "file:../../synadia-agents/client-sdk/typescript"
   },
   "devDependencies": {
     "@nats-io/nats-core": "^3.4.0",

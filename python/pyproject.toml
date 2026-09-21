@@ -34,12 +34,13 @@ Repository = "https://github.com/synadia-ai/agent-fabric-sdk"
 Issues = "https://github.com/synadia-ai/agent-fabric-sdk/issues"
 
 [tool.uv.sources]
-# During development the protocol SDK resolves to the worktree of the
-# `mario/sdk-split` branch of synadia-agents, where the hooks live. This is
-# dev-time config only — it is not persisted into the built wheel, which
-# declares the published packages above. Switch to them once they are out.
-synadia-ai-agents = { path = "../../wt/synadia-agents-split/client-sdk/python", editable = true }
-synadia-ai-agent-service = { path = "../../wt/synadia-agents-split/agent-sdk/python", editable = true }
+# During development the protocol SDK resolves to the synadia-agents
+# checkout next to this repo, on branch `mario/sdk-split`, where the hooks
+# live. This is dev-time config only — it is not persisted into the built
+# wheel, which declares the published packages above. Switch to them once
+# they are out.
+synadia-ai-agents = { path = "../../synadia-agents/client-sdk/python", editable = true }
+synadia-ai-agent-service = { path = "../../synadia-agents/agent-sdk/python", editable = true }
 
 [dependency-groups]
 dev = [
