@@ -51,7 +51,7 @@ plugins/             placeholder: the fabric versions of the Claude Code, OpenCl
 ## The protocol SDK during development
 
 Until the SDK with the hooks is published, both packages resolve it from
-the checkout of `synadia-agents` on branch `mario/sdk-split`, expected at
+the checkout of `synadia-agents` on branch `sdk-release-rollout`, expected at
 `../synadia-agents` next to this repo:
 
 - TypeScript: `file:` dependencies in `typescript/package.json`. They point
@@ -97,7 +97,7 @@ prepare them.
 - The contract: `synadia-agent-fabric/docs/afo-design.md` §3, §4, §6.2,
   §8.1–§8.2, and `docs/schemas/edge.json`.
 - The hooks: `synadia-agents` `client-sdk/*/…/interceptor.*` and
-  `agent-sdk/*/…/interceptor.*` on `mario/sdk-split`.
+  `agent-sdk/*/…/interceptor.*` on `sdk-release-rollout` (merged there by synadia-agents #205, 2026-09-22).
 - The tracing this was rebuilt from: `synadia-agents` at `c9d7bcb`
   (`client-sdk/typescript/src/trace.ts`, `agent.ts`; `agent-sdk/*/service.*`;
   the Python twins). The tests the split deleted: `git show --stat 6bc5527`.

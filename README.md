@@ -23,7 +23,7 @@ signed publishing with a caller-chosen nonce — and nothing else. The SDK
 knows nothing of the fabric; the dependency goes one way.
 
 Until the SDK with the hooks is published, both packages resolve it from a
-local checkout of the `mario/sdk-split` branch (see [CLAUDE.md](CLAUDE.md)).
+local checkout of the `sdk-release-rollout` branch (see [CLAUDE.md](CLAUDE.md)).
 
 ## Usage — TypeScript
 
