@@ -1,7 +1,7 @@
 [project]
 name = "synadia-ai-agent-fabric"
 version = "0.1.0"
-description = "The SDK for agents on the Synadia Agent Fabric — tracing on the hooks of the Synadia Agent Protocol SDK"
+description = "The SDK for agents on the Synadia Agent Fabric — tracing and the agent tools' ScratchPad extension, on the hooks of the Synadia Agent Protocol SDK"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

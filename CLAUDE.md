@@ -2,8 +2,9 @@
 
 The SDK for agents on the Synadia Agent Fabric: `@synadia-ai/agent-fabric`
 (TypeScript) and `synadia-ai-agent-fabric` (Python, `synadia_ai.agent_fabric`).
-Tracing today; the agent tools' ScratchPad extension, the proxy helpers and
-the fabric plugins later. Private while it is built, public at the release.
+Tracing and the agent tools' ScratchPad extension today; the proxy helpers
+and the fabric plugins later. Private while it is built, public at the
+release.
 
 ## Layout
 
@@ -11,17 +12,22 @@ the fabric plugins later. Private while it is built, public at the release.
 typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, eslint, prettier
   src/trace.ts       the vocabulary: options, scope, traceHeaders, edge record, counts
   src/tracing.ts     fabricTracing(): the SDK's three hooks built from it
+  src/scratchpad.ts  references' vocabulary, and the ScratchPad port the agent implements
+  src/grant-request.ts            requestGrant, grantRequestEndpoint, the creator's rule
+  src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
   test/unit/         no server
   test/integration/  a nats-server per file; the e2e and the interop with Python
   test/harness/      nats-server launcher (adapted from the protocol SDK's)
-  test/support/      fixtures, the edge.json validator, host/caller helpers
+  test/support/      fixtures, the schema validators, host/caller helpers, the ScratchPad fake
 python/              synadia-ai-agent-fabric — uv, ruff, mypy (strict), pytest
   src/synadia_ai/agent_fabric/{trace,tracing}.py   the same two modules
+  src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension}.py
   tests/             the same suites; conftest starts the servers lazily
 test-fixtures/       shared by both suites — see its README for every file's source
-  schemas/edge.json  the contract, vendored from synadia-agent-fabric
+  schemas/           the contracts: edge.json (from synadia-agent-fabric) and the
+                     grant request's two shapes (from agent-fabric-examples)
   identity/          throwaway keys and server configs, vendored from synadia-agents
-  interop/           the TS and Python hosts the cross-language tests spawn
+  interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             placeholder: the fabric versions of the Claude Code, OpenClaw, PI plugins
 ```
 
@@ -39,14 +45,19 @@ plugins/             placeholder: the fabric versions of the Claude Code, OpenCl
   fabric; nothing fabric-specific goes back into it.
 - **The two packages are wire-identical.** Same edge record bytes and key
   order, same envelope fields, same headers, same 400s, same heartbeat
-  counts. Change both languages in one commit;
-  `python/tests/test_trace_wire_parity.py` compares the edge bytes against
-  the TypeScript package, and the interop tests run each language against
-  the other's host.
+  counts, same grant request and reply bytes. Change both languages in one
+  commit; `python/tests/test_trace_wire_parity.py` and
+  `test_grant_wire_parity.py` compare the bytes against the TypeScript
+  package, and the interop tests run each language against the other's
+  host.
 - **`edge.json` is the contract.** Both suites validate records against the
   vendored copy, on the wire in operator mode (a real `{account}.{user}`
   agent ID). When `synadia-agent-fabric` changes it, copy it again and
-  update `test-fixtures/README.md`.
+  update `test-fixtures/README.md`. The same for the grant request's
+  `scratchpad_grant.{request,reply}.json` from `agent-fabric-examples`.
+- **The ScratchPad extension holds the policy, not a client.** It never
+  talks to ScratchPad or shells out to `sp`: the agent passes its own
+  client behind the `ScratchPad` port (`owns`, `grantRead`, `granted`).
 
 ## The protocol SDK during development
 
@@ -98,6 +109,11 @@ prepare them.
   §8.1–§8.2, and `docs/schemas/edge.json`.
 - The hooks: `synadia-agents` `client-sdk/*/…/interceptor.*` and
   `agent-sdk/*/…/interceptor.*` on `sdk-release-rollout` (merged there by synadia-agents #205, 2026-09-22).
+- The agent tools and their extension hooks: `synadia-agents`
+  `docs/agent-tools.md` §6.3 (#207); the fabric's view,
+  `synadia-agent-fabric/docs/agent-tools.md` §2.1–§2.2; the rules the
+  extension was ported from, `agent-fabric-examples` `tools/README.md` and
+  `agents/*/` at `1e783a3`.
 - The tracing this was rebuilt from: `synadia-agents` at `c9d7bcb`
   (`client-sdk/typescript/src/trace.ts`, `agent.ts`; `agent-sdk/*/service.*`;
   the Python twins). The tests the split deleted: `git show --stat 6bc5527`.

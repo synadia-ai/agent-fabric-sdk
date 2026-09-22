@@ -1,29 +1,34 @@
-"""A relay that forwards the envelope it received spawns a thread; it never continues one.
+"""A relay forwarding its envelope: traced, it spawns a thread; untraced, it passes the lineage on.
 
 The most natural relay code hands what it received straight to a
 sub-agent. That envelope names this execution's own thread; a subprompt
 filed under it would collapse two executions into one and record an edge
-from a thread to itself. The protocol SDK drops an explicit envelope's
-extra fields when it prompts, so the fabric's prompt interceptor mints the
-child's thread under the ambient root, as for any other prompt.
+from a thread to itself. The protocol SDK sends an explicit envelope's
+extra fields with it, since a relay must preserve them (§5.6), and a
+prompt interceptor's field of the same name replaces one. So a traced
+relay spawns a child thread under the ambient root, as for any other
+prompt; an untraced relay sends the parent's ``thread_id`` and
+``root_id`` on, and a traced receiver adopts them. So every client in a
+traced agent gets the fabric's prompt interceptor.
 
 Ported from the pre-split ``test_trace_lineage_override.py``. The cases
 there in which an explicit ``Envelope`` *chose* the lineage it was sent
-with have no counterpart: a prompt interceptor sees the prompt text and
-``context``, never the envelope handed to ``prompt()``, and the SDK drops
-that envelope's extras (see the README, "What the hooks do not carry").
+with have no counterpart: the fabric's prompt interceptor mints the pair
+itself, under the ambient root or as a fresh root, and never reads it from
+the envelope handed to ``prompt()`` (see the README, "What the hooks do
+not carry").
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synadia_ai.agents import Agent, Envelope
 
-from synadia_ai.agent_fabric import TraceScope, bind_active_trace, fabric_tracing
-from tests.support import answer_prompts, capture, drain, make_agent_info
+from synadia_ai.agent_fabric import TraceScope, active_trace, bind_active_trace, fabric_tracing
+from tests.support import answer_prompts, capture, drain, make_agent_info, start_host
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATSClient
@@ -68,21 +73,48 @@ async def test_an_envelopes_own_lineage_outside_a_handler_starts_a_fresh_root(
     assert sent["root_id"] == sent["thread_id"]
 
 
-async def test_an_untraced_client_drops_the_envelope_lineage(nc: NATSClient) -> None:
-    """With tracing off nothing of it is on the wire, even when the envelope
-    handed in carries lineage — an untraced relay forwarding what it
-    received sends a plain v0.3 envelope."""
+async def test_an_untraced_client_sends_the_envelopes_lineage_on(nc: NATSClient) -> None:
+    """With tracing off the client adds nothing, and the SDK sends the
+    envelope's extra fields as they are: an untraced relay forwarding
+    what it received sends its lineage verbatim."""
     data = await _send(nc, Envelope(prompt="hi", thread_id=THREAD, root_id=ROOT), traced=False)
-    assert data == b'{"prompt":"hi"}'
+    assert data == f'{{"prompt":"hi","thread_id":"{THREAD}","root_id":"{ROOT}"}}'.encode()
 
 
-async def test_an_untraced_client_drops_the_lineage_even_inside_a_traced_handler(
+async def test_an_untraced_client_inside_a_traced_handler_sends_the_parents_lineage_on(
     nc: NATSClient,
 ) -> None:
     """A client without the fabric's prompt interceptor, used inside a
-    traced handler, stays untraced and must not forward the parent's
-    thread to the sub-agent."""
+    traced handler, stays untraced: it forwards the parent's thread to the
+    sub-agent, not a child of it."""
     incoming = Envelope(prompt="hi", thread_id=AMBIENT_THREAD, root_id=AMBIENT_ROOT)
     with bind_active_trace(TraceScope(AMBIENT_THREAD, AMBIENT_ROOT)):
         data = await _send(nc, incoming, traced=False)
-    assert data == b'{"prompt":"hi"}'
+    assert data == (
+        f'{{"prompt":"hi","thread_id":"{AMBIENT_THREAD}","root_id":"{AMBIENT_ROOT}"}}'.encode()
+    )
+
+
+async def test_a_traced_receiver_files_an_untraced_relays_child_under_the_parents_thread(
+    nc: NATSClient,
+) -> None:
+    """The consequence: the sub-agent adopts the pair it was sent, so the
+    child execution runs as the parent's own thread — two executions under
+    one ID, and no edge between them."""
+    adopted: list[TraceScope | None] = []
+
+    async def handler(_env: Any, stream: Any) -> None:
+        adopted.append(active_trace())
+        await stream.send("ok")
+
+    svc = await start_host(
+        nc, "lineage-child", interceptors=[fabric_tracing().request_interceptor], handler=handler
+    )
+    try:
+        agent = Agent(nc, make_agent_info(svc.subject.prompt))
+        incoming = Envelope(prompt="hi", thread_id=AMBIENT_THREAD, root_id=AMBIENT_ROOT)
+        with bind_active_trace(TraceScope(AMBIENT_THREAD, AMBIENT_ROOT)):
+            assert await drain(agent.prompt(incoming)) == ["ok"]
+    finally:
+        await svc.stop()
+    assert adopted == [TraceScope(AMBIENT_THREAD, AMBIENT_ROOT)]
