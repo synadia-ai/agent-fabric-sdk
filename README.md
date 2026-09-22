@@ -241,9 +241,20 @@ Measured against the tracing the protocol SDK had at `c9d7bcb`:
   runs fabric code only when it is given the prompt interceptor.
 - **Python: lineage on an explicit `Envelope`.** `agent.prompt(Envelope(…,
   thread_id=…, root_id=…))` could choose the lineage it was sent with, and
-  `Envelope(thread_id="bad")` raised at construction. The interceptor sees
-  the prompt text and `context`, never that envelope, and the SDK drops its
-  extra fields; the prompt gets freshly minted lineage.
+  `Envelope(thread_id="bad")` raised at construction. The SDK now sends an
+  envelope's extra fields with it, since a relay must preserve them (§5.6),
+  and a prompt interceptor's field of the same name replaces one. The
+  fabric's interceptor never reads the pair from the envelope: it mints
+  its own, so a traced relay forwarding the envelope it received spawns a
+  child thread.
+- **Python: an untraced relay passes the lineage on.** A client without the
+  fabric's prompt interceptor that forwards the envelope it received sends
+  its pair as it is,
+  `{"prompt":"hi","thread_id":"<parent>","root_id":"<root>"}`, and a traced
+  receiver adopts it: the child runs as its parent's own thread, with no
+  edge between them. So every client in a traced agent gets the fabric's
+  prompt interceptor. The TypeScript client's `prompt()` takes text only,
+  so it has no such path.
 - **Where a too-large prompt fails.** The two fields are added at publish
   time, so a prompt that only they push over `max_payload` fails on the
   stream's first iteration instead of in `prompt()`. No record either way.
