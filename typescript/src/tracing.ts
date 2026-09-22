@@ -224,7 +224,9 @@ const HALF_LINEAGE_PAIR = "envelope `thread_id` and `root_id` must be given toge
  * verbatim when both fields are there, a fresh root when neither is.
  *
  * A half pair is never completed. The pair travels together: a caller
- * that traces sends both, one that does not sends neither. Exactly one
+ * that traces sends both, one that does not sends neither, unless it
+ * relays an envelope it received, which keeps the pair it came with
+ * (§5.6). Exactly one
  * names a broken or hand-written caller, and adopting the lone field would
  * file this execution under a tree the caller never named, or root a
  * thread the caller meant as a child — so it is a malformed envelope, the
