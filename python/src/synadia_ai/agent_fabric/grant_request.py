@@ -36,7 +36,7 @@ reply, on the creator's prompt address with the verb changed::
     agents.prompt.<agent>.<owner>.<name>      where it takes prompts
     agents.sp-grant.<agent>.<owner>.<name>    where it takes grant requests
 
-The shapes are ``test-fixtures/schemas/scratchpad_grant.{request,reply}.json``.
+The shapes are ``test-fixtures/schemas/sp-grant-{request,reply}.json``.
 A stopgap until ScratchPad has delegation of its own; then this goes.
 """
 
@@ -70,11 +70,11 @@ DEFAULT_GRANT_REQUEST_TIMEOUT_S = 10.0
 _PROMPT_PREFIX = "agents.prompt."
 _GRANT_PREFIX = f"agents.{GRANT_REQUEST_ENDPOINT}."
 
-#: What the requester sends (``scratchpad_grant.request.json``):
+#: What the requester sends (``sp-grant-request.json``):
 #: ``{"reference", "grantee", "trace"?: {"thread_id", "root_id", "tool_call_id"?}}``.
 GrantRequest = Mapping[str, Any]
 
-#: What the creator answers (``scratchpad_grant.reply.json``):
+#: What the creator answers (``sp-grant-reply.json``):
 #: ``{"granted": True}`` or ``{"granted": False, "reason": "..."}``.
 GrantReply = dict[str, Any]
 

@@ -24,8 +24,8 @@ python/              synadia-ai-agent-fabric — uv, ruff, mypy (strict), pytest
   src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension}.py
   tests/             the same suites; conftest starts the servers lazily
 test-fixtures/       shared by both suites — see its README for every file's source
-  schemas/           the contracts: edge.json (from synadia-agent-fabric) and the
-                     grant request's two shapes (from agent-fabric-examples)
+  schemas/           the contracts, from synadia-agent-fabric: edge.json and the
+                     grant request's two shapes, sp-grant-{request,reply}.json
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             placeholder: the fabric versions of the Claude Code, OpenClaw, PI plugins
@@ -54,7 +54,7 @@ plugins/             placeholder: the fabric versions of the Claude Code, OpenCl
   vendored copy, on the wire in operator mode (a real `{account}.{user}`
   agent ID). When `synadia-agent-fabric` changes it, copy it again and
   update `test-fixtures/README.md`. The same for the grant request's
-  `scratchpad_grant.{request,reply}.json` from `agent-fabric-examples`.
+  `sp-grant-{request,reply}.json`, also from `docs/schemas/`.
 - **The ScratchPad extension holds the policy, not a client.** It never
   talks to ScratchPad or shells out to `sp`: the agent passes its own
   client behind the `ScratchPad` port (`owns`, `grantRead`, `granted`).
