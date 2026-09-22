@@ -261,3 +261,4 @@ async def test_a_typescript_creator_refuses_in_the_bytes_this_package_writes(sid
     )
     unsigned = await side.bob_nc.request(subject, body, timeout=5.0)
     assert unsigned.data == encode_grant_reply({"granted": False, "reason": "signature required"})
+    assert not signed.headers and not unsigned.headers

@@ -232,12 +232,22 @@ class GrantRequestEndpoint:
     name: str
     subject: str
     queue: str
-    #: The message handler, for ``nc.subscribe(subject, queue=queue, cb=handler)``.
-    handler: Callable[[Msg], Awaitable[None]]
+    #: The reply's bytes for one request; never raises. For a host that
+    #: receives the requests some other way.
+    answer: Callable[[Msg], Awaitable[bytes]]
 
     async def subscribe(self, nc: NATSClient) -> Subscription:
         """Start answering on ``nc``; unsubscribe the result to stop."""
-        return await nc.subscribe(self.subject, queue=self.queue, cb=self.handler)
+
+        async def reply(msg: Msg) -> None:
+            data = await self.answer(msg)
+            # Published rather than `msg.respond()`, which would echo the
+            # request's headers — its `Agent-Sender` among them — onto the
+            # reply. The reply carries none, as the TypeScript endpoint's.
+            if msg.reply:
+                await nc.publish(msg.reply, data)
+
+        return await nc.subscribe(self.subject, queue=self.queue, cb=reply)
 
 
 def grant_request_endpoint(
@@ -270,7 +280,7 @@ def grant_request_endpoint(
             return _refusal("a grant request must be signed")
         return await answer_grant_request(str(sender.id), msg.data, scratch_pad, logger)
 
-    async def handler(msg: Msg) -> None:
+    async def answer(msg: Msg) -> bytes:
         try:
             reply = await decide(msg)
         except Exception as err:
@@ -278,13 +288,13 @@ def grant_request_endpoint(
             reply = _refusal("the grant could not be made")
         if not reply["granted"]:
             logger.info("grant request refused: %s", reply["reason"])
-        await msg.respond(encode_grant_reply(reply))
+        return encode_grant_reply(reply)
 
     return GrantRequestEndpoint(
         name=GRANT_REQUEST_ENDPOINT,
         subject=grant_subject(prompt_address),
         queue="agents",
-        handler=handler,
+        answer=answer,
     )
 
 

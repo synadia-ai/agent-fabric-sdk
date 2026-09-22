@@ -389,6 +389,7 @@ describe.skipIf(!bin)("the ScratchPad extension between three agents", () => {
     const reply = parse(replayed);
     expect(reply).toEqual({ granted: false, reason: "sender rejected" });
     expect(grantReplySchemaErrors(reply)).toEqual([]);
+    expect([unsigned.headers, replayed.headers]).toEqual([undefined, undefined]);
   });
 
   it("answers a signed request for a reference it never handed the requester with a refusal", async () => {

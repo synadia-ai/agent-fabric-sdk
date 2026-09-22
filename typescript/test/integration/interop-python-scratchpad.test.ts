@@ -249,6 +249,9 @@ describe.skipIf(!bin || !uvAvailable)("a TypeScript requester and a Python creat
     expect(dec.decode(unsigned.data)).toBe(
       encodeGrantReply({ granted: false, reason: "signature required" }),
     );
+    // No headers on a reply: the request's `Agent-Sender` is not echoed back.
+    expect(signed.headers).toBeUndefined();
+    expect(unsigned.headers).toBeUndefined();
     await sleep(50);
   });
 });

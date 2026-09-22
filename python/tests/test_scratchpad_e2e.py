@@ -385,3 +385,4 @@ async def test_unsigned_and_replayed_grant_requests_are_refused(fabric: Fabric) 
     assert unsigned.data == encode_grant_reply({"granted": False, "reason": "signature required"})
     for reply in (first, replayed, unsigned):
         assert grant_reply_schema_errors(json.loads(reply.data)) == []
+        assert not reply.headers, "a reply carries no headers, the request's least of all"
