@@ -1,12 +1,14 @@
 // The grant request without a server: the creator's rule, one test per
-// condition, and the requester's reading of an answer.
-// `python/tests/test_grant_request.py` is the twin; the signature and replay
-// checks, which need a signed message, are in the integration tests.
+// condition, the requester's reading of an answer, and the creator's
+// endpoint. `python/tests/test_grant_request.py` is the twin; the signature
+// and replay checks, which need a signed message, are in the integration
+// tests.
 
 import { describe, expect, it } from "vitest";
 import {
   answerGrantRequest,
   encodeGrantRequest,
+  grantRequestEndpoint,
   requestGrant,
   type GrantKind,
   type Grantee,
@@ -250,5 +252,17 @@ describe("the requester's reading of an answer", () => {
       reason: "no answer from agents.status.x.y.z: not a prompt address: agents.status.x.y.z",
     });
     expect(stub.requests).toEqual([]);
+  });
+});
+
+describe("the creator's endpoint", () => {
+  it("is an extra endpoint next to the prompt address, in the agents queue group", () => {
+    const endpoint = grantRequestEndpoint({ promptAddress: SELF, scratchPad: creator().pad });
+    expect([endpoint.name, endpoint.subject, endpoint.queue, endpoint.metadata]).toEqual([
+      "sp-grant",
+      "agents.sp-grant.creator.fabric.r1",
+      "agents",
+      undefined,
+    ]);
   });
 });

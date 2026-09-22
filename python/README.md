@@ -9,6 +9,5 @@ hooks of the Synadia Agent Protocol SDK (`synadia-ai-agents`,
 - **The ScratchPad extension** for the agent tools:
   `scratch_pad_extension(scratch_pad=..., agents=...)` in `AgentTools`'
   `extensions`, with the grant request's two sides, `request_grant` and
-  `grant_request_endpoint` (a subscription on the agent's connection: the
-  Python `AgentService` takes no extra endpoints). The agent brings its
-  ScratchPad client behind the `ScratchPad` port.
+  `grant_request_endpoint` (an `AgentService` extra endpoint). The agent
+  brings its ScratchPad client behind the `ScratchPad` port.

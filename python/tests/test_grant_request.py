@@ -1,9 +1,9 @@
 """The grant request without a server.
 
-The creator's rule, one test per condition, and the requester's reading of
-an answer. ``typescript/test/unit/grant-request.test.ts`` is the twin; the
-signature and replay checks, which need a signed message, are in the
-integration tests.
+The creator's rule, one test per condition, the requester's reading of an
+answer, and the creator's endpoint. ``typescript/test/unit/grant-request.test.ts``
+is the twin; the signature and replay checks, which need a signed message,
+are in the integration tests.
 """
 
 from __future__ import annotations
@@ -12,13 +12,16 @@ import json
 from typing import Any
 
 import pytest
+from synadia_ai.agent_service import AgentServiceExtraEndpoint
 
 from synadia_ai.agent_fabric import (
     Grantee,
     GrantKind,
     TraceIds,
     answer_grant_request,
+    encode_grant_reply,
     encode_grant_request,
+    grant_request_endpoint,
     request_grant,
 )
 from tests.scratchpad_fake import MemoryScratchPad, RecordedGrant, StubAgents, make_reference
@@ -257,3 +260,66 @@ async def test_nothing_goes_to_an_address_that_is_not_a_prompt_address() -> None
         "reason": "no answer from agents.status.x.y.z: not a prompt address: agents.status.x.y.z",
     }
     assert stub.requests == []
+
+
+# --- the creator's endpoint --------------------------------------------------
+
+
+class _Request:
+    """A nats-py micro ``Request``, as far as the endpoint reads and answers one."""
+
+    def __init__(self, data: bytes, *, headers: Any = None, reply: bool = True) -> None:
+        self.subject = "agents.sp-grant.creator.fabric.r1"
+        self.data = data
+        self._headers = headers
+        self._reply = reply
+        self.answers: list[tuple[bytes, Any]] = []
+
+    @property
+    def headers(self) -> Any:
+        if isinstance(self._headers, BaseException):
+            raise self._headers
+        return self._headers
+
+    async def respond(self, data: bytes = b"", headers: Any = None) -> None:
+        if not self._reply:
+            raise ValueError("no reply subject set")  # as nats-py's
+        self.answers.append((data, headers))
+
+
+def test_the_endpoint_is_an_extra_endpoint_next_to_the_prompt_address() -> None:
+    endpoint = grant_request_endpoint(prompt_address=SELF, scratch_pad=_creator()[0])
+    assert isinstance(endpoint, AgentServiceExtraEndpoint)
+    assert (endpoint.name, endpoint.subject, endpoint.queue, endpoint.metadata) == (
+        "sp-grant",
+        "agents.sp-grant.creator.fabric.r1",
+        "agents",
+        None,
+    )
+
+
+async def test_the_endpoint_answers_an_unsigned_request_with_the_bytes_alone() -> None:
+    pad, ref = _creator()
+    endpoint = grant_request_endpoint(prompt_address=SELF, scratch_pad=pad)
+    request = _Request(_ask(ref).encode())
+    await endpoint.handler(request)  # type: ignore[arg-type]
+    assert request.answers == [
+        (encode_grant_reply({"granted": False, "reason": "signature required"}), None)
+    ]
+    assert pad.grants == []
+
+
+async def test_the_endpoint_answers_an_exception_with_a_refusal_never_its_text() -> None:
+    pad, ref = _creator()
+    endpoint = grant_request_endpoint(prompt_address=SELF, scratch_pad=pad)
+    request = _Request(_ask(ref).encode(), headers=RuntimeError("the secret in the error"))
+    await endpoint.handler(request)  # type: ignore[arg-type]
+    assert request.answers == [
+        (encode_grant_reply({"granted": False, "reason": "the grant could not be made"}), None)
+    ]
+
+
+async def test_the_endpoint_does_not_raise_for_a_request_without_a_reply_subject() -> None:
+    pad, ref = _creator()
+    endpoint = grant_request_endpoint(prompt_address=SELF, scratch_pad=pad)
+    await endpoint.handler(_Request(_ask(ref).encode(), reply=False))  # type: ignore[arg-type]

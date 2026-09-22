@@ -26,8 +26,10 @@ import {
 import {
   activeTrace,
   encodeGrantReply,
+  encodeGrantRequest,
   fabricTracing,
   grantRequestEndpoint,
+  granteeFromIdentity,
   scratchPadExtension,
   type TraceIds,
 } from "../../src/index.js";
@@ -44,6 +46,7 @@ import {
   grantRequestSchemaErrors,
   parse,
   sleep,
+  srvInfo,
 } from "../support/fixtures.js";
 import { makeReference, MemoryScratchPad } from "../support/scratchpad.js";
 
@@ -406,5 +409,34 @@ describe.skipIf(!bin)("the ScratchPad extension between three agents", () => {
         reason: "this agent holds no live read grant it made to the requester on that reference",
       }),
     );
+  });
+
+  it("lists the grant endpoint in $SRV.INFO, next to prompt and status", async () => {
+    const info = await srvInfo(connections[0]!, "creator");
+    const endpoints = info["endpoints"] as Array<Record<string, unknown>>;
+    expect(endpoints.map((e) => e["name"])).toEqual(["prompt", "status", "sp-grant"]);
+    expect([endpoints[2]!["subject"], endpoints[2]!["queue_group"]]).toEqual([GRANTS, "agents"]);
+  });
+
+  it("answers a grant with the bytes alone", async () => {
+    const client = new Agents({ nc: connections[0]!, identity: { signer: bobSigner } });
+    clients.push(client);
+    const ref = creatorPad.commit("/granted.md");
+    creatorPad.grantRead(ref, granteeFromIdentity(BOB), undefined);
+    const msg = await client.requestSigned(
+      GRANTS,
+      encodeGrantRequest({ reference: ref, grantee: CAROL }),
+      { timeoutMs: 5000 },
+    );
+    expect(dec.decode(msg.data)).toBe(encodeGrantReply({ granted: true }));
+    // No headers on a reply: the request's `Agent-Sender` is not echoed back.
+    expect(msg.headers).toBeUndefined();
+    expect(creatorPad.grants.at(-1)).toEqual({
+      reference: ref,
+      grantee: CAROL,
+      trace: undefined,
+      toolCallId: undefined,
+      kind: "on-request",
+    });
   });
 });

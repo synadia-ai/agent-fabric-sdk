@@ -48,7 +48,7 @@ from synadia_ai.agent_fabric import (
 from tests.harness.nats_server import identity_fixture
 from tests.interop import FABRIC_TS_MODULE, TS_DIR, interop_prereqs_missing
 from tests.scratchpad_fake import MemoryScratchPad, make_reference
-from tests.support import REPO_ROOT
+from tests.support import REPO_ROOT, srv_info
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATSClient
@@ -262,3 +262,12 @@ async def test_a_typescript_creator_refuses_in_the_bytes_this_package_writes(sid
     unsigned = await side.bob_nc.request(subject, body, timeout=5.0)
     assert unsigned.data == encode_grant_reply({"granted": False, "reason": "signature required"})
     assert not signed.headers and not unsigned.headers
+
+
+async def test_a_typescript_creators_grant_endpoint_is_in_srv_info_as_a_python_host_lists_it(
+    side: Side,
+) -> None:
+    info = await srv_info(side.bob_nc, "ts-creator")
+    assert [e["name"] for e in info["endpoints"]] == ["prompt", "status", "sp-grant"]
+    grants = info["endpoints"][2]
+    assert (grants["subject"], grants["queue_group"]) == (grant_subject(side.ts.subject), "agents")

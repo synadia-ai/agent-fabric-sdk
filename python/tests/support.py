@@ -128,6 +128,21 @@ async def replies(nc: NATSClient, subject: str, payload: bytes) -> list[Msg]:
         await sub.unsubscribe()
 
 
+async def srv_info(nc: NATSClient, agent: str) -> dict[str, Any]:
+    """The ``$SRV.INFO`` record of the running instance of ``agent``."""
+    inbox = nc.new_inbox()
+    sub = await nc.subscribe(inbox)
+    try:
+        await nc.publish("$SRV.INFO.agents", b"", reply=inbox)
+        while True:
+            msg = await asyncio.wait_for(sub.next_msg(), timeout=5.0)
+            info: dict[str, Any] = json.loads(msg.data)
+            if (info.get("metadata") or {}).get("agent") == agent:
+                return info
+    finally:
+        await sub.unsubscribe()
+
+
 def error_code(frames: Sequence[Msg]) -> str | None:
     for m in frames:
         code = (m.headers or {}).get("Nats-Service-Error-Code")

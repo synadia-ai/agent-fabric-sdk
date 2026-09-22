@@ -109,6 +109,8 @@ prepare them.
   §8.1–§8.2, and `docs/schemas/edge.json`.
 - The hooks: `synadia-agents` `client-sdk/*/…/interceptor.*` and
   `agent-sdk/*/…/interceptor.*` on `sdk-release-rollout` (merged there by synadia-agents #205, 2026-09-22).
+  The Python host's `extra_endpoints`, which serve the grant endpoint:
+  `AgentServiceExtraEndpoint` in `agent-sdk/python/…/service.py` (#210, `218f602`).
 - The agent tools and their extension hooks: `synadia-agents`
   `docs/agent-tools.md` §6.3 (#207); the fabric's view,
   `synadia-agent-fabric/docs/agent-tools.md` §2.1–§2.2; the rules the

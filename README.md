@@ -168,7 +168,8 @@ svc = AgentService(nc=nc, agent="triage", owner="acme", session_name="main",
     identity=ServiceIdentity(signer=signer), max_concurrent_prompts=4,
     interceptors=[tracing.request_interceptor, tools.request_interceptor,
                   references.request_interceptor],
-    extra_metadata={READS_REFERENCES_KEY: "true"})
+    extra_metadata={READS_REFERENCES_KEY: "true"},
+    extra_endpoints=[grant_request_endpoint(prompt_address=address, scratch_pad=scratch_pad)])
 async def handle(envelope, stream):
     answer = await run_model(envelope.prompt, tools)  # await tools.execute(name, args, tool_call_id=...)
     ref = await commit(answer)                        # your ScratchPad client
@@ -176,7 +177,6 @@ async def handle(envelope, stream):
     await stream.send(f"{answer}\n\n{ref}" if handed else answer)
 svc.on_prompt(handle)
 await svc.start()
-grants = await grant_request_endpoint(prompt_address=address, scratch_pad=scratch_pad).subscribe(nc)
 ```
 
 ## Public API
@@ -195,7 +195,7 @@ The same surface in both languages (TypeScript names; Python in snake_case):
 | `ScratchPad`, `Grantee`, `GrantKind`, `TraceIds` | The port the agent implements, and its types |
 | `findReferences`, `removeReferences`, `referenceCreator`, `readsReferences`, `granteeFromIdentity`, `READS_REFERENCES_KEY`, `REFERENCE_PREFIX` | The references' vocabulary |
 | `requestGrant(agents, creatorAddress, request, { timeoutMs? })` | The requester's side; never throws, a refusal carries its reason |
-| `grantRequestEndpoint({ promptAddress, scratchPad, logger? })` | The creator's side: an `AgentService` extra endpoint in TypeScript; in Python a `GrantRequestEndpoint` to `subscribe(nc)` |
+| `grantRequestEndpoint({ promptAddress, scratchPad, logger? })` | The creator's side: an extra endpoint for the agent's `AgentService` (`extraEndpoints` / `extra_endpoints`) |
 | `answerGrantRequest(requester, payload, scratchPad)`, `encodeGrantRequest`, `encodeGrantReply`, `grantSubject`, `GrantRequest`, `GrantReply` | The creator's rule for an already verified requester, and the wire shapes |
 
 ## On the wire
@@ -231,6 +231,9 @@ One signed NATS request, one JSON reply, the shapes of
 `{"granted":true}` or `{"granted":false,"reason":"…"}`, one reason per line
 of the creator's rule. The `Agent-Sender` signature is over the grant
 subject, verified by the SDK's `SenderGate`, which also refuses a replay.
+The creator answers on its service's `sp-grant` endpoint, in the `agents`
+queue group and listed in `$SRV.INFO` next to `prompt` and `status`; the
+reply carries no headers.
 
 ## What the hooks do not carry
 
@@ -271,11 +274,6 @@ own tools (`agent-fabric-examples` `1e783a3`):
   handle but not the helper's client or the handles its discovery found,
   so the extension takes `agents` in its options and keeps its own map
   from the discovery hook; a creator it has not seen costs one discovery.
-- **Python: an extra endpoint on the service.** The Python `AgentService`
-  takes no extra endpoints, so the grant endpoint is a plain subscription
-  on the agent's connection, in the `agents` queue group. It answers the
-  same bytes; unlike the TypeScript one, it is not listed among the
-  service's endpoints in `$SRV.INFO`.
 
 ## Development
 

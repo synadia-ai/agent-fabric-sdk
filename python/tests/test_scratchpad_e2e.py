@@ -6,9 +6,10 @@ prompt names one tool call, base64url-encoded on its first line so it hands
 the caller no reference, and the handler executes it and answers with the
 result. It prompts a target that reads references (carol, ACME), one that
 reads none (carol again, another name), and a creator (alice, ACME) that
-hands out references of its own and answers grant requests on its endpoint.
-Every agent's ScratchPad is an in-memory fake that records its grants.
-``typescript/test/integration/scratchpad-extension.test.ts`` is the twin.
+hands out references of its own and answers grant requests on its extra
+endpoint. Every agent's ScratchPad is an in-memory fake that records its
+grants. ``typescript/test/integration/scratchpad-extension.test.ts`` is the
+twin.
 """
 
 from __future__ import annotations
@@ -41,8 +42,10 @@ from synadia_ai.agent_fabric import (
     TraceIds,
     active_trace,
     encode_grant_reply,
+    encode_grant_request,
     fabric_tracing,
     grant_request_endpoint,
+    grantee_from_identity,
     scratch_pad_extension,
 )
 from tests.harness.nats_server import identity_fixture
@@ -52,6 +55,7 @@ from tests.support import (
     edge_schema_errors,
     grant_reply_schema_errors,
     grant_request_schema_errors,
+    srv_info,
 )
 
 if TYPE_CHECKING:
@@ -169,6 +173,7 @@ async def fabric(nats_server_operator: RunningServer) -> AsyncIterator[Fabric]: 
         keepalive_interval_s=None,
         interceptors=[tracing.request_interceptor, creator_ext.request_interceptor],
         extra_metadata={"scratchpad_refs_ok": "true"},
+        extra_endpoints=[grant_request_endpoint(prompt_address=CREATOR, scratch_pad=creator_pad)],
     )
 
     async def at_creator(_envelope: Envelope, stream: PromptStream) -> None:
@@ -180,9 +185,6 @@ async def fabric(nats_server_operator: RunningServer) -> AsyncIterator[Fabric]: 
 
     creator.on_prompt(at_creator)
     services.append(creator)
-    endpoint = await grant_request_endpoint(
-        prompt_address=CREATOR, scratch_pad=creator_pad
-    ).subscribe(nc_alice)
 
     # The caller: the agent tools with the extension, on a traced, signed client.
     bob_signer = signer_from_creds_file(identity_fixture("operator/bob.creds"))
@@ -242,7 +244,6 @@ async def fabric(nats_server_operator: RunningServer) -> AsyncIterator[Fabric]: 
         yield f
     finally:
         await tools.aclose()
-        await endpoint.unsubscribe()
         for a in (driver, client, alice_agents):
             await a.close()
         for svc in services:
@@ -386,3 +387,22 @@ async def test_unsigned_and_replayed_grant_requests_are_refused(fabric: Fabric) 
     for reply in (first, replayed, unsigned):
         assert grant_reply_schema_errors(json.loads(reply.data)) == []
         assert not reply.headers, "a reply carries no headers, the request's least of all"
+
+
+async def test_the_grant_endpoint_is_listed_in_srv_info_next_to_prompt_and_status(
+    fabric: Fabric,
+) -> None:
+    info = await srv_info(fabric.bob_nc, "creator")
+    assert [e["name"] for e in info["endpoints"]] == ["prompt", "status", "sp-grant"]
+    grants = info["endpoints"][2]
+    assert (grants["subject"], grants["queue_group"]) == (GRANTS, "agents")
+
+
+async def test_a_grant_is_answered_with_the_bytes_alone(fabric: Fabric) -> None:
+    ref = fabric.creator_pad.commit("/granted.md")
+    fabric.creator_pad.grant_read(ref, grantee_from_identity(BOB), None)
+    body = encode_grant_request({"reference": ref, "grantee": CAROL})
+    reply = await fabric.bob_agents.request_signed(GRANTS, body, timeout_s=5.0)
+    assert reply.data == encode_grant_reply({"granted": True})
+    assert not reply.headers, "a reply carries no headers, the request's least of all"
+    assert fabric.creator_pad.grants[-1] == RecordedGrant(ref, CAROL, None, None, "on-request")
