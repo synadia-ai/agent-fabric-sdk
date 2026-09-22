@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synadia.io/agent-fabric/schemas/sp-grant-reply.json",
+  "title": "ScratchPad grant reply",
+  "description": "What the creator answers to a grant request, with no headers. `granted: true` means the creator made the grant itself, on its own volume: read only, the one path the reference names, its usual expiry. Anything else is a refusal with its reason in words; the requester then sends its prompt without that reference.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "granted"
+  ],
+  "properties": {
+    "granted": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string",
+      "description": "with a refusal only: which line of the creator's rule refused, for the requester's log and its model"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "granted": {
+          "const": true
+        },
+        "reason": false
+      }
+    },
+    {
+      "properties": {
+        "granted": {
+          "const": false
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ]
+    }
+  ]
+}

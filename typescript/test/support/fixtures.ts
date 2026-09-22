@@ -52,19 +52,15 @@ function vendoredSchema(name: string): Record<string, unknown> {
     ),
   ) as Record<string, unknown>;
 }
-// The reply schema names `reason` in a `not: { required }` whose branch has no
-// `properties` of its own, which Ajv's `strictRequired` refuses; the schema is
-// vendored and never edited, so that one check is off for the grant schemas.
-const grantAjv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
-const validateGrantRequest = grantAjv.compile(vendoredSchema("scratchpad_grant.request.json"));
-const validateGrantReply = grantAjv.compile(vendoredSchema("scratchpad_grant.reply.json"));
+const validateGrantRequest = ajv.compile(vendoredSchema("sp-grant-request.json"));
+const validateGrantReply = ajv.compile(vendoredSchema("sp-grant-reply.json"));
 
-/** The complaints of `scratchpad_grant.request.json` about `request`; `[]` when it validates. */
+/** The complaints of `sp-grant-request.json` about `request`; `[]` when it validates. */
 export function grantRequestSchemaErrors(request: unknown): ReadonlyArray<ErrorObject> {
   return validateGrantRequest(request) ? [] : (validateGrantRequest.errors ?? []);
 }
 
-/** The complaints of `scratchpad_grant.reply.json` about `reply`; `[]` when it validates. */
+/** The complaints of `sp-grant-reply.json` about `reply`; `[]` when it validates. */
 export function grantReplySchemaErrors(reply: unknown): ReadonlyArray<ErrorObject> {
   return validateGrantReply(reply) ? [] : (validateGrantReply.errors ?? []);
 }

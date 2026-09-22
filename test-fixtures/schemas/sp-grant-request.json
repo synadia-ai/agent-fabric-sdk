@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synadia.io/agent-fabric/schemas/sp-grant-request.json",
+  "title": "ScratchPad grant request",
+  "description": "What one agent's code sends another's before it hands on a ScratchPad reference it did not create: a request to the reference's creator to grant one more agent read on it. Sent as one signed NATS request (the `Agent-Sender` header) to `agents.sp-grant.<agent>.<owner>.<name>`, the creator's prompt address with the verb changed, where the creator serves it as an extra endpoint named `sp-grant` in queue group `agents`. Not a tool and not a record: no model sees it, and the log keeps only the `sp.grant` record ScratchPad writes when the creator grants (`agent-tools.md` §2.2).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reference",
+    "grantee"
+  ],
+  "properties": {
+    "reference": {
+      "type": "string",
+      "pattern": "^sp-ref:[A-Za-z0-9_-]+$",
+      "description": "the reference token, exactly as the requester was given it"
+    },
+    "grantee": {
+      "type": "string",
+      "description": "the identity, `<account>.<user>`, of the agent that should be able to read it: the one the requester is about to prompt, as discovery verified it"
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thread_id",
+        "root_id"
+      ],
+      "description": "the requester's served thread and the tool call the handoff belongs to, so the creator's grant shows under the call that caused it; labels only, never authority",
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "root_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

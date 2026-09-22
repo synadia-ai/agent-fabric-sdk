@@ -36,7 +36,7 @@
 //   agents.prompt.<agent>.<owner>.<name>      where it takes prompts
 //   agents.sp-grant.<agent>.<owner>.<name>    where it takes grant requests
 //
-// The shapes are `test-fixtures/schemas/scratchpad_grant.{request,reply}.json`.
+// The shapes are `test-fixtures/schemas/sp-grant-{request,reply}.json`.
 // A stopgap until ScratchPad has delegation of its own; then this goes.
 
 import { SenderGate, type AgentServiceExtraEndpoint } from "@synadia-ai/agent-service";
@@ -50,7 +50,7 @@ import {
 } from "./scratchpad.js";
 import { isThreadId, validToolCallId } from "./trace.js";
 
-/** What the requester sends (`scratchpad_grant.request.json`). */
+/** What the requester sends (`sp-grant-request.json`). */
 export interface GrantRequest {
   /** The reference, exactly as the requester was given it. */
   readonly reference: string;
@@ -68,7 +68,7 @@ export interface GrantRequest {
   };
 }
 
-/** What the creator answers (`scratchpad_grant.reply.json`). */
+/** What the creator answers (`sp-grant-reply.json`). */
 export type GrantReply =
   { readonly granted: true } | { readonly granted: false; readonly reason: string };
 

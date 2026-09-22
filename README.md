@@ -224,8 +224,8 @@ Byte for byte what the protocol SDK wrote before tracing moved out of it
 ### The grant request
 
 One signed NATS request, one JSON reply, the shapes of
-`test-fixtures/schemas/scratchpad_grant.{request,reply}.json` (vendored from
-`agent-fabric-examples`), the same bytes from both packages:
+`test-fixtures/schemas/sp-grant-{request,reply}.json` (vendored from
+`synadia-agent-fabric`), the same bytes from both packages:
 `{"reference":"sp-ref:…","grantee":"<account>.<user>","trace":{"thread_id":"…","root_id":"…","tool_call_id":"…"}}`,
 `trace` only inside a served prompt and `tool_call_id` only when valid;
 `{"granted":true}` or `{"granted":false,"reason":"…"}`, one reason per line

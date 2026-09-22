@@ -49,17 +49,17 @@ def _vendored_validator(name: str) -> Draft202012Validator:
     return Draft202012Validator(schema)
 
 
-_GRANT_REQUEST_VALIDATOR = _vendored_validator("scratchpad_grant.request.json")
-_GRANT_REPLY_VALIDATOR = _vendored_validator("scratchpad_grant.reply.json")
+_GRANT_REQUEST_VALIDATOR = _vendored_validator("sp-grant-request.json")
+_GRANT_REPLY_VALIDATOR = _vendored_validator("sp-grant-reply.json")
 
 
 def grant_request_schema_errors(request: object) -> list[str]:
-    """What ``scratchpad_grant.request.json`` says is wrong with ``request``."""
+    """What ``sp-grant-request.json`` says is wrong with ``request``."""
     return [e.message for e in _GRANT_REQUEST_VALIDATOR.iter_errors(request)]
 
 
 def grant_reply_schema_errors(reply: object) -> list[str]:
-    """What ``scratchpad_grant.reply.json`` says is wrong with ``reply``."""
+    """What ``sp-grant-reply.json`` says is wrong with ``reply``."""
     return [e.message for e in _GRANT_REPLY_VALIDATOR.iter_errors(reply)]
 
 
