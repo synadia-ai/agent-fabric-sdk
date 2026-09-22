@@ -43,6 +43,26 @@ def edge_schema_errors(record: object) -> list[str]:
     return [e.message for e in _EDGE_VALIDATOR.iter_errors(record)]
 
 
+def _vendored_validator(name: str) -> Draft202012Validator:
+    schema = json.loads((REPO_ROOT / "test-fixtures" / "schemas" / name).read_text("utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+_GRANT_REQUEST_VALIDATOR = _vendored_validator("scratchpad_grant.request.json")
+_GRANT_REPLY_VALIDATOR = _vendored_validator("scratchpad_grant.reply.json")
+
+
+def grant_request_schema_errors(request: object) -> list[str]:
+    """What ``scratchpad_grant.request.json`` says is wrong with ``request``."""
+    return [e.message for e in _GRANT_REQUEST_VALIDATOR.iter_errors(request)]
+
+
+def grant_reply_schema_errors(reply: object) -> list[str]:
+    """What ``scratchpad_grant.reply.json`` says is wrong with ``reply``."""
+    return [e.message for e in _GRANT_REPLY_VALIDATOR.iter_errors(reply)]
+
+
 def make_agent_info(prompt_subject: str, *, max_payload_bytes: int | None = None) -> AgentInfo:
     """An :class:`AgentInfo` pointing at a test-controlled subject, no discovery."""
     prompt_endpoint = EndpointInfo(

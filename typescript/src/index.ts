@@ -2,7 +2,7 @@
 //
 // Built on the hooks of the protocol SDK (`@synadia-ai/agents`,
 // `@synadia-ai/agent-service`); it never reaches into their internals.
-// Today it carries tracing:
+// It carries tracing and the agent tools' ScratchPad extension:
 //
 //   - {@link fabricTracing} — the prompt interceptor, the request
 //                             interceptor and the heartbeat extras provider
@@ -16,6 +16,15 @@
 //   - {@link activeTrace}, {@link bindActiveTrace} — the ambient scope.
 //   - {@link buildEdgeRecord}, {@link traceRecordCounts} and the rest of the
 //                             vocabulary.
+//   - {@link scratchPadExtension} — the fabric's rules for ScratchPad
+//                             references on `AgentTools`' three extension
+//                             hooks, over the agent's own client behind the
+//                             {@link ScratchPad} port.
+//   - {@link requestGrant}, {@link grantRequestEndpoint} — the grant request,
+//                             both sides: asking a reference's creator to let
+//                             one more agent read it, and answering.
+//   - {@link findReferences}, {@link removeReferences} and the rest of the
+//                             references' vocabulary.
 //
 // Mirrors the Python package `synadia_ai.agent_fabric`; the two are
 // wire-identical.
@@ -47,3 +56,39 @@ export {
   type TraceRecordCounts,
   type TraceScope,
 } from "./trace.js";
+
+export {
+  READS_REFERENCES_KEY,
+  REFERENCE_PREFIX,
+  findReferences,
+  granteeFromIdentity,
+  readsReferences,
+  referenceCreator,
+  removeReferences,
+  type GrantKind,
+  type Grantee,
+  type ScratchPad,
+  type TraceIds,
+} from "./scratchpad.js";
+
+export {
+  DEFAULT_GRANT_REQUEST_TIMEOUT_MS,
+  GRANT_REQUEST_ENDPOINT,
+  answerGrantRequest,
+  encodeGrantReply,
+  encodeGrantRequest,
+  grantRequestEndpoint,
+  grantSubject,
+  requestGrant,
+  type GrantReply,
+  type GrantRequest,
+  type GrantRequestEndpointOptions,
+  type RequestGrantOptions,
+} from "./grant-request.js";
+
+export {
+  READS_SCRATCHPAD_REFERENCES_FIELD,
+  ScratchPadExtension,
+  scratchPadExtension,
+  type ScratchPadExtensionOptions,
+} from "./scratchpad-extension.js";

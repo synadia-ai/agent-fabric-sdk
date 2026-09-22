@@ -24,6 +24,27 @@ PUBLIC = {
     "build_edge_record",
     "trace_record_counts",
     "TraceRecordCounts",
+    # The ScratchPad extension, its port and its vocabulary.
+    "scratch_pad_extension",
+    "ScratchPadExtension",
+    "ScratchPad",
+    "Grantee",
+    "GrantKind",
+    "TraceIds",
+    "find_references",
+    "remove_references",
+    "reference_creator",
+    "reads_references",
+    "grantee_from_identity",
+    "READS_REFERENCES_KEY",
+    # The grant request, both sides.
+    "request_grant",
+    "grant_request_endpoint",
+    "GrantRequestEndpoint",
+    "answer_grant_request",
+    "encode_grant_request",
+    "encode_grant_reply",
+    "grant_subject",
 }
 
 
