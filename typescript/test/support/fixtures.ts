@@ -105,6 +105,24 @@ export async function rawStream(nc: NatsConnection, subject: string, body: strin
   return msgs;
 }
 
+/** The `$SRV.INFO` record of the running instance of `agent`. */
+export async function srvInfo(nc: NatsConnection, agent: string): Promise<Record<string, unknown>> {
+  const inbox = createInbox();
+  const sub = nc.subscribe(inbox, { timeout: 5_000 });
+  nc.publish("$SRV.INFO.agents", "", { reply: inbox });
+  try {
+    for await (const m of sub) {
+      const info = parse(m);
+      if ((info["metadata"] as Record<string, unknown> | undefined)?.["agent"] === agent) {
+        return info;
+      }
+    }
+  } finally {
+    sub.unsubscribe();
+  }
+  throw new Error(`no $SRV.INFO from ${agent}`);
+}
+
 export const errorCode = (frames: ReadonlyArray<Msg>): string | undefined =>
   frames.map((m) => m.headers?.get("Nats-Service-Error-Code")).find((c) => c !== undefined);
 

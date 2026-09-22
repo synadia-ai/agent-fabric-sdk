@@ -30,7 +30,7 @@ import {
   identityFixture,
   NatsServerProcess,
 } from "../harness/nats-server.js";
-import { dec, enc, REPO_ROOT, sleep } from "../support/fixtures.js";
+import { dec, enc, REPO_ROOT, sleep, srvInfo } from "../support/fixtures.js";
 import { makeReference, MemoryScratchPad } from "../support/scratchpad.js";
 
 const HOST_SCRIPT = join(REPO_ROOT, "test-fixtures", "interop", "py-scratchpad-agent.py");
@@ -253,5 +253,15 @@ describe.skipIf(!bin || !uvAvailable)("a TypeScript requester and a Python creat
     expect(signed.headers).toBeUndefined();
     expect(unsigned.headers).toBeUndefined();
     await sleep(50);
+  });
+
+  it("finds the Python creator's grant endpoint in $SRV.INFO, as a TypeScript host lists it", async () => {
+    const info = await srvInfo(connections[1]!, "py-creator");
+    const endpoints = info["endpoints"] as Array<Record<string, unknown>>;
+    expect(endpoints.map((e) => e["name"])).toEqual(["prompt", "status", "sp-grant"]);
+    expect([endpoints[2]!["subject"], endpoints[2]!["queue_group"]]).toEqual([
+      grantSubject(creator()),
+      "agents",
+    ]);
   });
 });

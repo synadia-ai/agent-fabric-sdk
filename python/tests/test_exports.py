@@ -40,7 +40,6 @@ PUBLIC = {
     # The grant request, both sides.
     "request_grant",
     "grant_request_endpoint",
-    "GrantRequestEndpoint",
     "answer_grant_request",
     "encode_grant_request",
     "encode_grant_reply",

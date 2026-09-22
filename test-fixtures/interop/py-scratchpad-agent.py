@@ -131,6 +131,7 @@ async def main() -> None:
         keepalive_interval_s=None,
         interceptors=[tracing.request_interceptor, ext.request_interceptor],
         extra_metadata={"scratchpad_refs_ok": "true"},
+        extra_endpoints=[grant_request_endpoint(prompt_address=address, scratch_pad=pad)],
     )
 
     async def handle(envelope: Envelope, stream: PromptStream) -> None:
@@ -146,7 +147,6 @@ async def main() -> None:
 
     svc.on_prompt(handle)
     await svc.start()
-    endpoint = await grant_request_endpoint(prompt_address=address, scratch_pad=pad).subscribe(nc)
 
     async def seen(msg: Msg) -> None:
         emit({"event": "request", "data": msg.data.decode()})
@@ -160,7 +160,6 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
     await stop.wait()
-    await endpoint.unsubscribe()
     await agents.close()
     await svc.stop()
     await nc.close()

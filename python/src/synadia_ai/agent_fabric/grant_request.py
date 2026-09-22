@@ -44,25 +44,22 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from synadia_ai.agent_service import SenderGate
+from synadia_ai.agent_service import AgentServiceExtraEndpoint, SenderGate
 from synadia_ai.agents import VerifiedSender
 
 from .scratchpad import GrantKind, ScratchPad, TraceIds, _resolve, grantee_from_identity
 from .trace import is_thread_id, valid_tool_call_id
 
 if TYPE_CHECKING:
-    from nats.aio.client import Client as NATSClient
-    from nats.aio.msg import Msg
-    from nats.aio.subscription import Subscription
+    from nats.micro.request import Request
     from synadia_ai.agents import Agents
 
 log = logging.getLogger("synadia_ai.agent_fabric")
 
-#: The name of the creator's endpoint, and the verb of its subject.
+#: The name of the creator's extra endpoint, and the verb of its subject.
 GRANT_REQUEST_ENDPOINT = "sp-grant"
 
 #: How long the requester waits for the creator's answer, in seconds. The
@@ -219,50 +216,22 @@ async def answer_grant_request(  # noqa: PLR0911 — one refusal per line of the
     return {"granted": True}
 
 
-@dataclass(frozen=True, slots=True)
-class GrantRequestEndpoint:
-    """The creator's side: a NATS endpoint that answers grant requests.
-
-    The Python ``AgentService`` takes no extra endpoints, so this is a plain
-    subscription next to it: :meth:`subscribe` it on the agent's connection,
-    and unsubscribe the result to stop. ``name``, ``subject`` and ``queue``
-    are what the TypeScript package registers on the service.
-    """
-
-    name: str
-    subject: str
-    queue: str
-    #: The reply's bytes for one request; never raises. For a host that
-    #: receives the requests some other way.
-    answer: Callable[[Msg], Awaitable[bytes]]
-
-    async def subscribe(self, nc: NATSClient) -> Subscription:
-        """Start answering on ``nc``; unsubscribe the result to stop."""
-
-        async def reply(msg: Msg) -> None:
-            data = await self.answer(msg)
-            # Published rather than `msg.respond()`, which would echo the
-            # request's headers — its `Agent-Sender` among them — onto the
-            # reply. The reply carries none, as the TypeScript endpoint's.
-            if msg.reply:
-                await nc.publish(msg.reply, data)
-
-        return await nc.subscribe(self.subject, queue=self.queue, cb=reply)
-
-
 def grant_request_endpoint(
     *,
     prompt_address: str,
     scratch_pad: ScratchPad,
     logger: logging.Logger | None = None,
-) -> GrantRequestEndpoint:
-    """The creator's side: answer every grant request by the rule in the module docstring.
+) -> AgentServiceExtraEndpoint:
+    """The creator's side, as an extra endpoint for the agent's ``AgentService``
+    (``extra_endpoints=[grant_request_endpoint(...)]``): it answers every grant
+    request by the rule in the module docstring.
 
     ``prompt_address`` is this agent's own; the endpoint sits next to it.
     ``scratch_pad`` is this agent's: the volume it may grant on, and its
     ledger. Refusals are logged at ``INFO``, failures at ``ERROR``; the
     default logger is ``synadia_ai.agent_fabric``. Several instances of one
-    agent share the work, in the ``agents`` queue group.
+    agent share the work, in the ``agents`` queue group; nats-py serves one
+    instance's requests one at a time.
     """
     logger = logger if logger is not None else log
     # The SDK's admission of a signed message, the one its prompt endpoint
@@ -271,30 +240,38 @@ def grant_request_endpoint(
     # captured request cannot be played again.
     gate = SenderGate(min_sender_trust="signed")
 
-    async def decide(msg: Msg) -> GrantReply:
-        admission = await gate.admit_prompt(msg)
+    async def decide(request: Request) -> GrantReply:
+        admission = await gate.admit_prompt(request)
         if admission.rejection is not None:
             return _refusal(admission.rejection.description)
         sender = admission.sender
         if not isinstance(sender, VerifiedSender):
             return _refusal("a grant request must be signed")
-        return await answer_grant_request(str(sender.id), msg.data, scratch_pad, logger)
+        return await answer_grant_request(str(sender.id), request.data, scratch_pad, logger)
 
-    async def answer(msg: Msg) -> bytes:
+    async def handler(request: Request) -> None:
+        # Never raises: nats-py would answer an exception with a `500` and
+        # its `repr()`, and no exception text goes to the requester.
         try:
-            reply = await decide(msg)
+            reply = await decide(request)
         except Exception as err:
             logger.error("grant request failed: %s", _describe(err))
             reply = _refusal("the grant could not be made")
         if not reply["granted"]:
             logger.info("grant request refused: %s", reply["reason"])
-        return encode_grant_reply(reply)
+        try:
+            # The bytes alone, no headers — the request's `Agent-Sender`
+            # among them — as the TypeScript endpoint's reply.
+            await request.respond(encode_grant_reply(reply))
+        except Exception as err:
+            # No reply subject, or the connection is gone: nobody to answer.
+            logger.error("grant request: the reply could not be sent: %s", _describe(err))
 
-    return GrantRequestEndpoint(
+    return AgentServiceExtraEndpoint(
         name=GRANT_REQUEST_ENDPOINT,
         subject=grant_subject(prompt_address),
+        handler=handler,
         queue="agents",
-        answer=answer,
     )
 
 
@@ -337,7 +314,6 @@ __all__ = [
     "GRANT_REQUEST_ENDPOINT",
     "GrantReply",
     "GrantRequest",
-    "GrantRequestEndpoint",
     "answer_grant_request",
     "encode_grant_reply",
     "encode_grant_request",
