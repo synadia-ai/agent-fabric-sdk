@@ -1,4 +1,4 @@
-"""Shared test support: the edge schema, agent records, a raw request, a started host.
+"""Shared test support: the edge and served schemas, agent records, a raw request, a started host.
 
 Everything here drives the protocol SDK through its public API only.
 """
@@ -49,8 +49,14 @@ def _vendored_validator(name: str) -> Draft202012Validator:
     return Draft202012Validator(schema)
 
 
+_SERVED_VALIDATOR = _vendored_validator("served.json")
 _GRANT_REQUEST_VALIDATOR = _vendored_validator("sp-grant-request.json")
 _GRANT_REPLY_VALIDATOR = _vendored_validator("sp-grant-reply.json")
+
+
+def served_schema_errors(record: object) -> list[str]:
+    """What ``served.json`` says is wrong with ``record``; ``[]`` when it validates."""
+    return [e.message for e in _SERVED_VALIDATOR.iter_errors(record)]
 
 
 def grant_request_schema_errors(request: object) -> list[str]:

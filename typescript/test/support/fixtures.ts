@@ -1,6 +1,7 @@
-// Shared test support: the throwaway identity, the edge record's JSON
-// Schema, and small helpers for driving a real `AgentService` and `Agents`
-// pair over a local nats-server through the public API only.
+// Shared test support: the throwaway identity, the edge and served
+// records' JSON Schemas, and small helpers for driving a real
+// `AgentService` and `Agents` pair over a local nats-server through the
+// public API only.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -52,8 +53,20 @@ function vendoredSchema(name: string): Record<string, unknown> {
     ),
   ) as Record<string, unknown>;
 }
+// `served.json` requires `status` inside its `then`, where the property is
+// not declared (it is on the parent): Ajv's `strictRequired` lint refuses
+// that shape, so the served schema is compiled with that one lint off. It
+// is a lint on the schema's style, not a validation rule; the schema is
+// vendored and never edited, and every other strict check stays on.
+const ajvForServed = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
+const validateServedSchema = ajvForServed.compile(vendoredSchema("served.json"));
 const validateGrantRequest = ajv.compile(vendoredSchema("sp-grant-request.json"));
 const validateGrantReply = ajv.compile(vendoredSchema("sp-grant-reply.json"));
+
+/** The schema's complaints about `record`; `[]` when it validates against `served.json`. */
+export function servedSchemaErrors(record: unknown): ReadonlyArray<ErrorObject> {
+  return validateServedSchema(record) ? [] : (validateServedSchema.errors ?? []);
+}
 
 /** The complaints of `sp-grant-request.json` about `request`; `[]` when it validates. */
 export function grantRequestSchemaErrors(request: unknown): ReadonlyArray<ErrorObject> {

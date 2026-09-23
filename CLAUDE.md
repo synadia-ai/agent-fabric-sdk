@@ -18,6 +18,7 @@ the public repo and are never copied here; `docs/plugins.md` is the spec.
 typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, eslint, prettier
   src/trace.ts       the vocabulary: options, scope, traceHeaders, edge record, counts
   src/tracing.ts     fabricTracing(): the SDK's three hooks built from it
+  src/served.ts      the served record's vocabulary and its publisher, for the harness add-ons
   src/scratchpad.ts  references' vocabulary, and the ScratchPad port the agent implements
   src/grant-request.ts            requestGrant, grantRequestEndpoint, the creator's rule
   src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
@@ -26,12 +27,12 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   test/harness/      nats-server launcher (adapted from the protocol SDK's)
   test/support/      fixtures, the schema validators, host/caller helpers, the ScratchPad fake
 python/              synadia-ai-agent-fabric — uv, ruff, mypy (strict), pytest
-  src/synadia_ai/agent_fabric/{trace,tracing}.py   the same two modules
+  src/synadia_ai/agent_fabric/{trace,tracing,served}.py   the same three modules
   src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension}.py
   tests/             the same suites; conftest starts the servers lazily
 test-fixtures/       shared by both suites — see its README for every file's source
-  schemas/           the contracts, from synadia-agent-fabric: edge.json and the
-                     grant request's two shapes, sp-grant-{request,reply}.json
+  schemas/           the contracts, from synadia-agent-fabric: edge.json, served.json
+                     and the grant request's two shapes, sp-grant-{request,reply}.json
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
@@ -56,16 +57,16 @@ plugins/             the fabric add-ons for the harness plugins, one package per
   fabric; nothing fabric-specific goes back into it.
 - **The two packages are wire-identical.** Same edge record bytes and key
   order, same envelope fields, same headers, same 400s, same heartbeat
-  counts, same grant request and reply bytes. Change both languages in one
-  commit; `python/tests/test_trace_wire_parity.py` and
-  `test_grant_wire_parity.py` compare the bytes against the TypeScript
-  package, and the interop tests run each language against the other's
-  host.
+  counts, same grant request and reply bytes, same served record. Change
+  both languages in one commit; `python/tests/test_trace_wire_parity.py`,
+  `test_served_wire_parity.py` and `test_grant_wire_parity.py` compare the
+  bytes against the TypeScript package, and the interop tests run each
+  language against the other's host.
 - **`edge.json` is the contract.** Both suites validate records against the
   vendored copy, on the wire in operator mode (a real `{account}.{user}`
   agent ID). When `synadia-agent-fabric` changes it, copy it again and
-  update `test-fixtures/README.md`. The same for the grant request's
-  `sp-grant-{request,reply}.json`, also from `docs/schemas/`.
+  update `test-fixtures/README.md`. The same for `served.json` and the grant
+  request's `sp-grant-{request,reply}.json`, also from `docs/schemas/`.
 - **The ScratchPad extension holds the policy, not a client.** It never
   talks to ScratchPad or shells out to `sp`: the agent passes its own
   client behind the `ScratchPad` port (`owns`, `grantRead`, `granted`).

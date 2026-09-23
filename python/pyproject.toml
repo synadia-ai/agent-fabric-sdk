@@ -76,8 +76,8 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PL", "RUF"]
 ignore = [
-    # build_edge_record takes the record's six fields positionally, the same
-    # signature as the TypeScript package's buildEdgeRecord.
+    # build_edge_record and build_served_record take the record's fields
+    # positionally, the same signatures as the TypeScript package's builders.
     "PLR0913",
     "PLR0917",
 ]

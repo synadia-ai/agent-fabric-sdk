@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synadia.io/agent-fabric/schemas/served.json",
+  "title": "Served record",
+  "description": "A harness plugin's binding of a thread to the harness's own thread ID, two per received prompt; on TRACE.{account}.edges, signed (afo-design.md §8.3). Written by the OpenClaw plugin since 2026-09-15, expected from Claude Code's; PI stamps the SDK's headers on its own calls and writes none.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "schema version of this record kind; additive changes bump it, breaking changes are a new subject"
+    },
+    "kind": {
+      "const": "served"
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "the Agent-Sender nonce for this signed record; also the Nats-Msg-Id"
+    },
+    "ts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "unix seconds"
+    },
+    "agent": {
+      "type": "string",
+      "pattern": "^A[A-Z2-7]{55}\\.U[A-Z2-7]{55}$",
+      "description": "the plugin's own AgentId — the executing agent"
+    },
+    "thread_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "from the envelope, or minted by the plugin when the envelope carried none"
+    },
+    "root_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "128-bit random, lower-case hex, minted by the caller at prompt()"
+    },
+    "harness": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "openclaw"
+      ]
+    },
+    "harness_thread_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "the harness's own thread ID, bare, the same string the proxy writes as harness_thread_id on the calls it files under it (afo-design.md §8.1): claude — {session}; openclaw — the 32-hex trace ID. Proposed 2026-09-17; until then claude:{session}, openclaw:{trace id}, with the prefix"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "start",
+        "end"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "error",
+        "timeout"
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "kind",
+    "record_id",
+    "ts",
+    "agent",
+    "thread_id",
+    "root_id",
+    "harness",
+    "harness_thread_id",
+    "phase"
+  ],
+  "$comment": "Standing since 2026-09-16: the OpenClaw plugin writes it (afo-design.md §8.3); harness is claude or openclaw since decision 26. Proposed 2026-09-17 (Francesco): harness_thread_id bare, the thread record carrying the same pair, so the reader joins the two by equality.",
+  "if": {
+    "properties": {
+      "phase": {
+        "const": "end"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "status"
+    ]
+  }
+}
