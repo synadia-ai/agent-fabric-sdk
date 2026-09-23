@@ -448,7 +448,11 @@ exactly as an SDK agent's.
    and nothing else's. The pre-split code also neutralized the injecting
    context first with `AsyncLocalStorage.snapshot()`, because a prompt was
    injected from another prompt's settle hook; whether B2 needs that depends
-   on where the plugin injects from (§3.5, gap 3).
+   on where the plugin injects from (§3.5, gap 3). Measured in B2 (PI
+   0.85.1, 2026-09-23): the plugin does inject the next queued prompt from
+   the previous turn's settle hook, so `bindActiveTrace`, an
+   `AsyncLocalStorage.run`, replaces that context and no snapshot is
+   needed; `plugins/pi` does exactly this.
 3. `providerHeaders(request)`: return `bindActiveTrace(scope, traceHeaders)`.
    One call per provider request, so the scope's `turnCountHint` counts PI's
    model calls, retries included, and an edge PI's model spawns later says
@@ -612,7 +616,7 @@ from Mario and for the add-on.
 | --- | --- | --- | --- | --- |
 | 1 | **An explicit tools scope handle.** `AgentTools` opens a scope only around a handler (`requestInterceptor`, `runInPromptScope`); nothing lets a host run later work inside an open scope | the protocol SDK, both languages (follow-up (a) of the plan) | open a scope for a served prompt with its `caller`; run a function inside it later; close it, cancelling the open calls, when the prompt ends | B4 (Claude Code); B2 if PI's tool runner does not inherit the injected context (gap 3) |
 | 2 | **The `served` vocabulary.** The builder and the publisher lived in each plugin (`fbd16ab` `agents/openclaw/src/served.ts`, `agents/claude-code/src/served.ts`); the fabric package has neither, and `served.json` is not vendored in `test-fixtures/schemas/` | this repo | `buildServedRecord(agent, threadId, rootId, harness, harnessThreadId, phase, status?, ts?)` with the schema's key order; a publisher over `publishSigned` with the ordered chain and the counters; `served.json` vendored; a Python twin and a byte-parity test, as the repo's rule requires of every wire artefact; or, the alternative for Mario, a TypeScript-only module shared by the two add-ons under `plugins/` | B3, B4 |
-| 3 | **PI's context inheritance.** Whether PI runs a turn, and the tools it executes, in the async context of the `sendUserMessage` caller is not measured; the pre-split code bound the scope on injection and Francesco's tools fell back to the active request (`activeTrace() ?? promptQueue.active?.trace`) | measured in B2 | if the context flows, the plugin injects each prompt from its own handler's context and the tools scope comes for free; if not, PI needs gap 1 as well | B2 |
+| 3 | **PI's context inheritance.** Measured in B2 on PI 0.85.1 (2026-09-23, by the plugin's session, confirmed on the rig in the examples' F19): the turn, `before_provider_headers`, a tool's `execute` and the following `agent_settled` all run in the async context of the `pi.sendUserMessage()` caller, also when the plugin injects the next queued prompt from the previous turn's settle hook. So the scope the add-on binds at `aroundInject` flows to the tools, `aroundToolCall`'s rebind is a no-op the add-on makes anyway, and PI does not need gap 1 | closed | nothing more | — |
 | 4 | **`turn_count_hint` for OpenClaw and Claude Code.** Their calls carry no SDK headers, so nothing counts them; an edge their model spawns says `0` | the contract allows it: a hint, never a claim (`edge.json`) | nothing; stated honestly | none |
 
 ## 4. What stays where
