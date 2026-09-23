@@ -560,7 +560,10 @@ window, tells their calls apart.
 
 **What the test repo asserts.** Nothing yet: the test repo runs PI as its
 harness and has no OpenClaw scenario. The examples' team run is the check
-(§8), recorded as a finding.
+(§8), recorded as a finding: `agent-fabric-examples` F20 (2026-09-23), the
+summarizer's call joined through the pair in the team, and OpenClaw's model
+delegating to the researcher when prompted directly, every call of the turn,
+tool turns included, under the one seeded id.
 
 ### 3.4 Claude Code — the `served` pair on the session, and the piece it waits for
 
@@ -757,7 +760,13 @@ own, unbound.
 4. `senderIdentity: signed` with `credentials` OpenClaw's own.
 5. The proxy as the `fabric` provider in `models.providers`, the key from
    the environment (`apiKey: { source: "env", … }`).
-6. `openclaw gateway run --port … --bind loopback` with `HOME`,
+6. The tool policy lets the plugin's agent tools through: `tools.allow`
+   naming `discover_agents`, `prompt_agent` and `answer_agent` (the plugin
+   registers them optional, so by name), no `tools.profile` (a profile is a
+   layer before `allow`; `minimal` leaves nothing for it), no `deny` that
+   matches them (deny wins), and no `compat.supportsTools: false` on the
+   model. Measured on OpenClaw 2026.9.4 in the examples' F20 (2026-09-23).
+7. `openclaw gateway run --port … --bind loopback` with `HOME`,
    `OPENCLAW_HOME`, `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH` in a
    directory of its own (`run.sh`). The `gateway starting` line names the
    loaded extensions.
