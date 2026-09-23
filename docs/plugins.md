@@ -520,12 +520,20 @@ the calls filed under that id between the two.
    served thread. OpenClaw serves one turn at a time per account, so the
    active request is the one.
 
-The records are signed through the plugin's client, `agents.publishSigned`
-with the record id as nonce, and counted on the same process-wide counters
-as the edges (`countTraceRecordPublished`, `countTraceRecordDropped`), so
-the heartbeat reports them. Records are published in the order they were
-due, so a pair's `end` never overtakes its `start` (the pre-split
-`ServedPublisher`'s chain).
+The records go through the fabric package's `servedPublisher({ agents })`
+(`typescript/src/served.ts`, built 2026-09-23; §3.5, gap 2): signed through
+the plugin's client, `agents.publishSigned` with the record id as nonce, on
+the edge subject, and counted on the same process-wide counters as the edges
+(`countTraceRecordPublished`, `countTraceRecordDropped`), so the heartbeat
+reports them. Records are published in the order they were due, so a pair's
+`end` never overtakes its `start` (the pre-split `ServedPublisher`'s chain,
+kept). The add-on makes one publisher at `started(handles)` from the
+plugin's `agents`, and per prompt: `beginTurn(scope, "openclaw")` at
+`promptAccepted`, `bind(traceId)` once the id is minted, which publishes
+`start` stamped with the arrival, `settle(outcome, atMs)` at `promptEnded`,
+which publishes `end`; `flush()` at `stopping`. A bad trace id is refused
+by `bind` with a warning and the prompt gets no pair; without a signer the
+publisher warns once and every record owed counts as dropped.
 
 **The proxy's half, and its open flaw.** The derivation from `traceparent`
 is on the proxy's `dev` since 2026-09-16. Today any well-formed
@@ -615,7 +623,7 @@ from Mario and for the add-on.
 | # | Gap | Where | What it must carry | Needed by |
 | --- | --- | --- | --- | --- |
 | 1 | **An explicit tools scope handle.** `AgentTools` opens a scope only around a handler (`requestInterceptor`, `runInPromptScope`); nothing lets a host run later work inside an open scope | the protocol SDK, both languages (follow-up (a) of the plan) | open a scope for a served prompt with its `caller`; run a function inside it later; close it, cancelling the open calls, when the prompt ends | B4 (Claude Code); B2 if PI's tool runner does not inherit the injected context (gap 3) |
-| 2 | **The `served` vocabulary.** The builder and the publisher lived in each plugin (`fbd16ab` `agents/openclaw/src/served.ts`, `agents/claude-code/src/served.ts`); the fabric package has neither, and `served.json` is not vendored in `test-fixtures/schemas/` | this repo | `buildServedRecord(agent, threadId, rootId, harness, harnessThreadId, phase, status?, ts?)` with the schema's key order; a publisher over `publishSigned` with the ordered chain and the counters; `served.json` vendored; a Python twin and a byte-parity test, as the repo's rule requires of every wire artefact; or, the alternative for Mario, a TypeScript-only module shared by the two add-ons under `plugins/` | B3, B4 |
+| 2 | **The `served` vocabulary.** Built in the fabric package on 2026-09-23 (Mario's decision of that day: both languages, like the edge record), from the pre-split `fbd16ab` `agents/openclaw/src/served.ts` and `agents/claude-code/src/served.ts`: `buildServedRecord(agent, threadId, rootId, harness, harnessThreadId, phase, status?, ts?)` in the schema's key order, `validHarnessThreadId` (the pre-split `validHarnessId` rule, plus the lone-surrogate refusal `validToolCallId` has), `servedPublisher({ agents, subject?, logger? })` over `agents.publishSigned` with the record id as nonce, one chain so records leave in the order they were due, counted on the trace counters, fail-open, `beginTurn(scope, harness)` → `bind` / `settle`, `flush()`; the Python twin `build_served_record`, `served_publisher` over `Agents.publish_signed(nonce=)`, which the Python client has; `served.json` vendored at `5b13989`; both suites validate a `start` and an `end` against it and `test_served_wire_parity.py` compares the bytes | closed | nothing more; the two add-ons import it | — |
 | 3 | **PI's context inheritance.** Measured in B2 on PI 0.85.1 (2026-09-23, by the plugin's session, confirmed on the rig in the examples' F19): the turn, `before_provider_headers`, a tool's `execute` and the following `agent_settled` all run in the async context of the `pi.sendUserMessage()` caller, also when the plugin injects the next queued prompt from the previous turn's settle hook. So the scope the add-on binds at `aroundInject` flows to the tools, `aroundToolCall`'s rebind is a no-op the add-on makes anyway, and PI does not need gap 1 | closed | nothing more | — |
 | 4 | **`turn_count_hint` for OpenClaw and Claude Code.** Their calls carry no SDK headers, so nothing counts them; an edge their model spawns says `0` | the contract allows it: a hint, never a claim (`edge.json`) | nothing; stated honestly | none |
 
@@ -630,7 +638,7 @@ from Mario and for the add-on.
 | Tracing: the `edge` record, the envelope pair, the half-pair `400`, the record counts | nothing | wires `fabricTracing()` into the client and the service | the hooks it runs on (PR #205) | `fabricTracing()`, `traceHeaders()`, `activeTrace()`, `bindActiveTrace()` |
 | PI's headers on its model calls | exposes `before_provider_headers` as `providerHeaders` | computes them inside the request's scope | nothing | `traceHeaders()` |
 | OpenClaw's `traceparent` seed | exposes the dispatch as `aroundDispatch` | seeds OpenClaw's trace scope with the minted id | nothing | nothing |
-| The `served` publisher | nothing | publishes the pair (OpenClaw, Claude Code) | `publishSigned` with a nonce | the vocabulary, once gap 2 is built |
+| The `served` publisher | nothing | publishes the pair (OpenClaw, Claude Code) through it | `publishSigned` with a nonce | `servedPublisher()`, `buildServedRecord()` and the vocabulary (`served.ts`, its Python twin `served.py`; gap 2, closed) |
 | The `409` loop guard | nothing | its request and prompt interceptors | `RequestRejectedError` | the scope it reads |
 | The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, both read by the add-on alone | nothing | validates it |
 | `senderIdentity: signed` | the plugin's setting, as today | required for any record; warns once without it | identity | warns once when a record is due |
@@ -666,8 +674,10 @@ packages, each a few hundred lines, cost three `package.json` files and
 nothing else.
 
 **TypeScript only.** All three plugins are TypeScript; there is no Python
-add-on. The fabric package's Python half is unaffected, except for the
-`served` vocabulary if it goes into the package (gap 2).
+add-on. Of the plugins' needs the fabric package's Python half carries only
+the `served` vocabulary and its publisher, the TypeScript half's twin byte
+for byte (gap 2, closed 2026-09-23), as the repo's rule requires of every
+wire artefact.
 
 **Installed next to the harness and named in the variable.** An operator
 installs the add-on where the harness runs, `npm install

@@ -7,7 +7,9 @@ The SDK for agents on the **Synadia Agent Fabric**, in TypeScript
 It carries **tracing**: the signed `edge` record before every prompt, the
 `thread_id` / `root_id` pair in the envelope, the `X-Synadia-Thread-ID` /
 `X-Synadia-Root-ID` headers for model calls, and the record counts on the
-heartbeat. And the agent tools' **ScratchPad extension**: the fabric's rules
+heartbeat; and, for the harness add-ons, the signed `served` record that
+binds a served thread to the harness's own thread id, with its publisher.
+And the agent tools' **ScratchPad extension**: the fabric's rules
 for handing content over by reference, on the protocol SDK's `AgentTools`.
 Later it takes the proxy helpers.
 

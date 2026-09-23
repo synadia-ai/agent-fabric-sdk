@@ -16,6 +16,10 @@
 //   - {@link activeTrace}, {@link bindActiveTrace} — the ambient scope.
 //   - {@link buildEdgeRecord}, {@link traceRecordCounts} and the rest of the
 //                             vocabulary.
+//   - {@link servedPublisher}, {@link buildServedRecord} — the `served`
+//                             record, a harness plugin's binding of a served
+//                             thread to the harness's own thread id, and its
+//                             publisher over the plugin's client.
 //   - {@link scratchPadExtension} — the fabric's rules for ScratchPad
 //                             references on `AgentTools`' three extension
 //                             hooks, over the agent's own client behind the
@@ -56,6 +60,22 @@ export {
   type TraceRecordCounts,
   type TraceScope,
 } from "./trace.js";
+
+export {
+  HARNESS_THREAD_ID_MAX,
+  SERVED_RECORD_VERSION,
+  ServedPublisher,
+  buildServedRecord,
+  servedPublisher,
+  unixSeconds,
+  validHarnessThreadId,
+  type BuiltServedRecord,
+  type Harness,
+  type ServedPhase,
+  type ServedPublisherOptions,
+  type ServedStatus,
+  type ServedTurn,
+} from "./served.js";
 
 export {
   READS_REFERENCES_KEY,

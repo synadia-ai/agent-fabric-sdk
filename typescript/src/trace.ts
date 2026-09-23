@@ -48,7 +48,9 @@ export interface TraceOptions {
 // languages: JavaScript's includes U+FEFF and Python's does not, Python's
 // includes the C0 separators and JavaScript's does not. An explicit class
 // is the only way the two packages reject exactly the same subjects.
-const SUBJECT_FORBIDDEN =
+// Shared with `served.ts`, whose harness thread id is held to the same
+// class; not part of the package's surface.
+export const SUBJECT_FORBIDDEN =
   /[\u0000-\u0020\u007f\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/;
 
 /**
@@ -239,7 +241,9 @@ export const TOOL_CALL_ID_MAX = 256;
 // A surrogate half with no partner: not a Unicode scalar value, so it has
 // no UTF-8 form. `JSON.stringify` would escape it while Python could not
 // encode the record at all, and the two packages must write the same bytes.
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+// Shared with `served.ts`; not part of the package's surface.
+export const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 export function validToolCallId(toolCallId: string): boolean {
   // This isn't intended as strict validation. It's just a basic

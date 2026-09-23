@@ -24,6 +24,17 @@ PUBLIC = {
     "build_edge_record",
     "trace_record_counts",
     "TraceRecordCounts",
+    # The served record and its publisher.
+    "build_served_record",
+    "valid_harness_thread_id",
+    "served_publisher",
+    "ServedPublisher",
+    "ServedTurn",
+    "Harness",
+    "ServedPhase",
+    "ServedStatus",
+    "SERVED_RECORD_VERSION",
+    "HARNESS_THREAD_ID_MAX",
     # The ScratchPad extension, its port and its vocabulary.
     "scratch_pad_extension",
     "ScratchPadExtension",

@@ -14,6 +14,9 @@ It carries tracing and the agent tools' ScratchPad extension:
 * :func:`active_trace`, :func:`bind_active_trace` — the ambient scope.
 * :func:`build_edge_record`, :func:`trace_record_counts` and the rest of the
   vocabulary.
+* :func:`served_publisher`, :func:`build_served_record` — the ``served``
+  record, a harness plugin's binding of a served thread to the harness's
+  own thread id, and its publisher over the plugin's client.
 * :func:`scratch_pad_extension` — the fabric's rules for ScratchPad
   references on ``AgentTools``' three extension hooks, over the agent's own
   client behind the :class:`ScratchPad` port.
@@ -59,6 +62,19 @@ from .scratchpad_extension import (
     ScratchPadExtension,
     scratch_pad_extension,
 )
+from .served import (
+    HARNESS_THREAD_ID_MAX,
+    SERVED_RECORD_VERSION,
+    Harness,
+    ServedPhase,
+    ServedPublisher,
+    ServedStatus,
+    ServedTurn,
+    build_served_record,
+    served_publisher,
+    unix_seconds,
+    valid_harness_thread_id,
+)
 from .trace import (
     DEFAULT_EDGE_SUBJECT,
     EDGE_RECORD_VERSION,
@@ -95,11 +111,13 @@ __all__ = [
     "DEFAULT_GRANT_REQUEST_TIMEOUT_S",
     "EDGE_RECORD_VERSION",
     "GRANT_REQUEST_ENDPOINT",
+    "HARNESS_THREAD_ID_MAX",
     "READS_REFERENCES_KEY",
     "READS_SCRATCHPAD_REFERENCES_FIELD",
     "REFERENCE_PREFIX",
     "ROOT_ID_FIELD",
     "ROOT_ID_HEADER",
+    "SERVED_RECORD_VERSION",
     "THREAD_ID_FIELD",
     "THREAD_ID_HEADER",
     "THREAD_ID_HEX_LEN",
@@ -110,8 +128,13 @@ __all__ = [
     "GrantReply",
     "GrantRequest",
     "Grantee",
+    "Harness",
     "ScratchPad",
     "ScratchPadExtension",
+    "ServedPhase",
+    "ServedPublisher",
+    "ServedStatus",
+    "ServedTurn",
     "TraceIds",
     "TraceOptions",
     "TraceRecordCounts",
@@ -122,6 +145,7 @@ __all__ = [
     "answer_grant_request",
     "bind_active_trace",
     "build_edge_record",
+    "build_served_record",
     "count_trace_record_dropped",
     "count_trace_record_published",
     "encode_grant_reply",
@@ -138,7 +162,10 @@ __all__ = [
     "remove_references",
     "request_grant",
     "scratch_pad_extension",
+    "served_publisher",
     "trace_headers",
     "trace_record_counts",
+    "unix_seconds",
+    "valid_harness_thread_id",
     "valid_tool_call_id",
 ]
