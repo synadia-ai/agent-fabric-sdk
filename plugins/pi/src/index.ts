@@ -8,30 +8,36 @@
 // service and client, stamps the fabric's headers on PI's own model calls,
 // and refuses a prompt of a tree PI's model is waiting in with `409`.
 //
-// The named exports are the same factory, the extension's constants, the
-// loop guard on its own, and the contract's types, declared here
-// structurally so nothing of the plugin or of PI is imported.
+// The named exports are the same factory, the extension's constants, and,
+// re-exported from `@synadia-ai/agent-fabric` where every add-on shares
+// them, the one setting, the loop guard on its own and the contract's
+// types, declared there structurally so nothing of the plugin or of PI is
+// imported.
 
 export {
   createFabricExtension,
   createFabricExtension as default,
-  resolveEdgeSubject,
-  EDGE_SUBJECT_OPTION,
-  EDGE_SUBJECT_VAR,
   EXTENSION_NAME,
   IDENTITY_OFF_WARNING,
 } from "./extension.js";
 
-export { loopGuard, loopGuardDescription, LOOP_GUARD_CODE, type LoopGuard } from "./loop-guard.js";
-
-export type {
-  AgentExtension,
-  AgentExtensionContext,
-  AgentExtensionFactory,
-  AgentExtensionHandles,
-  AgentExtensionSettings,
-  Harness,
-  HarnessEvents,
-  Outcome,
-  ServedRequest,
-} from "./contract.js";
+// What every add-on shares, from the fabric package, re-exported so this
+// package's API is what it was before they moved there.
+export {
+  EDGE_SUBJECT_OPTION,
+  EDGE_SUBJECT_VAR,
+  resolveEdgeSubject,
+  loopGuard,
+  loopGuardDescription,
+  LOOP_GUARD_CODE,
+  type LoopGuard,
+  type AgentExtension,
+  type AgentExtensionContext,
+  type AgentExtensionFactory,
+  type AgentExtensionHandles,
+  type AgentExtensionSettings,
+  type PluginHarness as Harness,
+  type HarnessEvents,
+  type Outcome,
+  type ServedRequest,
+} from "@synadia-ai/agent-fabric";

@@ -6,11 +6,12 @@ Tracing and the agent tools' ScratchPad extension today; the proxy helpers
 later. Private while it is built, public at the release.
 
 Under `plugins/` sit the fabric add-ons for the harness plugins, one small
-TypeScript package per harness, `plugins/pi` built and the other two to
-come. Each is an extension module the public plugin in `synadia-agents`
-loads by name and hands the SDK's hooks and the harness's events; the add-on
-wires `fabricTracing()` in and adds the harness piece. The plugins stay in
-the public repo and are never copied here; `docs/plugins.md` is the spec.
+TypeScript package per harness, `plugins/pi` and `plugins/openclaw` built
+and Claude Code's to come. Each is an extension module the public plugin in
+`synadia-agents` loads by name and hands the SDK's hooks and the harness's
+events; the add-on wires `fabricTracing()` in and adds the harness piece.
+The plugins stay in the public repo and are never copied here;
+`docs/plugins.md` is the spec.
 
 ## Layout
 
@@ -22,6 +23,9 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   src/scratchpad.ts  references' vocabulary, and the ScratchPad port the agent implements
   src/grant-request.ts            requestGrant, grantRequestEndpoint, the creator's rule
   src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
+  src/plugin-contract.ts          the harness plugins' extension contract, as types — TypeScript only
+  src/loop-guard.ts               loopGuard(): the 409 guard every add-on returns — TypeScript only
+  src/plugin-settings.ts          resolveEdgeSubject(): the add-ons' one setting — TypeScript only
   test/unit/         no server
   test/integration/  a nats-server per file; the e2e and the interop with Python
   test/harness/      nats-server launcher (adapted from the protocol SDK's)
@@ -37,10 +41,12 @@ test-fixtures/       shared by both suites — see its README for every file's s
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
   pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
-    src/contract.ts  the plugin's extension contract, declared structurally: nothing of the plugin imported
-    src/extension.ts the factory: tracing's hooks, the scope bound at PI's events, the headers, started
-    src/loop-guard.ts the 409 guard: its request and prompt interceptors
+    src/extension.ts the factory: tracing's hooks, the guard, the scope bound at PI's events, the headers
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, edge.json
+  openclaw/          @synadia-ai/agent-fabric-openclaw — built the same way
+    src/extension.ts the factory: tracing's hooks, the guard, the served pair, the scope at OpenClaw's events
+    src/trace-scope.ts the traceparent seed: OpenClaw's trace scope store, feature-checked (from fbd16ab)
+    test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
 ```
 
 ## Rules
@@ -67,6 +73,13 @@ plugins/             the fabric add-ons for the harness plugins, one package per
   agent ID). When `synadia-agent-fabric` changes it, copy it again and
   update `test-fixtures/README.md`. The same for `served.json` and the grant
   request's `sp-grant-{request,reply}.json`, also from `docs/schemas/`.
+- **What the add-ons share lives in the fabric package, TypeScript only.**
+  The plugins' extension contract as types, the `409` loop guard and the
+  edge subject setting are in `typescript/src/` and exported from the
+  package's index; an add-on imports them and never copies them. The
+  plugins are TypeScript, none of this is wire, so there is no Python twin
+  and the parity rule does not reach it. An add-on imports nothing of its
+  harness, not even its types.
 - **The ScratchPad extension holds the policy, not a client.** It never
   talks to ScratchPad or shells out to `sp`: the agent passes its own
   client behind the `ScratchPad` port (`owns`, `grantRead`, `granted`).
@@ -87,7 +100,7 @@ the checkout of `synadia-agents` on branch `sdk-release-rollout`, expected at
   links point outside the repo.
 - Python: `[tool.uv.sources]` path sources in `python/pyproject.toml`
   (editable, so no build step); `python/uv.lock` is committed, like the SDK's.
-- The PI add-on, `plugins/pi`: `"@synadia-ai/agent-fabric": "file:../../typescript"`,
+- The add-ons, `plugins/pi` and `plugins/openclaw`: `"@synadia-ai/agent-fabric": "file:../../typescript"`,
   so build `typescript/` first (`npm run build`; its `dist/` is the link's
   target), and the two SDK packages by the same `file:` links, since npm
   does not hoist a linked package's own links; installed with npm, no
@@ -113,11 +126,11 @@ uv sync
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 uv run pytest                 # unit + integration + interop with the TS hosts + byte parity
 
-cd ../plugins/pi              # after typescript/ is built
+cd ../plugins/pi              # after typescript/ is built; the same in plugins/openclaw
 npm install
 npm run typecheck && npm run lint && npm run format:check
 npm test                      # unit with a fake plugin + integration with a nats-server
-npm run build                 # dist/, what SYNADIA_PI_EXTENSIONS points at
+npm run build                 # dist/, what SYNADIA_PI_EXTENSIONS (SYNADIA_OPENCLAW_EXTENSIONS) points at
 ```
 
 The cross-version interop cases (against the last published, pre-tracing

@@ -29,10 +29,14 @@
 // same coordinator issues with `wait: false`. The harness serves one turn at
 // a time anyway, so that prompt would have queued behind the wait; the guard
 // turns the queue into a refusal the caller sees at once.
+//
+// For the harness add-ons under `plugins/`, every one of which returns the
+// guard's two interceptors after tracing's. TypeScript only: the plugins
+// are, and the guard puts nothing on the wire but the SDK's §9 error.
 
 import { RequestRejectedError, type RequestInterceptor } from "@synadia-ai/agent-service";
 import type { PromptInterceptor } from "@synadia-ai/agents";
-import { activeTrace, type TraceScope } from "@synadia-ai/agent-fabric";
+import { activeTrace, type TraceScope } from "./trace.js";
 
 /** The §9 code the guard refuses with. */
 export const LOOP_GUARD_CODE = 409;

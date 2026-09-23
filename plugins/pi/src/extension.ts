@@ -16,55 +16,28 @@
 // every agent-tool call, and `providerHeaders`, which returns the fabric's
 // two headers for the request so the proxy files PI's own model calls on
 // the served thread. The `409` loop guard is its own two interceptors,
-// after tracing's (`loop-guard.ts`).
+// after tracing's (`loopGuard`, from the fabric package).
 
 import {
   activeTrace,
   bindActiveTrace,
-  DEFAULT_EDGE_SUBJECT,
   fabricTracing,
+  loopGuard,
+  resolveEdgeSubject,
   traceHeaders,
+  type AgentExtension,
+  type AgentExtensionContext,
+  type ServedRequest,
   type TraceScope,
 } from "@synadia-ai/agent-fabric";
-import type { AgentExtension, AgentExtensionContext, ServedRequest } from "./contract.js";
-import { loopGuard } from "./loop-guard.js";
 
 /** The extension's name, as the plugin's status output lists it. */
 export const EXTENSION_NAME = "agent-fabric";
-
-/** The one setting: the edge subject, in the config entry's `options`. */
-export const EDGE_SUBJECT_OPTION = "edgeSubject";
-
-/** The same setting as a variable, read when the option is not given. */
-export const EDGE_SUBJECT_VAR = "SYNADIA_FABRIC_EDGE_SUBJECT";
 
 /** The warning logged once at start when the plugin's identity is off. */
 export const IDENTITY_OFF_WARNING =
   `${EXTENSION_NAME}: senderIdentity is off; trace records are signed, so none will be ` +
   "published and each counts as dropped on the heartbeat. Set senderIdentity to signed.";
-
-/**
- * The edge subject the add-on runs with: the config entry's
- * `options.edgeSubject` when the key is there (`null` is propagate-only:
- * lineage without records), else `SYNADIA_FABRIC_EDGE_SUBJECT` when set,
- * else the fabric's default. The value is returned as given; the fabric
- * package validates it (`assertValidTraceOptions`) and throws for one that
- * can never be published to, which stops the factory — the plugin then logs
- * the error and starts plain, so a misconfigured subject is visible at
- * start rather than as a warning on every prompt.
- */
-export function resolveEdgeSubject(
-  options: Readonly<Record<string, unknown>>,
-  env: NodeJS.ProcessEnv = process.env,
-): string | null {
-  if (Object.hasOwn(options, EDGE_SUBJECT_OPTION)) {
-    // The runtime type is the package's to check, so the cast claims nothing.
-    return options[EDGE_SUBJECT_OPTION] as string | null;
-  }
-  const fromEnv = env[EDGE_SUBJECT_VAR];
-  if (fromEnv !== undefined) return fromEnv;
-  return DEFAULT_EDGE_SUBJECT;
-}
 
 /**
  * The factory: the module's default export. Called once by the plugin,

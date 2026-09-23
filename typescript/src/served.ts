@@ -332,7 +332,7 @@ export class ServedPublisher {
       countTraceRecordPublished();
     } catch (err) {
       countTraceRecordDropped();
-      if (err instanceof SenderSignatureRequiredError) {
+      if (isSignatureRequired(err)) {
         // Consumers ignore unsigned records, so publishing without a
         // signer would be pure waste. One warning per publisher: a
         // per-prompt log would itself disturb the agent.
@@ -351,6 +351,20 @@ export class ServedPublisher {
       });
     }
   }
+}
+
+/**
+ * `true` for the client's refusal to publish without a signer. By `name` as
+ * well as by class: an add-on hands this publisher the plugin's `Agents`,
+ * which runs on the plugin's own copy of the SDK and throws that copy's
+ * class (`docs/plugins.md` §2.7), the way the host recognizes a
+ * `RequestRejectedError` from another copy.
+ */
+function isSignatureRequired(err: unknown): boolean {
+  return (
+    err instanceof SenderSignatureRequiredError ||
+    (err instanceof Error && err.name === "SenderSignatureRequiredError")
+  );
 }
 
 /**
