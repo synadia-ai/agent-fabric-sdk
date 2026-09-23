@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { newAgentId } from "@synadia-ai/agents";
+import { newAgentId, type Agents, type Logger } from "@synadia-ai/agents";
 import {
   buildServedRecord,
   HARNESS_THREAD_ID_MAX,
   SERVED_RECORD_VERSION,
+  servedPublisher,
+  traceRecordCounts,
   unixSeconds,
   validHarnessThreadId,
 } from "../../src/index.js";
@@ -203,5 +205,43 @@ describe("buildServedRecord", () => {
     expect(servedSchemaErrors({ ...start, extra: 1 })).not.toEqual([]);
     const { status: _status, ...endWithout } = end;
     expect(servedSchemaErrors(endWithout)).not.toEqual([]);
+  });
+});
+
+describe("servedPublisher over another copy of the SDK", () => {
+  it("recognizes the missing signer by name: one warning, every record owed dropped", async () => {
+    // A harness plugin's `Agents` runs on the plugin's copy of the SDK, so
+    // its refusal is that copy's class, which `instanceof` here would miss.
+    class SenderSignatureRequiredError extends Error {
+      constructor() {
+        super("TRACE.edges requires a signed Agent-Sender header");
+        this.name = "SenderSignatureRequiredError";
+      }
+    }
+    const agents = {
+      selfId: () => Promise.resolve(AGENT),
+      publishSigned: () => Promise.reject(new SenderSignatureRequiredError()),
+    } as unknown as Agents;
+    const warnings: string[] = [];
+    const logger: Logger = {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: (msg) => void warnings.push(msg),
+      error: () => undefined,
+    };
+    const p = servedPublisher({ agents, logger });
+    const before = traceRecordCounts();
+    for (const id of ["1", "2"]) {
+      const turn = p.beginTurn(
+        { threadId: id.repeat(32), rootId: ROOT, turnCountHint: 0 },
+        "openclaw",
+      );
+      turn.bind(TRACE_ID);
+      turn.settle("ok");
+    }
+    await p.flush();
+    expect(traceRecordCounts().dropped - before.dropped).toBe(4);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/no identity signer/);
   });
 });

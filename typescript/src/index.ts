@@ -29,9 +29,16 @@
 //                             one more agent read it, and answering.
 //   - {@link findReferences}, {@link removeReferences} and the rest of the
 //                             references' vocabulary.
+//   - {@link loopGuard}, {@link resolveEdgeSubject} and the harness plugins'
+//                             extension contract ({@link AgentExtension} and
+//                             its types) — what every add-on under
+//                             `plugins/` shares: the `409` guard's two
+//                             interceptors, the one setting, the shapes the
+//                             plugins hand over and take back.
 //
 // Mirrors the Python package `synadia_ai.agent_fabric`; the two are
-// wire-identical.
+// wire-identical. The pieces for the harness add-ons are TypeScript only,
+// like the plugins, and none of them is wire.
 
 export { fabricTracing, TOOL_CALL_ID_CONTEXT_KEY, type FabricTracing } from "./tracing.js";
 
@@ -112,3 +119,19 @@ export {
   scratchPadExtension,
   type ScratchPadExtensionOptions,
 } from "./scratchpad-extension.js";
+
+export { loopGuard, loopGuardDescription, LOOP_GUARD_CODE, type LoopGuard } from "./loop-guard.js";
+
+export { EDGE_SUBJECT_OPTION, EDGE_SUBJECT_VAR, resolveEdgeSubject } from "./plugin-settings.js";
+
+export type {
+  AgentExtension,
+  AgentExtensionContext,
+  AgentExtensionFactory,
+  AgentExtensionHandles,
+  AgentExtensionSettings,
+  HarnessEvents,
+  Outcome,
+  PluginHarness,
+  ServedRequest,
+} from "./plugin-contract.js";

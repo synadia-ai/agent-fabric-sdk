@@ -501,7 +501,10 @@ on arrival and `end` with the outcome, naming the thread and the trace id,
 bare (`afo-design.md` §8.3; `docs/schemas/served.json`). The reader attaches
 the calls filed under that id between the two.
 
-**What the add-on does.**
+**What the add-on does.** Built in `plugins/openclaw`
+(`@synadia-ai/agent-fabric-openclaw`, 2026-09-23): `src/extension.ts` the
+factory and the events, `src/trace-scope.ts` the seed from `fbd16ab`; its
+README says the same in operator terms.
 
 1. `promptAccepted(request)`: read `activeTrace()`; mint a fresh trace id,
    128 random bits as 32 lowercase hex, never all zeros (`newTraceId`);
@@ -528,12 +531,15 @@ the edge subject, and counted on the same process-wide counters as the edges
 reports them. Records are published in the order they were due, so a pair's
 `end` never overtakes its `start` (the pre-split `ServedPublisher`'s chain,
 kept). The add-on makes one publisher at `started(handles)` from the
-plugin's `agents`, and per prompt: `beginTurn(scope, "openclaw")` at
+plugin's `agents` (a prompt accepted in the moment between the service
+starting and `started` gets its id seeded and no pair), and per prompt: `beginTurn(scope, "openclaw")` at
 `promptAccepted`, `bind(traceId)` once the id is minted, which publishes
 `start` stamped with the arrival, `settle(outcome, atMs)` at `promptEnded`,
 which publishes `end`; `flush()` at `stopping`. A bad trace id is refused
 by `bind` with a warning and the prompt gets no pair; without a signer the
-publisher warns once and every record owed counts as dropped.
+publisher warns once and every record owed counts as dropped. The
+publisher recognizes the missing signer by the error's `name` as well as
+its class, since the plugin's client throws its own copy's class (§2.7).
 
 **The proxy's half, and its open flaw.** The derivation from `traceparent`
 is on the proxy's `dev` since 2026-09-16. Today any well-formed
@@ -554,7 +560,10 @@ window, tells their calls apart.
 
 **What the test repo asserts.** Nothing yet: the test repo runs PI as its
 harness and has no OpenClaw scenario. The examples' team run is the check
-(§8), recorded as a finding.
+(§8), recorded as a finding: `agent-fabric-examples` F20 (2026-09-23), the
+summarizer's call joined through the pair in the team, and OpenClaw's model
+delegating to the researcher when prompted directly, every call of the turn,
+tool turns included, under the one seeded id.
 
 ### 3.4 Claude Code — the `served` pair on the session, and the piece it waits for
 
@@ -567,7 +576,10 @@ headers, so it publishes the pair naming the session (`fbd16ab`
 `agents/claude-code/src/served.ts`). The console makes a subagent's calls
 the child of the session's thread (`query-node.md` §5).
 
-**What the add-on does.**
+**What the add-on does.** Built in `plugins/openclaw`
+(`@synadia-ai/agent-fabric-openclaw`, 2026-09-23): `src/extension.ts` the
+factory and the events, `src/trace-scope.ts` the seed from `fbd16ab`; its
+README says the same in operator terms.
 
 1. `promptAccepted(request)`: read `activeTrace()`; if `request.sessionId`
    is a well-formed session id (`isClaudeSessionId`), publish `served`
@@ -639,8 +651,9 @@ from Mario and for the add-on.
 | PI's headers on its model calls | exposes `before_provider_headers` as `providerHeaders` | computes them inside the request's scope | nothing | `traceHeaders()` |
 | OpenClaw's `traceparent` seed | exposes the dispatch as `aroundDispatch` | seeds OpenClaw's trace scope with the minted id | nothing | nothing |
 | The `served` publisher | nothing | publishes the pair (OpenClaw, Claude Code) through it | `publishSigned` with a nonce | `servedPublisher()`, `buildServedRecord()` and the vocabulary (`served.ts`, its Python twin `served.py`; gap 2, closed) |
-| The `409` loop guard | nothing | its request and prompt interceptors | `RequestRejectedError` | the scope it reads |
-| The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, both read by the add-on alone | nothing | validates it |
+| The extension contract's types (`AgentExtension`, `HarnessEvents`, `ServedRequest`, …) | declares them, `agents/*/…/extensions.ts` | imports them | the hook types they name | declares them structurally, `plugin-contract.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23) |
+| The `409` loop guard | nothing | returns its request and prompt interceptors | `RequestRejectedError` | `loopGuard()`, `loop-guard.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23), and the scope it reads |
+| The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, read by the add-on alone | nothing | `resolveEdgeSubject()` gives every add-on the precedence (`plugin-settings.ts`, TypeScript only); validates it |
 | `senderIdentity: signed` | the plugin's setting, as today | required for any record; warns once without it | identity | warns once when a record is due |
 | ScratchPad references | nothing | nothing for the MVP (level D, Phase III) | the tools' extension hooks | `scratchPadExtension`, for SDK-built agents |
 | The proxy's half: the SDK pair, the harness pairs, the `traceparent` flaw | — | — | — | the proxy (`agent-fabric-model-proxy`), M3-31 |
@@ -747,7 +760,13 @@ own, unbound.
 4. `senderIdentity: signed` with `credentials` OpenClaw's own.
 5. The proxy as the `fabric` provider in `models.providers`, the key from
    the environment (`apiKey: { source: "env", … }`).
-6. `openclaw gateway run --port … --bind loopback` with `HOME`,
+6. The tool policy lets the plugin's agent tools through: `tools.allow`
+   naming `discover_agents`, `prompt_agent` and `answer_agent` (the plugin
+   registers them optional, so by name), no `tools.profile` (a profile is a
+   layer before `allow`; `minimal` leaves nothing for it), no `deny` that
+   matches them (deny wins), and no `compat.supportsTools: false` on the
+   model. Measured on OpenClaw 2026.9.4 in the examples' F20 (2026-09-23).
+7. `openclaw gateway run --port … --bind loopback` with `HOME`,
    `OPENCLAW_HOME`, `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH` in a
    directory of its own (`run.sh`). The `gateway starting` line names the
    loaded extensions.

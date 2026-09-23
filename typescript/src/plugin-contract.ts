@@ -1,16 +1,23 @@
-// The extension contract of the PI channel plugin, declared here so this
-// package imports nothing of the plugin or of PI. The plugin's own
-// declaration is `agents/pi/extensions/extensions.ts` in `synadia-agents`,
-// and the contract an author reads is `agents/EXTENSIONS.md` there. The
-// shapes are structural on both sides: the plugin type-checks what the
-// factory returns against its declaration, and this file must say the same
-// thing. Nothing here is specific to the fabric.
+// The extension contract of the harness plugins in `synadia-agents`
+// (PI, OpenClaw, Claude Code), declared here so an add-on under `plugins/`
+// imports nothing of any plugin or harness. The plugins' own declarations
+// are `agents/pi/extensions/extensions.ts` and
+// `agents/openclaw/src/extensions.ts`, one contract kept in step, and the
+// contract an author reads is `agents/EXTENSIONS.md` there. The shapes are
+// structural on both sides: a plugin type-checks what the factory returns
+// against its declaration, and this file must say the same thing. Nothing
+// here is specific to the fabric, and nothing here is wire: TypeScript
+// only, since the plugins are, with no Python twin.
 
 import type { Agents, AgentToolsExtension, Logger, PromptInterceptor } from "@synadia-ai/agents";
 import type { AgentService, RequestInterceptor } from "@synadia-ai/agent-service";
 
-/** The harnesses that expose this extension point. */
-export type Harness = "pi" | "openclaw" | "claude-code";
+/**
+ * The harnesses that expose this extension point. Named apart from the
+ * served record's `Harness` (`served.ts`), which is the proxy's word for a
+ * harness, not the plugin's.
+ */
+export type PluginHarness = "pi" | "openclaw" | "claude-code";
 
 /** The plugin's resolved settings, as the factory sees them before connect. */
 export interface AgentExtensionSettings {
@@ -32,7 +39,7 @@ export interface AgentExtensionSettings {
 
 /** What the plugin knows when it loads the module, before it connects. */
 export interface AgentExtensionContext {
-  readonly harness: Harness;
+  readonly harness: PluginHarness;
   readonly plugin: { readonly name: string; readonly version: string };
   readonly settings: AgentExtensionSettings;
   /** The `options` of this module's config entry, verbatim; `{}` when the variable named it. */
@@ -58,9 +65,12 @@ export type Outcome = "ok" | "error" | "timeout";
 /**
  * The harness's events. A notification is called and forgotten; a wrapper
  * is called by the plugin around one of its own steps and must call `run`
- * once, synchronously, and return its value, a promise included. PI calls
- * the first five; the rest are the other harnesses' and listed so one
- * shape serves all three.
+ * once, synchronously, and return its value, a promise included. A wrapper
+ * may be an async function: the plugin still takes `run`'s own value, and
+ * the wrapper must call `run` once, before its first `await`, so the step
+ * keeps its timing. Every harness calls the first three; PI also
+ * `aroundInject` and `providerHeaders`, OpenClaw `aroundDispatch`, Claude
+ * Code `sessionStarted` and `turnStopped`. One shape serves all three.
  */
 export interface HarnessEvents {
   /** Inside the prompt handler, after every interceptor ran. */
@@ -73,7 +83,11 @@ export interface HarnessEvents {
   aroundInject?<T>(request: ServedRequest, run: () => T): T;
   /** PI: headers to add to a provider request while `request` is PI's active turn. */
   providerHeaders?(request: ServedRequest): Readonly<Record<string, string>> | undefined;
-  /** OpenClaw: around the turn's dispatch. */
+  /**
+   * OpenClaw: around the turn's dispatch
+   * (`dispatchInboundDirectDmWithRuntime()`). Asynchronous: the extension
+   * calls `run` once and returns its promise.
+   */
   aroundDispatch?<T>(request: ServedRequest, run: () => Promise<T>): Promise<T>;
   /** Claude Code: a session started, from its hook. */
   sessionStarted?(sessionId: string, source: string): void;

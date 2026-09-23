@@ -33,13 +33,13 @@ async context, so the add-on keeps each served request's scope by the
 plugin's request id and binds it where the plugin says the request is being
 worked on:
 
-| Event | What the add-on does |
-| --- | --- |
-| `promptAccepted(request)` | keeps `activeTrace()`, the scope tracing bound for this request, by `request.id` |
-| `aroundInject(request, run)` | runs `run` inside `bindActiveTrace(scope, …)`, which replaces the ambient context: the plugin injects the next queued prompt from the previous turn's settle hook, whose context is the previous request's |
-| `providerHeaders(request)` | returns `X-Synadia-Thread-ID` and `X-Synadia-Root-ID` for the request, so the proxy files PI's own model calls on the served thread; each call counts against the scope, so an edge PI's model spawns later says how many calls came before it, retries included |
-| `aroundToolCall(request, tool, run)` | binds the request's scope around `run`, so the edge of a `prompt_agent` PI's model calls is filed under the served thread even if PI's tool runner did not inherit the injected context |
-| `promptEnded(request)` | forgets the request |
+| Event                                | What the add-on does                                                                                                                                                                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `promptAccepted(request)`            | keeps `activeTrace()`, the scope tracing bound for this request, by `request.id`                                                                                                                                                                                 |
+| `aroundInject(request, run)`         | runs `run` inside `bindActiveTrace(scope, …)`, which replaces the ambient context: the plugin injects the next queued prompt from the previous turn's settle hook, whose context is the previous request's                                                       |
+| `providerHeaders(request)`           | returns `X-Synadia-Thread-ID` and `X-Synadia-Root-ID` for the request, so the proxy files PI's own model calls on the served thread; each call counts against the scope, so an edge PI's model spawns later says how many calls came before it, retries included |
+| `aroundToolCall(request, tool, run)` | binds the request's scope around `run`, so the edge of a `prompt_agent` PI's model calls is filed under the served thread even if PI's tool runner did not inherit the injected context                                                                          |
+| `promptEnded(request)`               | forgets the request                                                                                                                                                                                                                                              |
 
 A request the add-on never saw (no scope kept) is left alone: no headers,
 `run` called as it is.
@@ -80,7 +80,11 @@ SYNADIA_PI_EXTENSIONS=/opt/fabric/node_modules/@synadia-ai/agent-fabric-pi pi �
 or in `nats-channel.json`, where an entry may carry options:
 
 ```json
-{ "extensions": [{ "module": "@synadia-ai/agent-fabric-pi", "options": { "edgeSubject": "TRACE.edges" } }] }
+{
+  "extensions": [
+    { "module": "@synadia-ai/agent-fabric-pi", "options": { "edgeSubject": "TRACE.edges" } }
+  ]
+}
 ```
 
 `SYNADIA_PI_EXTENSIONS` wins over `SYNADIA_AGENT_EXTENSIONS`, which wins
@@ -116,13 +120,17 @@ thread's calls carry its timing.
 
 ## Public API
 
-| | |
-| --- | --- |
-| `default`, `createFabricExtension(ctx, env?)` | the factory of the contract; `env` is where the variable is read from, `process.env` by default |
-| `resolveEdgeSubject(options, env?)` | the setting's precedence, as above |
-| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING` | the constants |
-| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)` | the guard on its own: `requestInterceptor`, `promptInterceptor`, `serving(rootId)`, `waiting(rootId)` |
-| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared here structurally so this package imports nothing of the plugin or of PI |
+|                                                                                                                                                                               |                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `default`, `createFabricExtension(ctx, env?)`                                                                                                                                 | the factory of the contract; `env` is where the variable is read from, `process.env` by default       |
+| `resolveEdgeSubject(options, env?)`                                                                                                                                           | the setting's precedence, as above                                                                    |
+| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                           | the constants                                                                                         |
+| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `serving(rootId)`, `waiting(rootId)` |
+| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI   |
+
+The setting's precedence, the loop guard and the contract's types live in
+`@synadia-ai/agent-fabric`, shared by every add-on under `plugins/`; this
+package re-exports them, the contract's `PluginHarness` as `Harness`.
 
 ## Development
 
