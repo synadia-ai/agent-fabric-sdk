@@ -565,7 +565,7 @@ summarizer's call joined through the pair in the team, and OpenClaw's model
 delegating to the researcher when prompted directly, every call of the turn,
 tool turns included, under the one seeded id.
 
-### 3.4 Claude Code — the `served` pair on the session, and the piece it waits for
+### 3.4 Claude Code — the `served` pair on the session, ended at the turn's `Stop`
 
 **The join.** Claude Code sends `X-Claude-Code-Session-ID` on every model
 request and `X-Claude-Code-Agent-ID` on a subagent's; the proxy files them
@@ -576,45 +576,72 @@ headers, so it publishes the pair naming the session (`fbd16ab`
 `agents/claude-code/src/served.ts`). The console makes a subagent's calls
 the child of the session's thread (`query-node.md` §5).
 
-**What the add-on does.** Built in `plugins/openclaw`
-(`@synadia-ai/agent-fabric-openclaw`, 2026-09-23): `src/extension.ts` the
-factory and the events, `src/trace-scope.ts` the seed from `fbd16ab`; its
-README says the same in operator terms.
+**What the public plugin gives it.** Built in `synadia-agents` #215
+(`agents/claude-code`, merged into `sdk-release-rollout` at `85a69c8`,
+measured there on Claude Code 2.1.280). The hooks are back as neutral
+session events (§2.6): `SessionStart` writes `<state dir>/sessions/<pid>`
+(`{session_id, source, at_ms}`), `Stop` writes `<pid>.stop`
+(`{session_id, at_ms}`), `PreToolUse` on the agent tools writes
+`<pid>.tools/<tool_use_id>`, all keyed by `CLAUDE_PID`; the server polls
+the first two every 250 ms (`src/session-events.ts`) and reports a
+`SessionStart` already on disk once at start, never an old `Stop`. The
+events: `sessionStarted(sessionId, source)`; `promptAccepted(request)` in
+the handler, `request.sessionId` set when the session is known;
+`promptEnded(request, outcome, atMs)`, `atMs` the arrival of `reply` with
+`done` for `ok`, `error` on a handler failure or at shutdown, `timeout` at
+the request TTL; `aroundToolCall` for every agent-tool call;
+`turnStopped(sessionId | undefined, atMs)`, the current session when the
+record names none. `stopping()` is called before the plugin fails the
+requests still open.
 
-1. `promptAccepted(request)`: read `activeTrace()`; if `request.sessionId`
-   is a well-formed session id (`isClaudeSessionId`), publish `served`
-   `start` with `harness: "claude"`, `harness_thread_id` the session id,
-   `ts` the arrival. The session is bound at arrival, so a `/clear` during a
-   turn does not move the binding. The plugin resolves the session id from
-   its `SessionStart` file first and from `CLAUDE_CODE_SESSION_ID` in its
-   environment second, as `resolveClaudeSessionId` did.
-2. `promptEnded(request, outcome, atMs)`: the turn is not over. After the
-   `reply` tool completes the request, Claude Code makes at least one more
-   model call to write its closing text (`fbd16ab` `src/turn-stop.ts`). So
-   the add-on waits for `turnStopped` with a time after `atMs`, at most
-   120 s (`STOP_WAIT_MS`), and publishes `end` with the hook's time and the
-   outcome. Without hooks, or when no `Stop` comes in time, or on shutdown,
-   `end` carries `atMs`. A failed or expired request ends at once.
-3. `aroundToolCall(request, …, run)`: bind the request's trace scope. This
-   is the one place the MCP shape bites, see below.
+**What the add-on does.** Built in `plugins/claude-code`
+(`@synadia-ai/agent-fabric-claude-code`, 2026-09-23): `src/extension.ts`
+the factory and the events; its README says the same in operator terms.
+
+1. `sessionStarted(sessionId)`: remember the session Claude Code is in now.
+2. `promptAccepted(request)`: read `activeTrace()`; the session is
+   `request.sessionId`, else the remembered one; when it passes the
+   session-id rule (`isClaudeSessionId`, declared in the add-on: the
+   pre-split rule of `fbd16ab` `src/session-id.ts`, header-safe, which a
+   Claude Code UUID passes), `beginTurn(scope, "claude")` and
+   `bind(sessionId)`, so `start` goes out stamped with the arrival. The
+   session is bound at arrival, so a `/clear` during a turn does not move
+   the binding. With no session known, no pair and one log line; the scope
+   is still kept for the tool calls.
+3. `promptEnded(request, outcome, atMs)`: `error` and `timeout` settle at
+   once. For `ok` the turn is not over: after `reply` completes the
+   request, Claude Code makes at least one more model call to write its
+   closing text (`fbd16ab` `src/turn-stop.ts`). So the turn stays pending
+   until a `turnStopped` of its session with a time after `atMs`, and `end`
+   carries that time; after `stopWaitMs` (option, 120 s by default) with no
+   `Stop`, `end` carries `atMs`.
+4. `turnStopped(sessionId, atMs)`: every pending turn of that session
+   answered before `atMs` ends at `atMs`, the oldest first. One `Stop` ends
+   one Claude Code turn, and every prompt answered before it was answered
+   in that turn, so two prompts answered in one turn share its end, and a
+   prompt answered after this stop waits for the next.
+5. `aroundToolCall(request, …, run)`: bind the request's trace scope.
+6. `stopping()`: every pending turn ends at its reply's time, every turn
+   still open ends now with `error`; then `flush()`.
 
 **The tool-call ID** comes to the plugin from `PreToolUse` (§2.6) and to the
 edge through the helper's prompt context; the add-on has no part in it.
 
-**The one SDK piece that does not exist yet.** The helper's request
-interceptor opens the tools scope around the prompt handler
-(`runInPromptScope`), and a `prompt_agent` call belongs to that scope only
-when it runs inside the handler's async context (§3.3 of the tools
-contract). In the MCP process the tool call arrives as a separate MCP
-request, outside that context, so the helper sees it as a call *outside a
-served prompt* (§3.4): it is not cancelled when the served prompt ends, and
-the caller guard does not apply. The add-on can bind the *trace* scope
-around the call with `bindActiveTrace`, so the edge is right, but it cannot
-enter the *tools* scope: the helper offers no handle to re-enter an open
-scope. That is the SDK follow-up parked as (a) in the plan, un-parked by B4:
-an explicit scope handle, in both SDKs, that a host opens for a served
-prompt and runs later work inside. It is named here as a dependency and not
-designed here.
+**No SDK piece was needed.** This section named one as missing: in the MCP
+process a tool call arrives as a separate MCP request, outside the prompt
+handler's async context, so the helper would see it as a call outside a
+served prompt, not cancelled when the prompt ends and outside the caller
+guard, and the helper offered no handle to re-enter an open tools scope.
+The plugin solved it without one. Its prompt handler runs inside every
+request interceptor, the tools' scope included, and stays open until the
+request completes; it takes `AsyncLocalStorage.snapshot()` there, after the
+interceptors ran, and runs every agent-tool call for that request through
+the snapshot before `aroundToolCall` and `tools.execute()`
+(`agents/claude-code/server.ts`, `src/agent-tools.ts` `runAgentTool`). So
+the tools scope, the caller guard and every interceptor's binding apply to
+the call as if it ran in the handler, and the add-on's `aroundToolCall` is
+a no-op rebind it makes anyway. An explicit scope handle stays a candidate
+for the async tools (§3.5, gap 1).
 
 **What the console shows when it works.** The session's calls on the child
 thread, the closing call inside the window, the outcome and the duration
@@ -627,14 +654,16 @@ answered in the same turn, share the window.
 leaf: an SDK agent prompts Claude Code, which calls a tool and replies, a
 real Anthropic-shaped model through the proxy, `CLAUDE_CONFIG_DIR` and
 `HOME` inside the run directory, opt-in and never in CI
-(`agent-fabric-tests` `docs/PLAN.md`, row 8b). It waits for an Anthropic key
-from Mario and for the add-on.
+(`agent-fabric-tests` `docs/PLAN.md`, row 8b). The add-on is built; the
+Anthropic-shaped model is OpenRouter's Messages endpoint through the proxy
+(§6); it waits for Claude Code's channel to work without a claude.ai login
+(§6 step 8).
 
 ### 3.5 Gaps, named
 
 | # | Gap | Where | What it must carry | Needed by |
 | --- | --- | --- | --- | --- |
-| 1 | **An explicit tools scope handle.** `AgentTools` opens a scope only around a handler (`requestInterceptor`, `runInPromptScope`); nothing lets a host run later work inside an open scope | the protocol SDK, both languages (follow-up (a) of the plan) | open a scope for a served prompt with its `caller`; run a function inside it later; close it, cancelling the open calls, when the prompt ends | B4 (Claude Code); B2 if PI's tool runner does not inherit the injected context (gap 3) |
+| 1 | **An explicit tools scope handle.** `AgentTools` opens a scope only around a handler (`requestInterceptor`, `runInPromptScope`); nothing lets a host run later work inside an open scope | not needed (B4, 2026-09-23): the plugins re-enter the handler's context through a snapshot taken inside it (§3.4; Claude Code's `runAgentTool`, OpenClaw 2026.5.4's oldest pending request), which carries the tools scope with it; an explicit handle stays a candidate for the async tools | nothing now | — |
 | 2 | **The `served` vocabulary.** Built in the fabric package on 2026-09-23 (Mario's decision of that day: both languages, like the edge record), from the pre-split `fbd16ab` `agents/openclaw/src/served.ts` and `agents/claude-code/src/served.ts`: `buildServedRecord(agent, threadId, rootId, harness, harnessThreadId, phase, status?, ts?)` in the schema's key order, `validHarnessThreadId` (the pre-split `validHarnessId` rule, plus the lone-surrogate refusal `validToolCallId` has), `servedPublisher({ agents, subject?, logger? })` over `agents.publishSigned` with the record id as nonce, one chain so records leave in the order they were due, counted on the trace counters, fail-open, `beginTurn(scope, harness)` → `bind` / `settle`, `flush()`; the Python twin `build_served_record`, `served_publisher` over `Agents.publish_signed(nonce=)`, which the Python client has; `served.json` vendored at `5b13989`; both suites validate a `start` and an `end` against it and `test_served_wire_parity.py` compares the bytes | closed | nothing more; the two add-ons import it | — |
 | 3 | **PI's context inheritance.** Measured in B2 on PI 0.85.1 (2026-09-23, by the plugin's session, confirmed on the rig in the examples' F19): the turn, `before_provider_headers`, a tool's `execute` and the following `agent_settled` all run in the async context of the `pi.sendUserMessage()` caller, also when the plugin injects the next queued prompt from the previous turn's settle hook. So the scope the add-on binds at `aroundInject` flows to the tools, `aroundToolCall`'s rebind is a no-op the add-on makes anyway, and PI does not need gap 1 | closed | nothing more | — |
 | 4 | **`turn_count_hint` for OpenClaw and Claude Code.** Their calls carry no SDK headers, so nothing counts them; an edge their model spawns says `0` | the contract allows it: a hint, never a claim (`edge.json`) | nothing; stated honestly | none |
@@ -771,26 +800,52 @@ own, unbound.
    directory of its own (`run.sh`). The `gateway starting` line names the
    loaded extensions.
 
-**Claude Code**, as expected, parked in the examples until an
-Anthropic-shaped model stands behind the proxy (the test repo's step 8b;
-`harnesses/README.md`, Mario on 2026-09-17):
+**Claude Code**, from `agent-fabric-examples` `harnesses/claude-code/`,
+measured on Claude Code 2.1.280 in its F21 (2026-09-23):
 
-1. The plugin from the marketplace, `/plugin marketplace add
-   synadia-ai/synadia-agents` and `/plugin install
-   nats-channel@synadia-plugins`; the session started with
-   `claude --dangerously-load-development-channels plugin:nats-channel@synadia-plugins`
-   (`agents/claude-code/README.md`, "Quick Setup").
-2. The add-on: `npm install @synadia-ai/agent-fabric-claude-code`.
-3. `SYNADIA_CLAUDE_CODE_EXTENSIONS=<path>` in the environment Claude Code is
-   started in, which its MCP server inherits, or `"extensions": ["…"]` in
-   `~/.claude/channels/nats/config.json`.
-4. `senderIdentity: signed` through `/nats-channel:configure identity signed`,
-   with a NATS context carrying Claude Code's own credentials.
-5. The proxy as the model endpoint: Claude Code's `ANTHROPIC_BASE_URL` to
-   the proxy and the virtual key as `ANTHROPIC_API_KEY`; the proxy needs an
-   Anthropic-shaped provider behind it for these calls.
-6. For a headless run, `CLAUDE_CONFIG_DIR` and `HOME` in a run directory,
-   never `~/.claude` (the test repo's rule for 8b).
+1. `claude` and `bun` on `PATH` (the plugin's server and hooks run on bun).
+   The plugin from the checkout, `claude --plugin-dir
+   <synadia-agents>/agents/claude-code`, which loads it for the session as
+   `nats-channel@inline` with its `hooks/hooks.json` (three hooks
+   registered); its bundle is committed, nothing is built. The channel
+   flag names it so: `--dangerously-load-development-channels
+   plugin:nats-channel@inline`. When published, the marketplace path of the
+   plugin's README.
+2. The add-on: `npm install @synadia-ai/agent-fabric-claude-code`, or
+   `plugins/claude-code` of this repo built.
+3. `SYNADIA_CLAUDE_CODE_EXTENSIONS=<absolute path>` in the environment
+   `claude` starts in, which its MCP server inherits (`nats channel:
+   connecting {… "extensions":["agent-fabric"]}`), or `"extensions": ["…"]`
+   in the channel's `config.json`. Export `PWD` too: the plugin's
+   `.mcp.json` hands `${PWD}` to its server.
+4. The channel's `config.json` in `NATS_STATE_DIR`: `context` a NATS
+   context with Claude Code's own credentials, `owner`, `sessionName`,
+   `senderIdentity: signed`, `minSenderTrust: signed`, `agentTools:
+   blocking`.
+5. `settings.json` in `CLAUDE_CONFIG_DIR`: `permissions.allow:
+   ["mcp__plugin_nats-channel_nats"]`, the plugin's server
+   (`plugin:nats-channel:nats`), so its tools run without an approval
+   nobody sees.
+6. The proxy as the model endpoint: `ANTHROPIC_BASE_URL` the proxy's
+   `/api`, `ANTHROPIC_API_KEY` a virtual key naming an Anthropic-shaped
+   provider. On the rig that is `anthropic: https://openrouter.ai` in the
+   test repo's `local/aft.local.yaml` (the name gives the shape), which
+   forwards `/api/v1/messages` to OpenRouter's Messages endpoint; the
+   proxy recorded those calls in full, usage with cache reads and writes,
+   filed under the session id as `harness: claude`. Every model variable
+   (`ANTHROPIC_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL`,
+   `ANTHROPIC_DEFAULT_{SONNET,OPUS,HAIKU,FABLE}_MODEL`) the provider's id.
+7. `HOME`, `CLAUDE_CONFIG_DIR` and `NATS_STATE_DIR` in a run directory,
+   never `~/.claude`, and a terminal: Claude Code is interactive.
+8. **The blocker.** Claude Code 2.1.280 delivers channel messages only
+   behind a feature flag it fetches with an Anthropic credential, a
+   claude.ai login or an Anthropic API key; with the proxy's virtual key it
+   prints `Channels are not currently available` and ignores the channel.
+   So the session is on the bus and no prompt reaches it. A claude.ai login
+   in the run's home would bring the flag, but its token then authenticates
+   the model calls, and the proxy takes a virtual key only: the proxy would
+   have to take it from a header of its own (`ANTHROPIC_CUSTOM_HEADERS`)
+   over `Authorization`. Parked (Mario, 2026-09-23).
 
 ## 7. Stated honestly
 
@@ -807,6 +862,10 @@ Anthropic-shaped model stands behind the proxy (the test repo's step 8b;
   an id no call carries. The scope is an internal of OpenClaw's, keyed by a
   versioned symbol; it will drift, and the add-on feature-checks it and
   falls back to an unseeded dispatch.
+- **Claude Code's channel needs an Anthropic credential** (2.1.280, §6
+  step 8): with only the proxy's virtual key the channel is ignored, so
+  Claude Code is not yet on the fabric as a callee; the add-on is tested
+  against a fake of the plugin and a real `AgentService`, not a real turn.
 - **Claude Code without its hooks** (`disableAllHooks`): no `SessionStart`
   file, so a prompt after `/clear` files under the session the server
   started with; no `Stop`, so `end` carries the reply's time and the closing
