@@ -47,6 +47,9 @@ plugins/             the fabric add-ons for the harness plugins, one package per
     src/extension.ts the factory: tracing's hooks, the guard, the served pair, the scope at OpenClaw's events
     src/trace-scope.ts the traceparent seed: OpenClaw's trace scope store, feature-checked (from fbd16ab)
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
+  claude-code/       @synadia-ai/agent-fabric-claude-code — built the same way
+    src/extension.ts the factory: tracing's hooks, the guard, the served pair on the session, end at the Stop
+    test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
 ```
 
 ## Rules
@@ -100,7 +103,7 @@ the checkout of `synadia-agents` on branch `sdk-release-rollout`, expected at
   links point outside the repo.
 - Python: `[tool.uv.sources]` path sources in `python/pyproject.toml`
   (editable, so no build step); `python/uv.lock` is committed, like the SDK's.
-- The add-ons, `plugins/pi` and `plugins/openclaw`: `"@synadia-ai/agent-fabric": "file:../../typescript"`,
+- The add-ons, `plugins/pi`, `plugins/openclaw` and `plugins/claude-code`: `"@synadia-ai/agent-fabric": "file:../../typescript"`,
   so build `typescript/` first (`npm run build`; its `dist/` is the link's
   target), and the two SDK packages by the same `file:` links, since npm
   does not hoist a linked package's own links; installed with npm, no
@@ -126,11 +129,11 @@ uv sync
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 uv run pytest                 # unit + integration + interop with the TS hosts + byte parity
 
-cd ../plugins/pi              # after typescript/ is built; the same in plugins/openclaw
+cd ../plugins/pi              # after typescript/ is built; the same in plugins/openclaw, plugins/claude-code
 npm install
 npm run typecheck && npm run lint && npm run format:check
 npm test                      # unit with a fake plugin + integration with a nats-server
-npm run build                 # dist/, what SYNADIA_PI_EXTENSIONS (SYNADIA_OPENCLAW_EXTENSIONS) points at
+npm run build                 # dist/, what SYNADIA_PI_EXTENSIONS (…_OPENCLAW_…, …_CLAUDE_CODE_…) points at
 ```
 
 The cross-version interop cases (against the last published, pre-tracing
