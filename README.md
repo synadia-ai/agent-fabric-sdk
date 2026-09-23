@@ -9,8 +9,15 @@ It carries **tracing**: the signed `edge` record before every prompt, the
 `X-Synadia-Root-ID` headers for model calls, and the record counts on the
 heartbeat. And the agent tools' **ScratchPad extension**: the fabric's rules
 for handing content over by reference, on the protocol SDK's `AgentTools`.
-Later it takes the proxy helpers, and `plugins/` the fabric versions of the
-Claude Code, OpenClaw and PI plugins.
+Later it takes the proxy helpers.
+
+Under [`plugins/`](plugins/) sit the fabric **add-ons** for the harness
+plugins, one small package per harness, `plugins/pi` first. Each is an
+extension module the public plugin in `synadia-agents` loads by name and
+hands the SDK's hooks and the harness's events; the add-on wires this
+package's tracing in and adds the harness piece, for PI the fabric's headers
+on its own model calls and the `409` loop guard. The plugins themselves stay
+in the public repo and are never copied here ([`docs/plugins.md`](docs/plugins.md)).
 
 ## Built on the protocol SDK
 

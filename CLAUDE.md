@@ -3,8 +3,14 @@
 The SDK for agents on the Synadia Agent Fabric: `@synadia-ai/agent-fabric`
 (TypeScript) and `synadia-ai-agent-fabric` (Python, `synadia_ai.agent_fabric`).
 Tracing and the agent tools' ScratchPad extension today; the proxy helpers
-and the fabric plugins later. Private while it is built, public at the
-release.
+later. Private while it is built, public at the release.
+
+Under `plugins/` sit the fabric add-ons for the harness plugins, one small
+TypeScript package per harness, `plugins/pi` built and the other two to
+come. Each is an extension module the public plugin in `synadia-agents`
+loads by name and hands the SDK's hooks and the harness's events; the add-on
+wires `fabricTracing()` in and adds the harness piece. The plugins stay in
+the public repo and are never copied here; `docs/plugins.md` is the spec.
 
 ## Layout
 
@@ -28,7 +34,12 @@ test-fixtures/       shared by both suites — see its README for every file's s
                      grant request's two shapes, sp-grant-{request,reply}.json
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
-plugins/             placeholder: the fabric versions of the Claude Code, OpenClaw, PI plugins
+plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
+  pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
+    src/contract.ts  the plugin's extension contract, declared structurally: nothing of the plugin imported
+    src/extension.ts the factory: tracing's hooks, the scope bound at PI's events, the headers, started
+    src/loop-guard.ts the 409 guard: its request and prompt interceptors
+    test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, edge.json
 ```
 
 ## Rules
@@ -75,6 +86,11 @@ the checkout of `synadia-agents` on branch `sdk-release-rollout`, expected at
   links point outside the repo.
 - Python: `[tool.uv.sources]` path sources in `python/pyproject.toml`
   (editable, so no build step); `python/uv.lock` is committed, like the SDK's.
+- The PI add-on, `plugins/pi`: `"@synadia-ai/agent-fabric": "file:../../typescript"`,
+  so build `typescript/` first (`npm run build`; its `dist/` is the link's
+  target), and the two SDK packages by the same `file:` links, since npm
+  does not hoist a linked package's own links; installed with npm, no
+  lockfile committed.
 
 When the SDK is published, replace both with the released versions
 (`^0.x` / `>=0.x`), commit a TypeScript lockfile, and drop this section.
@@ -95,6 +111,12 @@ cd ../python
 uv sync
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 uv run pytest                 # unit + integration + interop with the TS hosts + byte parity
+
+cd ../plugins/pi              # after typescript/ is built
+npm install
+npm run typecheck && npm run lint && npm run format:check
+npm test                      # unit with a fake plugin + integration with a nats-server
+npm run build                 # dist/, what SYNADIA_PI_EXTENSIONS points at
 ```
 
 The cross-version interop cases (against the last published, pre-tracing
