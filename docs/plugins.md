@@ -654,10 +654,10 @@ answered in the same turn, share the window.
 leaf: an SDK agent prompts Claude Code, which calls a tool and replies, a
 real Anthropic-shaped model through the proxy, `CLAUDE_CONFIG_DIR` and
 `HOME` inside the run directory, opt-in and never in CI
-(`agent-fabric-tests` `docs/PLAN.md`, row 8b). The add-on is built; the
-Anthropic-shaped model is OpenRouter's Messages endpoint through the proxy
-(§6); it waits for Claude Code's channel to work without a claude.ai login
-(§6 step 8).
+(`agent-fabric-tests` `docs/PLAN.md`, row 8b). The add-on is built and
+measured against real turns (§6 step 8); 8b wants what that run had: the
+two keys and Anthropic as the provider (§6 step 6) and an interactive
+session, a pseudo-terminal when scripted (§6 step 7).
 
 ### 3.5 Gaps, named
 
@@ -801,7 +801,7 @@ own, unbound.
    loaded extensions.
 
 **Claude Code**, from `agent-fabric-examples` `harnesses/claude-code/`,
-measured on Claude Code 2.1.280 in its F21 (2026-09-23):
+measured on Claude Code 2.1.281 in its F24 and F25 (2026-09-24):
 
 1. `claude` and `bun` on `PATH` (the plugin's server and hooks run on bun).
    The plugin from the checkout, `claude --plugin-dir
@@ -826,26 +826,53 @@ measured on Claude Code 2.1.280 in its F21 (2026-09-23):
    ["mcp__plugin_nats-channel_nats"]`, the plugin's server
    (`plugin:nats-channel:nats`), so its tools run without an approval
    nobody sees.
-6. The proxy as the model endpoint: `ANTHROPIC_BASE_URL` the proxy's
-   `/api`, `ANTHROPIC_API_KEY` a virtual key naming an Anthropic-shaped
-   provider. On the rig that is `anthropic: https://openrouter.ai` in the
-   test repo's `local/aft.local.yaml` (the name gives the shape), which
-   forwards `/api/v1/messages` to OpenRouter's Messages endpoint; the
-   proxy recorded those calls in full, usage with cache reads and writes,
-   filed under the session id as `harness: claude`. Every model variable
-   (`ANTHROPIC_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL`,
-   `ANTHROPIC_DEFAULT_{SONNET,OPUS,HAIKU,FABLE}_MODEL`) the provider's id.
-7. `HOME`, `CLAUDE_CONFIG_DIR` and `NATS_STATE_DIR` in a run directory,
-   never `~/.claude`, and a terminal: Claude Code is interactive.
-8. **The blocker.** Claude Code 2.1.280 delivers channel messages only
-   behind a feature flag it fetches with an Anthropic credential, a
-   claude.ai login or an Anthropic API key; with the proxy's virtual key it
-   prints `Channels are not currently available` and ignores the channel.
-   So the session is on the bus and no prompt reaches it. A claude.ai login
-   in the run's home would bring the flag, but its token then authenticates
-   the model calls, and the proxy takes a virtual key only: the proxy would
-   have to take it from a header of its own (`ANTHROPIC_CUSTOM_HEADERS`)
-   over `Authorization`. Parked (Mario, 2026-09-23).
+6. The proxy as the model endpoint, with two keys. `ANTHROPIC_API_KEY`
+   is an Anthropic API key of the user's own, sent as `x-api-key`: the
+   channel is behind a feature flag Claude Code fetches from Anthropic
+   directly, never through the base URL, and only with an Anthropic
+   credential (F24 item 4). `ANTHROPIC_AUTH_TOKEN` is the virtual key,
+   sent as `Authorization: Bearer` next to it; Claude Code warns that both
+   are set, and sends both (F24 item 5). The proxy reads the virtual key
+   from `Authorization` first and deletes both headers before it sets the
+   provider's own, so the Anthropic key reaches no provider (F24 item 2;
+   `proxy/forward.go`). `ANTHROPIC_BASE_URL` is the proxy's bare origin, no
+   `/api` (F25 item 3). The model is Anthropic's, through the proxy (Mario,
+   2026-09-24): Claude Code is Anthropic's product, its documented gateway
+   shape is a proxy in front of Anthropic, and an Anthropic key means
+   Anthropic bills its owner. So the virtual key names Anthropic as its
+   provider, the proxy's built-in `anthropic` in production and on the
+   rig `anthropic-api` (`https://api.anthropic.com,anthropic` in the test
+   repo's `local/aft.local.yaml`, since `anthropic` is the stand-in's name
+   there), with the tenant's Anthropic key as the provider key in the
+   record and the harness `claude` (F25 items 1 and 2). No model
+   variables: Claude Code runs its own default models, every call through
+   the proxy, recorded with Anthropic's usage, cache reads and writes
+   included (F25 item 5). The fabric never routes Claude Code to another
+   model provider; F24's OpenRouter model was a stand-in for that
+   measurement.
+7. `HOME`, `CLAUDE_CONFIG_DIR` and `NATS_STATE_DIR` in a home of the
+   instance's own, never `~/.claude`, and outside any git repository: from
+   inside one, Claude Code sends that repository's `CLAUDE.md` files and
+   its git status to the model with every call (F24 item 10); outside one
+   it offers the skills of every directory above its working directory,
+   the user's own included, which `--disable-slash-commands` removes (F25
+   item 7). The examples' `run.sh` keeps the home under the user's state
+   directory and refuses one inside a git working tree. And a terminal:
+   `claude -p` registers on the bus and serves no prompt (F24 item 7);
+   interactive, the development-channels warning answered once, the
+   channel is on; scripted, `tmux` with one Enter does it (F24 items 8
+   and 11).
+8. **Measured.** A signed caller prompted Claude Code, and the reply sat
+   on the caller's thread, `harness: claude`, depth `full` with both
+   halves, the session's calls joined through the pair (F24 item 8, F25
+   item 4). Asked to delegate, Claude Code's model discovered and prompted
+   the researcher, whose thread sits under its `prompt_agent` tool call
+   with Claude Code its verified caller (F24 item 9, F25 item 4). One call
+   falls outside the pair: Claude Code's prompt-suggestion call at the end
+   of a turn, re-run once after the turn's `Stop` when its model reached
+   for a tool, stands as a root of its own on the session id with no
+   caller (F25 item 6); the pair is the turn, and the reader infers
+   nothing beyond it.
 
 ## 7. Stated honestly
 
@@ -862,10 +889,16 @@ measured on Claude Code 2.1.280 in its F21 (2026-09-23):
   an id no call carries. The scope is an internal of OpenClaw's, keyed by a
   versioned symbol; it will drift, and the add-on feature-checks it and
   falls back to an unseeded dispatch.
-- **Claude Code's channel needs an Anthropic credential** (2.1.280, §6
-  step 8): with only the proxy's virtual key the channel is ignored, so
-  Claude Code is not yet on the fabric as a callee; the add-on is tested
-  against a fake of the plugin and a real `AgentService`, not a real turn.
+- **Claude Code carries an Anthropic credential** (2.1.281, §6 step 6):
+  its channel is behind a flag only an Anthropic credential fetches, so
+  every Claude Code on the fabric has an Anthropic API key on its machine
+  and is traced because it is pointed at the proxy, by configuration.
+  Sending both keys is what Claude Code's start-up warning calls
+  unsupported; it works on 2.1.281 (F24 item 5) and is to be re-checked on
+  releases that touch channels or gateways. The add-on is now measured
+  against real turns (§6 step 8), in an interactive session only, and the
+  call Claude Code makes after the turn's `Stop` falls outside the pair
+  (F25 item 6).
 - **Claude Code without its hooks** (`disableAllHooks`): no `SessionStart`
   file, so a prompt after `/clear` files under the session the server
   started with; no `Stop`, so `end` carries the reply's time and the closing
