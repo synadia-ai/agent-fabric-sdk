@@ -125,15 +125,99 @@ the first record is due, every record owed counts as dropped on the
 heartbeat, and Claude Code's calls stand as a harness thread of their own,
 unbound.
 
+## Running Claude Code on the fabric
+
+Measured on Claude Code 2.1.281 (2026-09-24, `agent-fabric-examples`
+`docs/findings.md` F24 and F25). The worked version is that repository's
+`harnesses/claude-code/` (`run.sh`, `env.example`, its README); what
+follows is the recipe it implements.
+
+1. **Claude Code and bun.** `claude` on `PATH`, and `bun`: the plugin's
+   server and hooks run on it.
+2. **The plugin, from the checkout until it is published.** This loads it
+   for the session as `nats-channel@inline`, hooks included; its bundle is
+   committed, nothing is built there:
+
+   ```sh
+   claude --plugin-dir <synadia-agents>/agents/claude-code \
+     --dangerously-load-development-channels plugin:nats-channel@inline
+   ```
+
+3. **The add-on, named.** This package with `dist/` built, and
+   `SYNADIA_CLAUDE_CODE_EXTENSIONS=<its absolute path>` in the environment
+   `claude` starts in (see "Naming it"). Export `PWD` too: the plugin's
+   `.mcp.json` hands it to its server.
+4. **The identity.** The channel's `config.json` with a NATS context of
+   Claude Code's own and `senderIdentity: "signed"` (see "Identity"), and
+   `permissions.allow: ["mcp__plugin_nats-channel_nats"]` in Claude Code's
+   `settings.json`, so a turn driven from NATS does not stop at an approval
+   nobody sees.
+5. **A virtual key naming Anthropic as its provider.** Claude Code is
+   Anthropic's product, its documented gateway shape is a proxy in front of
+   Anthropic, and an Anthropic key means Anthropic bills its owner; the
+   fabric adds the trace, the identity and the usage record, and never
+   routes Claude Code to another model provider. So the key is issued for
+   Claude Code's identity with the proxy's built-in `anthropic` provider
+   (on a test rig where that name is taken, a provider of another name at
+   `https://api.anthropic.com` on the Anthropic shape), the tenant's
+   Anthropic API key as the provider key in the record, and the harness
+   `claude`, without which the proxy files each call as a thread of its own
+   (F25 items 1 and 2).
+6. **Two keys and the base URL.** Both are set, and Claude Code sends both:
+   - `ANTHROPIC_API_KEY`: an Anthropic API key of the user's own, sent as
+     `x-api-key`. Claude Code turns its channel on only when a feature flag
+     says so, and it fetches its flags from Anthropic directly, never
+     through the base URL, and only with an Anthropic credential; with the
+     virtual key alone the channel is ignored (F24 items 4 and 5). It may be
+     the same key as the provider key of step 5, or another of the
+     tenant's.
+   - `ANTHROPIC_AUTH_TOKEN`: the virtual key, sent as
+     `Authorization: Bearer` next to it. The proxy reads the virtual key
+     from `Authorization` first and deletes both headers before it sets the
+     provider's own, so the Anthropic key reaches no provider (F24 item 2).
+   - `ANTHROPIC_BASE_URL`: the proxy's bare origin, no `/api`; Claude Code
+     appends `/v1/messages` and the proxy forwards it to Anthropic as it is
+     (F25 item 3).
+
+   Claude Code warns at start that both keys are set and "auth may not work
+   as expected". That is expected: sending both is the point.
+
+7. **No model variables.** Claude Code runs its own default models, the
+   main loop and the side calls, every call through the proxy, recorded
+   with Anthropic's usage, cache reads and writes included (F25 item 5).
+8. **A home outside any git repository.** `HOME`, `CLAUDE_CONFIG_DIR` and
+   the channel's `NATS_STATE_DIR` in a directory of the instance's own,
+   never `~/.claude`, and not inside a git working tree: from inside one,
+   Claude Code sends that repository's `CLAUDE.md` files and its git status
+   to the model with every call (F24 item 10). Outside one it offers the
+   model the skills in the `.claude/skills` of every directory above its
+   working directory, the user's own included; `--disable-slash-commands`
+   removes them (F25 item 7).
+9. **A terminal, or a pseudo-terminal.** Interactive only: `claude -p`
+   registers on the bus and turns no prompt into a turn (F24 item 7).
+   Answer the development-channels warning once and the channel is on
+   (F24 item 8); from a script, `tmux` with one Enter does the same (F24
+   item 11).
+
 ## What the console shows
 
 The served thread with the session's model calls joined through the pair,
 the closing call inside the window, the thread's outcome and its duration
-from `start` to `end`; a subagent's calls as children of the session's
-thread; a delegation Claude Code's model makes as a child under its tool
-call. Everything the session does between the two records is filed under
-the prompt: local typing during a NATS-driven turn, and a second NATS prompt
-answered in the same turn, share the window.
+from `start` to `end`, `harness: claude` at depth `full` with both halves;
+a subagent's calls as children of the session's thread. A delegation
+Claude Code's model makes: it discovers and prompts another agent, whose
+thread sits under its `prompt_agent` tool call with Claude Code its
+verified caller (F24 items 8 and 9, F25 item 4). Everything the session
+does between the two records is filed under the prompt: local typing
+during a NATS-driven turn, and a second NATS prompt answered in the same
+turn, share the window.
+
+One call can fall outside the pair. At the end of each turn Claude Code
+asks its model what the user might type next; when that call's model
+reaches for a tool, Claude Code calls it once more after the turn's `Stop`,
+and the add-on's `end`. The console shows that call as a root of its own
+on the session id, with no caller (F25 item 6). The pair is the turn, and
+the reader infers nothing beyond it: a limit, not a bug.
 
 ## Stated honestly
 
@@ -148,6 +232,21 @@ answered in the same turn, share the window.
   one turn share its end; a prompt answered after a stop that the server's
   poll saw late (250 ms) could take that stop's time. Claude Code gives
   nothing finer.
+- **The two keys are what Claude Code's warning calls unsupported.** Both
+  sent together, the virtual key as `Bearer` and the Anthropic key as
+  `x-api-key`, was measured on 2.1.281 (F24 item 5); Claude Code does not
+  document it. Re-check it on a release that touches channels or gateways.
+- **An Anthropic credential on the machine.** The channel is behind a flag
+  only an Anthropic credential fetches, so every Claude Code on the fabric
+  carries an Anthropic API key of its own, and could call Anthropic with it
+  directly. Its model calls are traced because it is pointed at the proxy,
+  by configuration, not by anything the add-on enforces.
+- **An interactive session.** No headless mode serves a prompt; a script
+  drives a terminal (F24 items 7 and 11).
+- **The context Claude Code sends.** Whatever its working directory
+  offers goes to the model with every call: a repository's `CLAUDE.md` and
+  git status from inside one, the skills of the directories above it from
+  outside one (F24 item 10, F25 item 7). The home's place decides it.
 
 ## Public API
 
