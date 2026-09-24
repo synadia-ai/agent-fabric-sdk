@@ -755,16 +755,17 @@ own, unbound.
 **PI**, from `agent-fabric-examples` `harnesses/pi/` and the test repo's
 `internal/piagent/piagent.go`:
 
-1. PI on `PATH` (0.85.1 here; the plugin's peer range says `<0.85.0`, which
-   B2 widens). The public plugin from the `synadia-agents` checkout with
+1. PI on `PATH` (0.85.1 here; the plugin's peer range is
+   `>=0.84.0 <0.86.0`, `agents/pi/package.json` on `sdk-release-rollout`). The public plugin from the `synadia-agents` checkout with
    both SDKs built and `npm install` run in `agents/pi`; when published,
    `pi install npm:@synadia-ai/nats-pi-channel`.
 2. The add-on: `npm install @synadia-ai/agent-fabric-pi`, or `plugins/pi`
    of this repo built.
 3. `SYNADIA_PI_EXTENSIONS=<path or name>`, or `"extensions": ["…"]` in
-   `nats-channel.json`, in place of the `"tracing": "on"` the configurations
-   still carry today (`harnesses/pi/config/nats-channel.json`; the test
-   repo's launcher sets `NATS_TRACING=on`), which the plain plugin ignores.
+   `nats-channel.json`. The add-on's presence is the switch: there is no
+   `tracing` setting, and the examples' `harnesses/pi/config/` carries
+   none since their PR #26 (2026-09-23); the test repo's launcher sets the
+   variable (`internal/piagent/piagent.go`).
 4. A NATS context with PI's own credentials in `nats-context.json`,
    `senderIdentity: signed`, `minSenderTrust: signed` recommended.
 5. The proxy as PI's provider: `models.json` with `baseUrl` the proxy's
@@ -784,8 +785,10 @@ own, unbound.
    `openclaw plugins install @synadia-ai/nats-channel`.
 2. The add-on: `npm install @synadia-ai/agent-fabric-openclaw`.
 3. `SYNADIA_OPENCLAW_EXTENSIONS=<path or name>`, or `"extensions": ["…"]`
-   in `channels.nats.accounts.default`, in place of `"tracing": "on"`
-   (`harnesses/openclaw/config/openclaw.json`).
+   in `channels.nats.accounts.default`. The add-on's presence is the
+   switch: there is no `tracing` setting, and the examples'
+   `harnesses/openclaw/config/` carries none since their PR #27
+   (2026-09-23).
 4. `senderIdentity: signed` with `credentials` OpenClaw's own.
 5. The proxy as the `fabric` provider in `models.providers`, the key from
    the environment (`apiKey: { source: "env", … }`).
@@ -918,10 +921,11 @@ measured on Claude Code 2.1.281 in its F24 and F25 (2026-09-24):
   reference in a prompt to a harness is removed by the caller's
   `prompt_agent` before sending (`agent-fabric-examples` `tools/README.md`).
 - **`traceparent` from any client files as OpenClaw** until M3-31 (§3.3).
-- **Nothing here is measured yet.** The pre-split plugins ran end to end
-  against Francesco's proxy on 2026-09-16 and PI's leaf ran on the rig
-  until 2026-09-21; the shape of §2 has not run anywhere. B2 is where it
-  first does.
+- **What is measured, and where.** Every add-on, against real turns on
+  the test rig: PI in the examples' F19 and OpenClaw in F20 (2026-09-23),
+  Claude Code in F24 and F25 (2026-09-24). PI and OpenClaw also in the test
+  system's gates, `gate/m2` on the rig and `gate/m3` on the cloud; Claude
+  Code's step 8b is still to come (§3.4).
 
 ## 8. The plan to build it
 
@@ -932,8 +936,8 @@ fresh session with a paste; each ends with a run that is recorded.
 | --- | --- | --- | --- | --- |
 | **B2 PI** | `agents/pi`: `AgentTools` (the blocking three) through `pi.registerTool`, one `Agents` client with the plugin's signer, the extension point of §2 with the PI events, `agents/EXTENSIONS.md` and the README paragraph of §9, the peer range to include 0.85, CHANGELOG; Francesco's `agents/pi/extensions/agent-tools.ts` as reference for the registration and where the active request is | `plugins/pi`: the add-on of §3.2 with its tests; gap 3 measured and written into this doc | examples: `harnesses/pi/config/nats-channel.json` and `run.sh` name the add-on in place of `tracing`; tests: `internal/piagent` sets the variable and the `aft.yaml` sibling for this repo | the examples' team on the rig (`make demo` in `agent-fabric-examples`) shows the editor's calls on its child thread, PI `full`, the `asked` row naming it, recorded as a finding; `gate/m2` `TestPIAtLeaf` green with its two waivers deleted |
 | **B3 OpenClaw** | `agents/openclaw`: `AgentTools` registered through the channel plugin's tools (Francesco's `channel.ts` diff as reference), the client, the extension point with the OpenClaw events, `extensions` in `openclaw.plugin.json`, README, CHANGELOG, `dist/` rebuilt with tsup | gap 2 decided and built first; `plugins/openclaw`: the add-on of §3.3 | examples: `harnesses/openclaw/config/openclaw.json`, `run.sh` | the team on the rig shows the summarizer's thread with its call, the pair's outcome and duration, OpenClaw `full` with both halves, recorded as a finding |
-| **B4 Claude Code** | first, gap 1 in both SDKs with tests, its own PR; then `agents/claude-code`: `AgentTools` on the MCP tool handlers, `request_id`, the hooks back as neutral session events (`hooks/hooks.json` with `SessionStart`, `Stop`, `PreToolUse`; `hooks/session-event.ts`), the client, the extension point with the Claude Code events, README, CHANGELOG, the bundle rebuilt | `plugins/claude-code`: the add-on of §3.4 | tests: step 8b, opt-in, on a laptop with an Anthropic key | 8b's gate passes: an SDK agent prompts Claude Code, which calls a tool and replies, its calls on the child thread with the pair and the closing call inside the window; the report names the model |
-| **B5 the waivers and the team** | — | this doc's §7 updated with what was measured | tests: `scenario.PluginsPending` and the `Untraced` flag on PI's `gate/m3` member removed; `gate/m2` whole on the rig; `gate/m3` on NGS with PI's member unwaived, on Mario's `-apply`; examples: `harnesses/README.md` and `team/README.md` say the harnesses are traced; Claude Code as a sixth role when 8b is done | `aft run` on the rig green but for the known F8; `aft run -target ngs -apply gate/m3` green with nothing waived; the team's run recorded |
+| **B4 Claude Code** | `agents/claude-code` (#215): `AgentTools` on the MCP tool handlers, `request_id`, the hooks back as neutral session events (`hooks/hooks.json` with `SessionStart`, `Stop`, `PreToolUse`; `hooks/session-event.ts`), the client, the extension point with the Claude Code events, README, CHANGELOG, the bundle rebuilt; no SDK change, since gap 1 was not needed (the snapshot re-entry, §3.5) | `plugins/claude-code`: the add-on of §3.4 (#8) | examples: `harnesses/claude-code/`, the live run parked on F21 (2026-09-23) and done on 2026-09-24 (F24, F25); tests: step 8b, opt-in, with the two keys, Anthropic as the provider and a pseudo-terminal, an Anthropic key on the runner (§3.4, §6) | 8b's gate passes: an SDK agent prompts Claude Code, which calls a tool and replies, its calls on the child thread with the pair and the closing call inside the window; the report names the model |
+| **B5 the waivers and the team** | — | this doc's §7 updated with what was measured | tests: `scenario.PluginsPending` and the `Untraced` flag on PI's `gate/m3` member removed; `gate/m2` whole on the rig; `gate/m3` on NGS with PI's member unwaived, on Mario's `-apply`; examples: `harnesses/README.md` and `team/README.md` say the harnesses are traced; Claude Code as a sixth role when 8b is done, with the same two keys, Anthropic as its provider and a pseudo-terminal (§6) | `aft run` on the rig green but for the known F8; `aft run -target ngs -apply gate/m3` green with nothing waived; the team's run recorded |
 | **B7 M3-31** (alongside) | — | — | the fabric's `key_management.md`: the key names its harness; the proxy derives the OpenClaw pair only for such a key (Francesco, or us) | the proxy's scripted case for a stray `traceparent` files no harness pair |
 
 **The rule for every public-repo PR.** Before the push: `git diff
