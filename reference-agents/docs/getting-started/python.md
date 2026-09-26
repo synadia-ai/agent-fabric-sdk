@@ -26,7 +26,7 @@ The agent is `reference-agents/python/` in this repository. It is the reference 
 ```sh
 make setup            # in reference-agents/: the packages, then both agents
 cd python
-uv run pytest -q      # 16 tests; they need nats-server on PATH
+uv run pytest -q      # 8 tests; they need nats-server on PATH
 ```
 
 One of the tests starts the TypeScript agent and has the two prompt each other; it needs `reference-agents/typescript` installed (`make setup` does it) and `node` on PATH, and skips itself otherwise.

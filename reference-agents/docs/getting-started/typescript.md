@@ -26,7 +26,7 @@ The agent is `reference-agents/typescript/` in this repository. It is the refere
 ```sh
 make setup        # in reference-agents/: the packages, then both agents
 cd typescript
-npm test          # 38 tests; they need nats-server on PATH, and nothing else
+npm test          # 29 tests; they need nats-server on PATH, and nothing else
 ```
 
 Use npm, not bun, in `reference-agents/typescript`: bun 1.4.0 cannot install this manifest (`docs/findings.md` F2). npm installs the three packages as links into their directories, so a rebuild there is what the agent runs next.
