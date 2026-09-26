@@ -1,6 +1,6 @@
 # The Python reference agent
 
-**Date:** 2026-09-27 · **Status:** the same agent as `agents/ts`, in Python, with the same tests, including the one where the TypeScript agent and the Python one prompt each other. On the SDK's agent tools with the fabric package's ScratchPad extension, and the fabric package's ScratchPad, built from the environment, so the agent holds no ScratchPad code; three tools offered by default (`AGENT_TOOLS`, below); it serves four prompts at once. Run against a fabric through the model proxy with Sonnet 5.
+**Date:** 2026-09-27 · **Status:** the same agent as `../typescript`, in Python, with the same tests, including the one where the TypeScript agent and the Python one prompt each other. On the SDK's agent tools with the fabric package's ScratchPad extension, and the fabric package's ScratchPad, built from the environment, so the agent holds no ScratchPad code; three tools offered by default (`AGENT_TOOLS`, below); it serves four prompts at once. Run against a fabric through the model proxy with Sonnet 5.
 
 ## What is here
 
@@ -8,8 +8,8 @@
 | --- | --- |
 | `fabric_agent/agent.py` | the agent: the four behaviours, each marked where it happens |
 | `fabric_agent/__main__.py` | starts one agent from `.env`; `uv run python -m fabric_agent` |
-| `fabric_agent/echo.py` | the smallest agent, behaviour (1) alone: a signed identity, tracing on through the fabric package, every prompt answered with the prompt; `uv run python -m fabric_agent.echo`. Step 1 of `docs/getting-started/python.md` |
-| `fabric_agent/prompt.py` | a caller for the command line: `uv run python -m fabric_agent.prompt <env file> <address or kind> "<text>"`, signed with that file's credentials; the twin of `agents/ts/src/prompt.ts` |
+| `fabric_agent/echo.py` | the smallest agent, behaviour (1) alone: a signed identity, tracing on through the fabric package, every prompt answered with the prompt; `uv run python -m fabric_agent.echo`. Step 1 of `../docs/getting-started/python.md` |
+| `fabric_agent/prompt.py` | a caller for the command line: `uv run python -m fabric_agent.prompt <env file> <address or kind> "<text>"`, signed with that file's credentials; the twin of `../typescript/src/prompt.ts` |
 | `fabric_agent/config.py` | every variable the agent reads, with its default; reads the `.env` file |
 | `fabric_agent/model.py` | one chat-completions client pointed at the proxy, and the loop that runs the model's tool calls |
 | `fabric_agent/tools.py` | the model loop's side of the SDK's agent tools: their definitions as chat-completions `function`s, not a word changed, and a call run by name with the model's tool-call id |
@@ -21,20 +21,20 @@
 
 ScratchPad comes from the fabric package: `scratchpad_from_env` in `fabric_agent/agent.py` builds it from `SCRATCHPAD_VOLUME` and the package's other three variables, over the `sp` command line, and gives `None` when the volume is unset. `__main__.py` passes it the environment it read, `.env` included. The package tests it against a stand-in `sp`.
 
-New here? `docs/getting-started/python.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
+New here? `../docs/getting-started/python.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
 
 ## Prerequisites
 
 - Python 3.11 or later and `uv`.
 - `nats-server` on PATH for the tests (`brew install nats-server`); without it the fabric tests skip themselves.
-- Until the packages are published: `make setup` at the repository's root, which checks the SDK checkout `../../../synadia-agents` and the fabric package's checkout `../../../agent-fabric-sdk` are there and on their branches (the `Makefile` names them) and installs both agents. The two SDK packages and `synadia-ai-agent-fabric` are path dependencies from them (`pyproject.toml`, `[tool.uv.sources]`), installed editable by `uv sync`; nothing has to be built there for Python. The SDK carries the agent tools (`AgentTools`). The fabric package is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratch_pad_extension`, the grant request), and the ScratchPad they run on (`scratchpad_from_env`). The agent wires them in `fabric_agent/agent.py`: `fabric_tracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, the grant endpoint (`extra_endpoints`), and `max_concurrent_prompts=4`.
-- For the interop test: `agents/ts` installed (`make setup` does it) and `node` on PATH.
+- Until the packages are published: `make setup` in `reference-agents/`, which checks the SDK checkout `../../../synadia-agents` is there and on its branch (the `Makefile` names it) and installs both agents. The two SDK packages from that checkout and `synadia-ai-agent-fabric` from this repository's `../../python` are path dependencies (`pyproject.toml`, `[tool.uv.sources]`), installed editable by `uv sync`; nothing has to be built for Python. The SDK carries the agent tools (`AgentTools`). The fabric package is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratch_pad_extension`, the grant request), and the ScratchPad they run on (`scratchpad_from_env`). The agent wires them in `fabric_agent/agent.py`: `fabric_tracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, the grant endpoint (`extra_endpoints`), and `max_concurrent_prompts=4`.
+- For the interop test: `../typescript` installed (`make setup` does it) and `node` on PATH.
 - For ScratchPad, which is optional: the `sp` binary, ScratchPad's command line, built from ScratchPad's repository, and a credentials file (an nkey seed alone is not a form `sp` takes).
 
 ## Install and test
 
 ```sh
-make setup            # at the repository's root
+make setup            # in reference-agents/
 uv run pytest
 ```
 
@@ -45,7 +45,7 @@ cp env.example .env      # fill in the credentials path, the proxy URL, the virt
 uv run python -m fabric_agent
 ```
 
-The agent needs a fabric that already stands, exactly as the TypeScript agent does (`../ts/README.md`).
+The agent needs a fabric that already stands, exactly as the TypeScript agent does (`../typescript/README.md`).
 
 ## The tools the model is offered
 
@@ -57,8 +57,8 @@ The agent needs a fabric that already stands, exactly as the TypeScript agent do
 | `all` | the six: also `prompt_agent`'s `wait: false`, `wait_agent`, `cancel_agent` and `list_agent_calls`, for a model that runs prompts side by side |
 | `none` | nothing, for a role that must answer itself: a model with the tools in reach may delegate what it was asked, even back to its caller |
 
-Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six (`docs/findings.md` F18).
+Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six (`../docs/findings.md` F18).
 
 ## How it reads
 
-`fabric_agent/agent.py` is the file to read: the list of the four behaviours with the code under each. It mirrors `agents/ts/src/agent.ts` line for line where the packages allow; the differences are the packages' own (`session_name` for the instance name, `PromptStream` for the handler's response handle, `execute(name, args, tool_call_id=…)` for `execute(name, args, { toolCallId })`, and in the fabric package a context variable instead of an `AsyncLocalStorage` for the ambient trace scope), and one of the host's: the Python `AgentService` serves one prompt at a time unless told otherwise, so the agent sets `max_concurrent_prompts` (four; `MAX_CONCURRENT_PROMPTS` in `agent.py` says why).
+`fabric_agent/agent.py` is the file to read: the list of the four behaviours with the code under each. It mirrors `../typescript/src/agent.ts` line for line where the packages allow; the differences are the packages' own (`session_name` for the instance name, `PromptStream` for the handler's response handle, `execute(name, args, tool_call_id=…)` for `execute(name, args, { toolCallId })`, and in the fabric package a context variable instead of an `AsyncLocalStorage` for the ambient trace scope), and one of the host's: the Python `AgentService` serves one prompt at a time unless told otherwise, so the agent sets `max_concurrent_prompts` (four; `MAX_CONCURRENT_PROMPTS` in `agent.py` says why).

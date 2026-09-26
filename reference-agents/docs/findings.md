@@ -1,6 +1,6 @@
 # Findings
 
-**Date:** 2026-09-26 · What was measured while building this repo that no document said, each with its evidence and where it belongs. Numbers are stable; new findings go at the end, from F28. The findings about the harnesses, the team, the rig and the runs moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26, when this repo became the examples alone (decision 38); each keeps its heading here, so every citation still resolves.
+**Date:** 2026-09-27 · What was measured while the reference agents were built that no document said, each with its evidence and where it belongs. Recorded in `agent-fabric-examples` `docs/findings.md` until 2026-09-27, when the agents moved into this repository; the findings here keep their numbers, the text as it was then, and "this repo" in them means the examples repository. The findings about the harnesses, the team, the rig and the runs left that file on 2026-09-26; each keeps its heading here as a pointer, so every citation still resolves. New findings go at the end, from F29.
 
 ## F1 — The served prompt's trace scope is module state in the caller package; a process must hold one copy of `@synadia-ai/agents`
 
@@ -26,11 +26,11 @@
 
 ## F4 — Ollama's origin for the proxy is `http://localhost:11434`, without `/v1`
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F5 — Which local model calls the tools properly decides whether the tree exists
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F6 — Resolving a ScratchPad reference through the `sp` CLI needs the whole `ref.make` reply, not the ref record
 
@@ -52,15 +52,15 @@ Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 3
 
 ## F8 — A small model with the two tools in reach delegates its task back; a team needs a loop guard and, for its leaf roles, no tools
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F9 — A coordinator's model writes a ScratchPad reference it was never given, and hands on one it was told to leave out; `prompt_agent` refuses the first and grants the second
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F10 — PI on the fabric with the configuration in `harnesses/pi/`: what the rig showed
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F11 — Who reads references says so: the grant rule holds, and a refusal loses the editor's step
 
@@ -89,7 +89,7 @@ Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 3
 
 ## F12 — OpenClaw on the fabric with the configuration in `harnesses/openclaw/`: what the rig showed
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F13 — Handing on what another agent created: the creator grants at the holder's request, in code; what the rig showed
 
@@ -134,7 +134,7 @@ Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 3
 
 1. **Steps 1 to 5 run on the cloud unchanged.** Only four values differ — the NATS URL, the credentials file, the virtual key and, for a second agent, which of the account's six users signs it — and the pages now say so in their own "A fabric to stand on: the cloud". The identities are the account's, so the assistant signs as `coordinator`, the helper as `researcher` and the caller as `caller`; the agent's kind, owner and name stay what its `.env` says, and the console shows it under that name, not under the user's. **Step 6 does not run there**: the cloud environment starts no ScratchPad (`env.json` has `scratchpad: null`, and `aft env status` names no `sp` binary), so both pages open step 6 by saying it is the rig's and what to do about it.
 2. **The link costs a little, and only on the first hop.** The echo prompt of step 1 took 0.1 s in TypeScript and 0.3 s in Python, against 0.0 s on the rig: that is the round trip to `connect.ngs.global` and back, and every later number is the model's. Step 2's first model-backed prompt 3.5 s (TypeScript) and 2.8 s (Python), 122 tokens in and 43 out, as on the rig; step 4's second prompt 2.2 s; step 5's delegation 10.5 s and 10.6 s, against 8.6 s and 11.4 s on the rig, three model calls each. The tree read in the console is the same shape as the rig's: one root, two threads, four calls (3893 tokens in, 174 out for the TypeScript run), the `prompt_agent` tool call naming the child and the child one level below it with a model call of its own.
-3. **`local/.openrouter-key` meant two different files, and the pages named the wrong one.** Both pages issued the key with `-provider-key-file local/.openrouter-key` from the test repo's checkout. That is what the test repo's own getting-started sets up, but this repository's `README.md` puts the key in **its** `local/.openrouter-key`, and `team/setup.sh` reads that same file, so a reader who set the key up the way this repo says gets `aft: key: the provider key: open local/.openrouter-key: no such file or directory`. Met on this run, on this machine, where only this repo's copy exists. Fixed here: both pages name `../agent-fabric-examples/local/.openrouter-key`, one key file for the pages, the README and the team's scripts alike, with a line saying so.
+3. **`local/.openrouter-key` meant two different files, and the pages named the wrong one.** Both pages issued the key with `-provider-key-file local/.openrouter-key` from the test repo's checkout. That is what the test repo's own getting-started sets up, but this repository's `README.md` puts the key in **its** `local/.openrouter-key`, and `team/setup.sh` reads that same file, so a reader who set the key up the way this repo says gets `aft: key: the provider key: open local/.openrouter-key: no such file or directory`. Met on this run, on this machine, where only this repo's copy exists. Fixed here: both pages name the examples checkout's own `local/.openrouter-key`, one key file for the pages, the README and the team's scripts alike, with a line saying so.
 4. **On the cloud a key outlives its environment.** `aft env down` purges nothing on this account: the tenant keeps its records and its virtual keys, and a key runs out its 24 hours and expires on its own. On the rig a key dies with the environment. The pages' "Stopping" said only the rig's half; it now says both.
 5. **Python prints one line of SSL noise after every reply, and it is not ours.** `returning true from eof_received() has no effect when using ssl` follows each prompt and each agent shutdown, on the cloud only, because only there is the connection TLS. It comes from `nats-py`'s asyncio transport closing a TLS socket, not from the agent, the tool pair or the Python SDK; the reply printed above it is correct and complete. Nothing here can suppress it without swallowing real warnings, so the Python page's trouble table names it and says it is harmless.
 6. **The team runs there, and its tree reads on the account.** `make demo` on the standing cloud environment: `team/setup.sh` read the run's target, issued one key per role with `-apply`, and left `SCRATCHPAD_VOLUME` empty, saying so; five agents came up — coordinator, researcher, writer, PI as the editor, OpenClaw as the summarizer — and the piece came back **77 s** after the prompt. In the console, one tree on `team-demo-dev`: the coordinator at level 0 with `discover_agents` and four `prompt_agent` tool calls, each naming its child, and the researcher, the writer, PI and OpenClaw each one level below with a model call of their own; five threads, ten calls, 49028 tokens in and 6054 out. The handoff is by text, not by reference, for the same reason step 6 is the rig's. The agents page lists all six identities; for about ninety seconds after the team stops the three SDK roles still read online, which is presence's three missed heartbeats (decision 30), not a stale record.
@@ -276,43 +276,43 @@ The fabric repo (Mario): `docs/agent-tools.md` Appendix A says the reference age
 
 ## F19 — PI traced through the fabric add-on: its calls on its child thread, PI `full`, the `asked` row naming it; prompted directly, its model discovers and prompts the researcher
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F20 — OpenClaw traced through the fabric add-on: its call joined to its child thread through the `served` pair, OpenClaw `full` with both halves; prompted directly, its model discovers and prompts the researcher
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F21 — Claude Code on the fabric: the plugin, its hooks and the add-on load from the checkout, its calls go through the proxy to OpenRouter's Messages endpoint, and Claude Code 2.1.280 ignores the channel without an Anthropic credential
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F22 — A harness's key names the harness: the summarizer's key says `openclaw`, and its call still joins through the `served` pair
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F23 — OpenClaw's Runtime line reaches the model provider: `repo=` now names the instance's workspace, `host=` stays
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F24 — Claude Code on the fabric with two keys: an Anthropic API key of its own turns the channel on, the virtual key resolves the model, and the proxy needs no change
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F25 — Claude Code's model is Anthropic's, through the proxy: one Anthropic API key is its credential and the provider key
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F26 — Claude Code is the team's sixth role, the fact-checker: started in a `tmux` session of the team's, one tree with six threads, its calls on its own
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F27 — Claude Code's built-in tools denied: a tool denied by name leaves the model's tool list, so a fabric prompt sees the plugin's tools and cannot stall the turn on a permission prompt or run anything on the host
 
-Moved to agent-fabric-live `docs/findings-examples.md` on 2026-09-26 (decision 38).
+Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples` `docs/findings.md` says where it lives.
 
 ## F28 — Following the README on the live stack: the reader cannot mint a user there, and needs the identity before the key
 
-**Measured 2026-09-26**, following the rewritten `README.md` from this repo on the host against Mario's standing agent-fabric-live stack (`ab3858f`, every service healthy): NATS at `localhost:14422`, the console at `http://localhost:18280`, the proxy at `http://localhost:18281`, `anthropic/claude-sonnet-5` through its `openrouter` provider. The TypeScript agent as `assistant` on user `agent-1`, the Python agent as `helper` on `agent-2` with `AGENT_TOOLS=none`, the caller on `caller`; each agent's `.env` copied from its `env.example`, five lines changed. Both agents came up on the first try, the delegation and the handoff ran as the README says. What a first reader would have hit:
+**Measured 2026-09-26**, following the rewritten `README.md` from this repo on the host against a standing local stack (`ab3858f`, every service healthy): NATS at `localhost:14422`, the console at `http://localhost:18280`, the proxy at `http://localhost:18281`, `anthropic/claude-sonnet-5` through its `openrouter` provider. The TypeScript agent as `assistant` on user `agent-1`, the Python agent as `helper` on `agent-2` with `AGENT_TOOLS=none`, the caller on `caller`; each agent's `.env` copied from its `env.example`, five lines changed. Both agents came up on the first try, the delegation and the handoff ran as the README says. What a first reader would have hit:
 
 1. **The local console cannot mint a user.** The brief (and Mario's choice) was a user through the console's onboarding screen. On the live stack the console runs in dev mode, pinned to T1, without the Control Plane: `GET /api/tenants/<T1>/users` answers `not_configured` ("the link is not configured on this instance: it runs with -dev-tenant, …"), and the onboarding's user step needs that route. `provision local` has no command that adds a user to a standing rig: `up` mints the whole rig again, which would end the stack's keys. What the rig does have is two users minted for agents of one's own, `agent-1` and `agent-2`, next to `caller`. The README's "Until the release" section now says so and uses them. On the cloud the onboarding mints users; this is the local stack's gap. **Where it belongs:** an ask to the live repo, if a reader needs more than two agents of their own: more spare users at mint, or a way to add one to a standing rig.
 2. **The key manager asks for the identity before the agent has one to show.** Its form wants the agent's user key, `<account>.<user>`; nothing in the first README said where to read it, and the agent refuses to start without `MODEL_VIRTUAL_KEY`. The echo agent needs only the NATS lines and prints `identity: <account>.<user>`, which is what the form takes. The README now runs the echo agent once before the key. Fixed here.

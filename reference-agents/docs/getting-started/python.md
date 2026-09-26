@@ -13,23 +13,23 @@ You will put one agent on the fabric and grow it in six steps. Each step adds on
 | 5 | can discover and prompt other agents | a child thread under a tool call |
 | 6 | hands work over through ScratchPad | a commit, a grant and a read on the timeline |
 
-The agent is `agents/py/` in this repository. It is the reference agent: what you copy and change. Steps 2 to 6 are one program, `fabric_agent/agent.py`, with more of its configuration switched on each time. Read it next to this page. Its four behaviours are marked `(1)` to `(4)` where they happen.
+The agent is `reference-agents/python/` in this repository. It is the reference agent: what you copy and change. Steps 2 to 6 are one program, `fabric_agent/agent.py`, with more of its configuration switched on each time. Read it next to this page. Its four behaviours are marked `(1)` to `(4)` where they happen.
 
 ## Before you start
 
 **The tools.** Python 3.11 or later and `uv`, Node 20 or later with npm for `make setup`; `nats-server` on PATH for the tests; until the packages are published, `bun`, with which `make setup` builds the SDK's TypeScript packages. For step 6, if your fabric has ScratchPad, its command line `sp`, built from ScratchPad's repository.
 
-**The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). Until they are published, they come from two checkouts next to this one, the SDK's and the fabric package's. `make setup` at the repository's root checks that both are there and on the right branch, builds their TypeScript packages, and installs both agents. For Python nothing is built: `uv` installs the three packages editable from the checkouts (`pyproject.toml`, `[tool.uv.sources]`). The repository's `README.md` ends with where a colleague finds a fabric until the release.
+**The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). Until they are published, the SDK comes from its checkout next to this repository, and the fabric package is this repository's own (`../typescript`, `../python`). `make setup` in `reference-agents/` checks that the SDK's checkout is there and on the right branch, builds the TypeScript packages, and installs both agents. For Python nothing is built: `uv` installs the three packages editable from their directories (`pyproject.toml`, `[tool.uv.sources]`).
 
 **Install and test the agent:**
 
 ```sh
-make setup            # at the repository's root: the packages, then both agents
-cd agents/py
+make setup            # in reference-agents/: the packages, then both agents
+cd python
 uv run pytest -q      # 16 tests; they need nats-server on PATH
 ```
 
-One of the tests starts the TypeScript agent and has the two prompt each other; it needs `agents/ts` installed (`make setup` does it) and `node` on PATH, and skips itself otherwise.
+One of the tests starts the TypeScript agent and has the two prompt each other; it needs `reference-agents/typescript` installed (`make setup` does it) and `node` on PATH, and skips itself otherwise.
 
 ## What your fabric gives you
 
@@ -47,7 +47,7 @@ This page uses three identities: `assistant`, the agent you grow; `helper`, a se
 
 ## Step 1: an agent that echoes
 
-Two small files in `agents/py/`. Both are gitignored, as every `.env` file here is.
+Two small files in `reference-agents/python/`. Both are gitignored, as every `.env` file here is.
 
 `.env`, the agent:
 
@@ -226,7 +226,7 @@ The assistant's terminal shows its model deciding:
 
 **The tools are the SDK's.** `AgentTools` carries six, with the words the model reads and what each call does (the SDK's `docs/agent-tools.md`). The agent offers three of them unless told otherwise, `discover_agents`, `prompt_agent` and `answer_agent`, and every prompt waits for its reply (`AGENT_TOOLS=blocking`, the default; `all` offers the six). `fabric_agent/tools.py` shows them to the model: each definition wrapped as a chat-completions `function`, not a word changed, and the result of a call, a JSON object, handed back as the `tool` message. The agent gives its service the tools' request interceptor after tracing's, `[tracing.request_interceptor, tools.request_interceptor, references.request_interceptor]` in `fabric_agent/agent.py`, so the calls the model makes belong to the prompt being served: they end with it, and a question the helper asks comes back to the assistant's model, which answers it with `answer_agent`. The third interceptor is the fabric package's ScratchPad extension, `scratch_pad_extension`, which step 6 puts to work. Every definition is input tokens on every model call: the three cost about 935 tokens a call less than the six (`docs/findings.md` F18).
 
-**Two guards.** `prompt_agent` refuses the agent's own address, and the agent that sent the prompt being served, when that sender signed: the two shortest loops. A role that must never delegate gets no tools at all. A small model with the tools in reach walks into both when it would rather ask back than answer. `tools/README.md` has the rest.
+**Two guards.** `prompt_agent` refuses the agent's own address, and the agent that sent the prompt being served, when that sender signed: the two shortest loops. A role that must never delegate gets no tools at all. A small model with the tools in reach walks into both when it would rather ask back than answer. `reference-agents/README.md`, "The agent tools", has the rest.
 
 ## Step 6: ScratchPad, and the first handoff
 
@@ -287,11 +287,11 @@ The helper's terminal shows the handoff arriving: `[e2abeb00] read sp-ref:eyJyZW
 
 **The rule behind it: least authority.** Nothing is granted when content is committed. A grant goes to one agent, on the one path the reference names, read only, for ten minutes (`SCRATCHPAD_GRANT_TTL_S`), and to an identity discovery verified, never to a name the model wrote. The package's `scratchpad_cli.py` makes the grant and says why at each step.
 
-**Handing on what you were handed.** The assistant could grant here because the text was its own. When an agent hands on content another agent created, it cannot grant: in ScratchPad only a volume's owner grants, and being allowed to read is not being allowed to pass on. So the agent's code asks the creator's code, in one signed request, to grant the final recipient, and the creator's code decides by a fixed rule. The rule is conservative: only an agent the creator handed the reference itself may ask, and the agent granted at its request may read and may not ask for anyone else. No model sees the request. If the creator is gone or refuses, the reference comes out of the prompt and the text goes alone. The fabric package's ScratchPad extension does it inside `prompt_agent`, and its grant request is the exchange (`request_grant` and `grant_request_endpoint`); `tools/README.md` has the rule.
+**Handing on what you were handed.** The assistant could grant here because the text was its own. When an agent hands on content another agent created, it cannot grant: in ScratchPad only a volume's owner grants, and being allowed to read is not being allowed to pass on. So the agent's code asks the creator's code, in one signed request, to grant the final recipient, and the creator's code decides by a fixed rule. The rule is conservative: only an agent the creator handed the reference itself may ask, and the agent granted at its request may read and may not ask for anyone else. No model sees the request. If the creator is gone or refuses, the reference comes out of the prompt and the text goes alone. The fabric package's ScratchPad extension does it inside `prompt_agent`, and its grant request is the exchange (`request_grant` and `grant_request_endpoint`); `reference-agents/README.md`, "The rules for references", has the rule.
 
 ## Where next
 
-- **Your own agent:** copy `agents/py/`. Keep the four behaviours; change the persona, the description and what the model loop does. `tools/README.md` says how an agent wires the SDK's agent tools into its model loop.
+- **Your own agent:** copy `reference-agents/python/`. Keep the four behaviours; change the persona, the description and what the model loop does. `reference-agents/README.md`, "The agent tools", says how an agent wires the SDK's agent tools into its model loop.
 - **The other language:** `typescript.md`. The two agents give their models the same tools in the same words and write the same reference token, so either one prompts, and hands work to, the other.
 - **Harnesses:** Claude Code, OpenClaw and PI join the fabric through their plugins in the SDK repository's `agents/` and the fabric add-ons in the fabric package's `plugins/`.
 - **Which model:** the model decides whether a chain of agents works. Sonnet 5 runs these steps right the first time. A small local model invents agents, replies and references, or changes a character of a reference it hands on (`docs/findings.md` F11).

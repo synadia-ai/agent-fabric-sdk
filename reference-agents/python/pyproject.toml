@@ -24,13 +24,13 @@ dev = [
 [tool.uv]
 package = false
 
-# The two SDK packages and the fabric package from the checkouts next door,
-# until they are published. One source for each SDK package here also
+# The two SDK packages from the checkout next door and the fabric package from
+# this repository, until they are published. One source for each SDK package here also
 # resolves the other packages' own dependencies on them, so one copy.
 [tool.uv.sources]
 synadia-ai-agents = { path = "../../../synadia-agents/client-sdk/python", editable = true }
 synadia-ai-agent-service = { path = "../../../synadia-agents/agent-sdk/python", editable = true }
-synadia-ai-agent-fabric = { path = "../../../agent-fabric-sdk/python", editable = true }
+synadia-ai-agent-fabric = { path = "../../python", editable = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

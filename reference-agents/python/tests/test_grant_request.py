@@ -50,7 +50,7 @@ from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_
 
 # The two shapes of the exchange, in the fabric package's checkout this
 # repository links.
-SCHEMAS_DIR = Path(__file__).resolve().parents[4] / "agent-fabric-sdk" / "test-fixtures" / "schemas"
+SCHEMAS_DIR = Path(__file__).resolve().parents[3] / "test-fixtures" / "schemas"
 REQUEST = Draft202012Validator(json.loads((SCHEMAS_DIR / "sp-grant-request.json").read_text(encoding="utf-8")))
 REPLY = Draft202012Validator(json.loads((SCHEMAS_DIR / "sp-grant-reply.json").read_text(encoding="utf-8")))
 

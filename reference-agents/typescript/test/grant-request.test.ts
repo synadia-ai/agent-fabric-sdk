@@ -42,7 +42,7 @@ import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server
 
 // The two shapes of the exchange, in the fabric package's checkout this
 // repository links.
-const SCHEMAS_DIR = new URL("../../../../agent-fabric-sdk/test-fixtures/schemas/", import.meta.url);
+const SCHEMAS_DIR = new URL("../../../test-fixtures/schemas/", import.meta.url);
 const loadJson = (name: string): Record<string, unknown> =>
   JSON.parse(readFileSync(new URL(name, SCHEMAS_DIR), "utf8")) as Record<string, unknown>;
 const ajv = new Ajv2020({ strict: true, allowUnionTypes: true });

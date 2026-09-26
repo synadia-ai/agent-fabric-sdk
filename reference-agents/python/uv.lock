@@ -26,7 +26,7 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "nats-py", specifier = ">=2.7" },
-    { name = "synadia-ai-agent-fabric", editable = "../../../agent-fabric-sdk/python" },
+    { name = "synadia-ai-agent-fabric", editable = "../../python" },
     { name = "synadia-ai-agent-service", editable = "../../../synadia-agents/agent-sdk/python" },
     { name = "synadia-ai-agents", editable = "../../../synadia-agents/client-sdk/python" },
 ]
@@ -643,7 +643,7 @@ wheels = [
 [[package]]
 name = "synadia-ai-agent-fabric"
 version = "0.1.0"
-source = { editable = "../../../agent-fabric-sdk/python" }
+source = { editable = "../../python" }
 dependencies = [
     { name = "synadia-ai-agent-service" },
     { name = "synadia-ai-agents" },

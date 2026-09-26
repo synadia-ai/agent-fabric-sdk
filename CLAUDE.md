@@ -3,7 +3,10 @@
 The SDK for agents on the Synadia Agent Fabric: `@synadia-ai/agent-fabric`
 (TypeScript) and `synadia-ai-agent-fabric` (Python, `synadia_ai.agent_fabric`).
 Tracing and the agent tools' ScratchPad extension today; the proxy helpers
-later. Private while it is built, public at the release.
+later. Under `reference-agents/` sit the two reference agents, TypeScript
+and Python, the worked example of the package, as the protocol SDK keeps
+its examples beside each package (moved from the examples repository on
+2026-09-27). Private while it is built, public at the release.
 
 Under `plugins/` sit the fabric add-ons for the harness plugins, one small
 TypeScript package per harness, `plugins/pi` and `plugins/openclaw` built
@@ -51,6 +54,11 @@ plugins/             the fabric add-ons for the harness plugins, one package per
   claude-code/       @synadia-ai/agent-fabric-claude-code — built the same way
     src/extension.ts the factory: tracing's hooks, the guard, the served pair on the session, end at the Stop
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
+reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
+  typescript/        the TypeScript agent: src/agent.ts (the four behaviours), its caller, its echo; vitest
+  python/            the Python agent: fabric_agent/agent.py, the same; pytest, with the interop of the two
+  docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F28)
+  Makefile, scripts/setup.sh   `make setup` (the SDK checked and built, this package built, both agents installed), `make test`
 ```
 
 ## Rules
@@ -115,8 +123,19 @@ the checkout of `synadia-agents` on branch `sdk-release-rollout`, expected at
   does not hoist a linked package's own links; installed with npm, no
   lockfile committed.
 
+- The reference agents, `reference-agents/typescript` and
+  `reference-agents/python`: this package by relative path
+  (`file:../../typescript`, `path = "../../python"`), the SDK by the same
+  sibling links (`file:../../../synadia-agents/…`). Unlike the packages they
+  commit their lockfiles, `package-lock.json` and `uv.lock`, as they did in
+  the examples repository. `make setup` in `reference-agents/` does the
+  builds above and installs both.
+
 When the SDK is published, replace both with the released versions
 (`^0.x` / `>=0.x`), commit a TypeScript lockfile, and drop this section.
+**At the publication of this package**, the reference agents' links switch
+to the published versions of all three packages, and `make setup` shrinks
+to `npm install` and `uv sync`.
 
 ## Running the suites
 
@@ -140,7 +159,15 @@ npm install
 npm run typecheck && npm run lint && npm run format:check
 npm test                      # unit with a fake plugin + integration with a nats-server
 npm run build                 # dist/, what SYNADIA_PI_EXTENSIONS (…_OPENCLAW_…, …_CLAUDE_CODE_…) points at
+
+cd ../../reference-agents     # after typescript/ is built; `make setup` builds and installs
+make setup
+make test                     # typescript: typecheck + npm test; python: pytest, with the TS agent in the interop
 ```
+
+All suites green means all of these: the two packages', the three add-ons',
+and the reference agents' two (`reference-agents/typescript` `npm test`,
+`reference-agents/python` `pytest`).
 
 The cross-version interop cases (against the last published, pre-tracing
 SDK releases) are skipped unless `SYNADIA_INTEROP_PRETRACING_PY_PYTHON` /
@@ -159,8 +186,9 @@ prepare them.
 - The agent tools and their extension hooks: `synadia-agents`
   `docs/agent-tools.md` §6.3 (#207); the fabric's view,
   `synadia-agent-fabric/docs/agent-tools.md` §2.1–§2.2; the rules the
-  extension was ported from, `agent-fabric-examples` `tools/README.md` and
-  `agents/*/` at `1e783a3`.
+  extension was ported from, the reference agents' `tools/README.md` and
+  `agents/*/` at `1e783a3`, in the examples repository before they moved
+  here (`reference-agents/`, 2026-09-27).
 - The tracing this was rebuilt from: `synadia-agents` at `c9d7bcb`
   (`client-sdk/typescript/src/trace.ts`, `agent.ts`; `agent-sdk/*/service.*`;
   the Python twins). The tests the split deleted: `git show --stat 6bc5527`.

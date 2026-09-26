@@ -20,7 +20,7 @@ happens, so the file can be read as the list:
         package's, the rules and the ScratchPad they run on; this agent writes
         no ScratchPad code, it is configured (``SCRATCHPAD_VOLUME``).
 
-The same agent as ``agents/ts/src/agent.ts``, in Python: the same tool
+The same agent as ``typescript/src/agent.ts``, in Python: the same tool
 definitions, the same words to the model, the same reference token. One
 history per process, shared by every caller, is a deliberate simplification.
 """

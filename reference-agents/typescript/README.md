@@ -8,7 +8,7 @@
 | --- | --- |
 | `src/agent.ts` | the agent: the four behaviours, each marked where it happens |
 | `src/main.ts` | starts one agent from the environment; `npm start` |
-| `src/echo.ts` | the smallest agent, behaviour (1) alone: a signed identity, tracing on through the fabric package, every prompt answered with the prompt; `npm run echo`. Step 1 of `docs/getting-started/typescript.md` |
+| `src/echo.ts` | the smallest agent, behaviour (1) alone: a signed identity, tracing on through the fabric package, every prompt answered with the prompt; `npm run echo`. Step 1 of `../docs/getting-started/typescript.md` |
 | `src/config.ts` | every variable the agent reads, with its default |
 | `src/model.ts` | one chat-completions client pointed at the proxy, and the loop that runs the model's tool calls |
 | `src/tools.ts` | the model loop's side of the SDK's agent tools: their definitions as chat-completions `function`s, not a word changed, and a call run by name with the model's tool-call id |
@@ -20,24 +20,24 @@
 
 ScratchPad comes from the fabric package: `scratchPadFromEnv` in `src/agent.ts` builds it from `SCRATCHPAD_VOLUME` and the package's other three variables, over the `sp` command line, and gives nothing when the volume is unset. The package tests it against a stand-in `sp`.
 
-New here? `docs/getting-started/typescript.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
+New here? `../docs/getting-started/typescript.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
 
 ## Prerequisites
 
 - Node 20 or later, npm.
 - `nats-server` on PATH for the tests (`brew install nats-server`); without it the fabric tests skip themselves.
-- Until the packages are published: `make setup` at the repository's root. It checks the SDK checkout `../../../synadia-agents` and the fabric package's checkout `../../../agent-fabric-sdk` are there and on their branches (the `Makefile` names them), builds the SDK's two TypeScript packages and then the fabric package's, and installs this agent. It builds only what changed, so it is safe to run again.
+- Until the packages are published: `make setup` in `reference-agents/`. It checks the SDK checkout `../../../synadia-agents` is there and on its branch (the `Makefile` names it), builds the SDK's two TypeScript packages and then this repository's fabric package, `../../typescript`, and installs this agent. It builds only what changed, so it is safe to run again.
 - For ScratchPad, which is optional: the `sp` binary, ScratchPad's command line, built from ScratchPad's repository, and a credentials file (an nkey seed alone is not a form `sp` takes).
 
 ## Install and test
 
 ```sh
-make setup            # at the repository's root
+make setup            # in reference-agents/
 npm run typecheck
 npm test
 ```
 
-The three packages are `file:` links into those checkouts, which npm installs as symlinks: what you build there is what the agent runs next, with nothing to reinstall here. `@synadia-ai/agents` and `@synadia-ai/agent-service` are the protocol SDK, the agent tools (`AgentTools`) among it; `@synadia-ai/agent-fabric` is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratchPadExtension`, the grant request), and the ScratchPad they run on (`scratchPadFromEnv`). The agent wires them in `src/agent.ts`: `fabricTracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, and the grant endpoint. Use npm, not bun: bun 1.4.0 cannot install this manifest (`docs/findings.md` F2). The SDK keeps the served prompt's trace scope on `globalThis`, so a process that holds two copies of a package still hangs child threads under the right parent (F1). When the packages are published, the links become versions.
+The three packages are `file:` links into those directories, which npm installs as symlinks: what you build there is what the agent runs next, with nothing to reinstall here. `@synadia-ai/agents` and `@synadia-ai/agent-service` are the protocol SDK, the agent tools (`AgentTools`) among it; `@synadia-ai/agent-fabric` is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratchPadExtension`, the grant request), and the ScratchPad they run on (`scratchPadFromEnv`). The agent wires them in `src/agent.ts`: `fabricTracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, and the grant endpoint. Use npm, not bun: bun 1.4.0 cannot install this manifest (`../docs/findings.md` F2). The SDK keeps the served prompt's trace scope on `globalThis`, so a process that holds two copies of a package still hangs child threads under the right parent (F1). When the packages are published, the links become versions.
 
 ## Run
 
@@ -46,7 +46,7 @@ cp env.example .env      # fill in the credentials path, the proxy URL, the virt
 npm start
 ```
 
-The agent needs a fabric that already stands: a NATS server it has credentials for, the model proxy with a provider behind it, a virtual key issued for this agent that names that provider, and, for references, ScratchPad in the account. The root `README.md`, "Run it", says where each comes from; `env.example` names every variable. The proxy prefixes the provider origin's path to the request's, so `MODEL_PROXY_URL` ends in `/api` for OpenRouter and in nothing for a local Ollama, whose origin is `http://localhost:11434` without `/v1`.
+The agent needs a fabric that already stands: a NATS server it has credentials for, the model proxy with a provider behind it, a virtual key issued for this agent that names that provider, and, for references, ScratchPad in the account. `../README.md`, "Run it", says where each comes from; `env.example` names every variable. The proxy prefixes the provider origin's path to the request's, so `MODEL_PROXY_URL` ends in `/api` for OpenRouter and in nothing for a local Ollama, whose origin is `http://localhost:11434` without `/v1`.
 
 ## The tools the model is offered
 
@@ -58,8 +58,8 @@ The agent needs a fabric that already stands: a NATS server it has credentials f
 | `all` | the six: also `prompt_agent`'s `wait: false`, `wait_agent`, `cancel_agent` and `list_agent_calls`, for a model that runs prompts side by side |
 | `none` | nothing, for a role that must answer itself: a model with the tools in reach may delegate what it was asked, even back to its caller |
 
-Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six (`docs/findings.md` F18).
+Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six (`../docs/findings.md` F18).
 
 ## How it reads
 
-`agent.ts` is the file to read; it is the list of the four behaviours with the code under each. The model loop in `model.ts` is one request per model call, no streaming, so a tool round is one request and one JSON reply. `tools.ts` is what a customer copies to show their own model loop the SDK's agent tools; `tools/README.md` at the repository root says how an agent wires them, and states the rules for references once.
+`agent.ts` is the file to read; it is the list of the four behaviours with the code under each. The model loop in `model.ts` is one request per model call, no streaming, so a tool round is one request and one JSON reply. `tools.ts` is what a customer copies to show their own model loop the SDK's agent tools; `../README.md`, "The agent tools", says how an agent wires them, and states the rules for references once.

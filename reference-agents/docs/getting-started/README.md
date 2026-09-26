@@ -4,10 +4,10 @@
 
 | Page | The agent |
 | --- | --- |
-| [TypeScript](typescript.md) | `agents/ts/` |
-| [Python](python.md) | `agents/py/` |
+| [TypeScript](typescript.md) | `reference-agents/typescript/` |
+| [Python](python.md) | `reference-agents/python/` |
 
-Pick one. The two agents do the same four things, give their models the same tools in the same words, the SDK's, and write the same reference token, so an agent in one language prompts, and hands work to, an agent in the other (`agents/py/tests/test_interop.py`).
+Pick one. The two agents do the same four things, give their models the same tools in the same words, the SDK's, and write the same reference token, so an agent in one language prompts, and hands work to, an agent in the other (`reference-agents/python/tests/test_interop.py`).
 
 ## The six steps
 
@@ -27,5 +27,5 @@ Step 1 is a program of its own, the echo agent (`src/echo.ts`, `fabric_agent/ech
 ## What the pages rest on
 
 - **A fabric:** its NATS URL, a user credentials file per agent from the console's onboarding, the model proxy's URL, and a virtual key per agent from the console's key manager. Each page's "What your fabric gives you" lists them.
-- **The packages,** installed by `make setup` at the repository's root.
+- **The packages,** installed by `make setup` in `reference-agents/`.
 - **A capable model.** The pages use Sonnet 5. With a small local model, steps 5 and 6 are where it shows: it invents addresses, asks back instead of answering, or changes a character of a reference (`docs/findings.md` F11).

@@ -1,0 +1,13 @@
+# per-developer state: local config, credentials, virtual keys
+local/
+*.creds
+.env
+.env.*
+
+# built artifacts and caches
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

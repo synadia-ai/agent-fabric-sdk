@@ -1,9 +1,10 @@
 // The ScratchPad wrapper against a stand-in for the `sp` command line
 // (`../harness/fake-sp.mjs`): what the wrapper asks the CLI to do, in which
 // order, with which flags. The real ScratchPad was measured by hand
-// (`agent-fabric-examples` `docs/findings.md` F6, the PLAN log); this pins
+// (`reference-agents/docs/findings.md` F6); this pins
 // the calls down so a change in the wrapper shows up in `npm test`. Moved
-// here with the wrapper from `agent-fabric-examples` `agents/ts` at `1ed3c45`.
+// here with the wrapper from the reference agents' `agents/ts` at `1ed3c45`,
+// in the examples repository.
 //
 // The grant is the point: on a reference into the agent's own volume, one
 // `grant issue` to one principal, read only, on the one path, with an
