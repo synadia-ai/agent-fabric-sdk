@@ -24,6 +24,12 @@
 //                             references on `AgentTools`' three extension
 //                             hooks, over the agent's own client behind the
 //                             {@link ScratchPad} port.
+//   - {@link spCliScratchPad}, {@link scratchPadFromEnv} — the ready
+//                             implementation of that port and the agent's
+//                             commit and read ({@link ScratchPadClient}),
+//                             over ScratchPad's `sp` command line, built from
+//                             options or from the four `SCRATCHPAD_*`
+//                             variables.
 //   - {@link requestGrant}, {@link grantRequestEndpoint} — the grant request,
 //                             both sides: asking a reference's creator to let
 //                             one more agent read it, and answering.
@@ -119,6 +125,20 @@ export {
   scratchPadExtension,
   type ScratchPadExtensionOptions,
 } from "./scratchpad-extension.js";
+
+export {
+  DEFAULT_GRANT_TTL_S,
+  DEFAULT_SP_BIN,
+  SCRATCHPAD_BIN_VAR,
+  SCRATCHPAD_DIR_VAR,
+  SCRATCHPAD_GRANT_TTL_S_VAR,
+  SCRATCHPAD_VOLUME_VAR,
+  scratchPadFromEnv,
+  spCliScratchPad,
+  type ScratchPadClient,
+  type ScratchPadFromEnvOptions,
+  type SpCliScratchPadOptions,
+} from "./scratchpad-cli.js";
 
 export { loopGuard, loopGuardDescription, LOOP_GUARD_CODE, type LoopGuard } from "./loop-guard.js";
 

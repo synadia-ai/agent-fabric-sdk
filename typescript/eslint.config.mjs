@@ -10,6 +10,8 @@ export default tseslint.config(
       "eslint.config.mjs",
       "*.config.ts",
       "*.config.mts",
+      // A stand-in for the `sp` CLI, run as a program by the tests.
+      "test/harness/*.mjs",
     ],
   },
   ...tseslint.configs.recommendedTypeChecked,
