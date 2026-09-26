@@ -245,6 +245,22 @@ async def test_nothing_is_granted_read_or_copied_on_a_reference_into_someone_els
     assert reference_creator(theirs) is None
 
 
+async def test_a_token_that_does_not_decode_or_names_no_volume_is_refused_without_raising(
+    pad: tuple[SpCliScratchPad, Path],
+) -> None:
+    sp, _ = pad
+    await sp.commit("mine", "/replies/t6.md", TRACE)  # the wrapper knows its own volume
+
+    def token(body: bytes) -> str:
+        return "sp-ref:" + base64.urlsafe_b64encode(body).decode().rstrip("=")
+
+    no_ref = token(b'{"source_sequence":3}')
+    no_volume_id = token(b'{"ref":{"root":"r"}}')
+    for reference in ["sp-ref:!!!not-base64url", "sp-ref:bm90IGpzb24", no_ref, no_volume_id]:
+        assert await sp.owns(reference) is False
+        assert sp.granted(reference, GRANTEE) is None
+
+
 async def test_it_owns_nothing_before_it_has_a_volume_and_creates_none_to_find_out(
     tmp_path: Path, pad: tuple[SpCliScratchPad, Path]
 ) -> None:

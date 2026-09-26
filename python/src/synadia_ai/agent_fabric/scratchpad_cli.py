@@ -338,9 +338,17 @@ class SpCliScratchPad:
         """Whether ``reference`` points into this agent's own volume, where it may grant."""
         # An agent that has committed nothing yet has no volume, and owns
         # nothing. The port passes no thread; inside a served prompt the
-        # listing that answers this still goes on that prompt's thread.
+        # listing that answers this still goes on that prompt's thread. A
+        # token that does not decode points into no volume of this agent's:
+        # ``False``, never a raise, since the extension asks this of tokens
+        # other agents sent.
         own = await self._find_volume(_served_trace())
-        return own is not None and _decode_reference(reference)["ref"]["volume_id"] == own["id"]
+        if own is None:
+            return False
+        try:
+            return bool(_decode_reference(reference)["ref"]["volume_id"] == own["id"])
+        except ValueError:
+            return False
 
     async def grant_read(
         self,

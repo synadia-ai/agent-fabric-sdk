@@ -145,13 +145,22 @@ function decodeReference(reference: string): RefMakeReply {
   if (!reference.startsWith(REFERENCE_PREFIX)) {
     throw new Error(`not a ScratchPad reference: ${reference.slice(0, 20)}`);
   }
+  let made: unknown;
   try {
-    return JSON.parse(
+    made = JSON.parse(
       Buffer.from(reference.slice(REFERENCE_PREFIX.length), "base64url").toString(),
-    ) as RefMakeReply;
+    );
   } catch {
     throw new Error("malformed ScratchPad reference");
   }
+  // A token from another agent is data: one without a `ref` naming a
+  // volume is malformed, as the Python package decides it.
+  const ref =
+    typeof made === "object" && made !== null ? (made as { ref?: unknown }).ref : undefined;
+  if (typeof ref !== "object" || ref === null || Array.isArray(ref) || !("volume_id" in ref)) {
+    throw new Error("malformed ScratchPad reference");
+  }
+  return made as RefMakeReply;
 }
 
 /**
@@ -356,8 +365,17 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
     async owns(reference) {
       // An agent that has committed nothing yet has no volume, and owns
       // nothing. The port passes no thread; inside a served prompt the
-      // listing that answers this still goes on that prompt's thread.
-      return decodeReference(reference).ref.volume_id === (await findVolume(activeTrace()))?.id;
+      // listing that answers this still goes on that prompt's thread. A
+      // token that does not decode points into no volume of this agent's:
+      // `false`, never a throw, since the extension asks this of tokens
+      // other agents sent.
+      const own = await findVolume(activeTrace());
+      if (own === undefined) return false;
+      try {
+        return decodeReference(reference).ref.volume_id === own.id;
+      } catch {
+        return false;
+      }
     },
 
     async grantRead(reference, grantee, trace, toolCallId, kind = "first-hand") {

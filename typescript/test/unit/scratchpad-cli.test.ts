@@ -242,6 +242,16 @@ describe("the ScratchPad wrapper over the sp command line", () => {
     expect(referenceCreator(theirs)).toBeUndefined();
   });
 
+  it("refuses a token that does not decode or names no volume, without throwing", async () => {
+    await pad.commit("mine", "/replies/t6.md", TRACE); // the wrapper knows its own volume
+    const noRef = `sp-ref:${Buffer.from(JSON.stringify({ source_sequence: 3 })).toString("base64url")}`;
+    const noVolumeId = `sp-ref:${Buffer.from(JSON.stringify({ ref: { root: "r" } })).toString("base64url")}`;
+    for (const token of ["sp-ref:!!!not-base64url", "sp-ref:bm90IGpzb24", noRef, noVolumeId]) {
+      await expect(pad.owns(token)).resolves.toBe(false);
+      expect(pad.granted(token, GRANTEE)).toBeUndefined();
+    }
+  });
+
   it("owns nothing before it has a volume, and does not create one to find out", async () => {
     const fresh = spCliScratchPad({
       bin: FAKE_SP,
