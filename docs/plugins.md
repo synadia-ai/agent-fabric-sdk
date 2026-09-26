@@ -560,7 +560,8 @@ window, tells their calls apart.
 
 **What the test repo asserts.** Nothing yet: the test repo runs PI as its
 harness and has no OpenClaw scenario. The examples' team run is the check
-(§8), recorded as a finding: `agent-fabric-examples` F20 (2026-09-23), the
+(§8), recorded as a finding: the examples' F20 (2026-09-23; since 2026-09-26
+in `agent-fabric-live` `docs/findings-examples.md`), the
 summarizer's call joined through the pair in the team, and OpenClaw's model
 delegating to the researcher when prompted directly, every call of the turn,
 tool turns included, under the one seeded id.
@@ -752,7 +753,8 @@ but no `edge` and no `served` record is published, each counts as dropped,
 and OpenClaw's and Claude Code's calls stand as harness threads of their
 own, unbound.
 
-**PI**, from `agent-fabric-examples` `harnesses/pi/` and the test repo's
+**PI**, from `agent-fabric-live` `harnesses/pi/` (the examples' until
+2026-09-26) and the test repo's
 `internal/piagent/piagent.go`:
 
 1. PI on `PATH` (0.85.1 here; the plugin's peer range is
@@ -763,7 +765,7 @@ own, unbound.
    of this repo built.
 3. `SYNADIA_PI_EXTENSIONS=<path or name>`, or `"extensions": ["…"]` in
    `nats-channel.json`. The add-on's presence is the switch: there is no
-   `tracing` setting, and the examples' `harnesses/pi/config/` carries
+   `tracing` setting, and the live repo's `harnesses/pi/config/` carries
    none since their PR #26 (2026-09-23); the test repo's launcher sets the
    variable (`internal/piagent/piagent.go`).
 4. A NATS context with PI's own credentials in `nats-context.json`,
@@ -776,7 +778,7 @@ own, unbound.
    (`run.sh`; `piagent.go`). The connected line names the loaded
    extensions.
 
-**OpenClaw**, from `harnesses/openclaw/`:
+**OpenClaw**, from `agent-fabric-live` `harnesses/openclaw/`:
 
 1. OpenClaw 2026.8 or later and a Node it accepts (`≥24.16 <25`, or
    `≥26.1`; the examples pin 2026.9.4 with Node 24). The public plugin from
@@ -786,8 +788,8 @@ own, unbound.
 2. The add-on: `npm install @synadia-ai/agent-fabric-openclaw`.
 3. `SYNADIA_OPENCLAW_EXTENSIONS=<path or name>`, or `"extensions": ["…"]`
    in `channels.nats.accounts.default`. The add-on's presence is the
-   switch: there is no `tracing` setting, and the examples'
-   `harnesses/openclaw/config/` carries none since their PR #27
+   switch: there is no `tracing` setting, and the live repo's
+   `harnesses/openclaw/config/` carries none since the examples' PR #27
    (2026-09-23).
 4. `senderIdentity: signed` with `credentials` OpenClaw's own.
 5. The proxy as the `fabric` provider in `models.providers`, the key from
@@ -803,8 +805,10 @@ own, unbound.
    directory of its own (`run.sh`). The `gateway starting` line names the
    loaded extensions.
 
-**Claude Code**, from `agent-fabric-examples` `harnesses/claude-code/`,
-measured on Claude Code 2.1.281 in its F24 and F25 (2026-09-24):
+**Claude Code**, from `agent-fabric-live` `harnesses/claude-code/` (the
+examples' until 2026-09-26), measured on Claude Code 2.1.281 in the examples'
+F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
+`docs/findings-examples.md`):
 
 1. `claude` and `bun` on `PATH` (the plugin's server and hooks run on bun).
    The plugin from the checkout, `claude --plugin-dir
