@@ -70,6 +70,19 @@ class LocalNatsServer:
         config = directory / "server.conf"
         entries = ", ".join(f'{{ nkey: "{u.public_key}" }}' for u in users)
         config.write_text(f"authorization {{ users: [ {entries} ] }}\n", encoding="utf-8")
+        return cls._launch(binary, directory, config)
+
+    @classmethod
+    def start_with_config(cls, binary: str, config: Path) -> LocalNatsServer:
+        """Start a server from a port-less configuration file, such as the
+        operator-mode one in this repository's ``test-fixtures/identity/``,
+        whose users connect with ``.creds`` files: a real ``(account, user)``
+        identity, and credentials ScratchPad's CLI takes."""
+        directory = Path(tempfile.mkdtemp(prefix="fabric-examples-nats-"))
+        return cls._launch(binary, directory, config)
+
+    @classmethod
+    def _launch(cls, binary: str, directory: Path, config: Path) -> LocalNatsServer:
         port = _free_port()
         log = open(directory / "server.log", "wb")  # noqa: SIM115 — closed with the process
         proc = subprocess.Popen(

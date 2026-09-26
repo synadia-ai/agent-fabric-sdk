@@ -6,8 +6,10 @@
 //   FAKE_SP_LOG          one JSON line per call: {"argv": [...], "stdin": ...}
 //   FAKE_SP_STATE        a JSON file where `put` keeps content by path, so a
 //                        later `cat` returns what was committed
-//   FAKE_SP_VOLUME       the name `volume list` reports for the one volume,
-//                        `vol-own` (default "test-volume")
+//   FAKE_SP_VOLUME       the name `volume list` reports for the one volume
+//                        (default "test-volume")
+//   FAKE_SP_VOLUME_ID    that volume's id (default "vol-own"); two agents on
+//                        one FAKE_SP_STATE each take their own
 //   FAKE_SP_DENY_VOLUME  a volume id whose `cat` is refused the way the real
 //                        CLI refuses one: JSON on stderr, exit 13
 //
@@ -48,17 +50,18 @@ function refuse(code, message, exit) {
 }
 
 const now = Date.now();
+const volumeId = process.env.FAKE_SP_VOLUME_ID ?? "vol-own";
 let reply;
 switch (verb) {
   case "volume list":
     reply = {
       volumes: [
-        { id: "vol-own", name: process.env.FAKE_SP_VOLUME ?? "test-volume", root: "root-0" },
+        { id: volumeId, name: process.env.FAKE_SP_VOLUME ?? "test-volume", root: "root-0" },
       ],
     };
     break;
   case "volume create":
-    reply = { volume: { id: "vol-own", root: "root-0" } };
+    reply = { volume: { id: volumeId, root: "root-0" } };
     break;
   case "session open":
     reply = { session: { id: "sess-1" } };
