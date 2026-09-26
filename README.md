@@ -24,6 +24,18 @@ package's tracing in and adds the harness piece, for PI the fabric's headers
 on its own model calls and the `409` loop guard. The plugins themselves stay
 in the public repo and are never copied here ([`docs/plugins.md`](docs/plugins.md)).
 
+## Reference agents
+
+[`reference-agents/`](reference-agents/) holds the worked example of this
+package: two agents, TypeScript and Python, that take prompts under a signed
+identity, call their model through the fabric's model proxy with the trace
+headers, discover and prompt other agents through the SDK's agent tools with
+the ScratchPad extension, and hand work over by ScratchPad reference, built
+from the environment. Copy one and adapt it. Their README says where each of
+the four behaviours is in the code, how to install them (`make setup`), and
+how to run them; `reference-agents/docs/getting-started/` grows one in six
+steps.
+
 ## Built on the protocol SDK
 
 This package is an extension of the Synadia Agent Protocol SDK
@@ -136,8 +148,8 @@ agent. Then it grants read on the one path, recorded as `on-request`, which
 confers no right to ask again. Content travels at most one hop beyond the
 agents its creator chose.
 
-**Where it differs from the reference agents** (`agent-fabric-examples`
-`1e783a3`, whose tools it replaces): a token repeated in one prompt is
+**Where it differs from the reference agents' own tools** (as they were at
+`1e783a3`, in the examples repository, before this replaced them): a token repeated in one prompt is
 granted or asked for once, and `references_removed` counts every occurrence
 taken out; a reference whose creator is the target itself goes without a
 grant request, since the creator reads its own volume; the references in a
@@ -290,7 +302,7 @@ Measured against the tracing the protocol SDK had at `c9d7bcb`:
   adopts it nor refuses a half pair.
 
 And for the ScratchPad extension, measured against the reference agents'
-own tools (`agent-fabric-examples` `1e783a3`):
+own tools (the examples repository at `1e783a3`):
 
 - **The ScratchPad extension's own client.** A hook sees the target's
   handle but not the helper's client or the handles its discovery found,

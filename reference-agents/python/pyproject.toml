@@ -1,0 +1,39 @@
+[project]
+name = "agent-fabric-example-py"
+version = "0.1.0"
+description = "The Python reference agent of the Synadia Agent Fabric."
+requires-python = ">=3.11"
+dependencies = [
+  "synadia-ai-agents",
+  "synadia-ai-agent-service",
+  # The fabric package: tracing, on the two SDK packages' hooks.
+  "synadia-ai-agent-fabric",
+  "nats-py>=2.7",
+  "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "jsonschema>=4.23",
+  "nkeys>=0.2",
+]
+
+# Not a package to build: modules run in place (`uv run python -m fabric_agent`).
+[tool.uv]
+package = false
+
+# The two SDK packages from the checkout next door and the fabric package from
+# this repository, until they are published. One source for each SDK package here also
+# resolves the other packages' own dependencies on them, so one copy.
+[tool.uv.sources]
+synadia-ai-agents = { path = "../../../synadia-agents/client-sdk/python", editable = true }
+synadia-ai-agent-service = { path = "../../../synadia-agents/agent-sdk/python", editable = true }
+synadia-ai-agent-fabric = { path = "../../python", editable = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

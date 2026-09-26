@@ -63,7 +63,7 @@ The split removed it from both SDKs and from the plugins (the diff
 `fbd16ab..f2ff6ed` under `agents/` is 3266 lines, tests included) and
 rebuilt it here on the SDK's hooks. Since then the three harnesses are not
 traced at all: their model calls stand as one-call threads outside the tree
-(`agent-fabric-examples` `docs/findings.md` F16). Full tracing for these
+(`reference-agents/docs/findings.md` F16). Full tracing for these
 three harnesses is the fabric's headline promise, so this work is
 release-critical.
 
@@ -923,7 +923,7 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
   arrives while the harness waits in it (§3.1).
 - **No ScratchPad references in a harness.** Level D, Phase III. A
   reference in a prompt to a harness is removed by the caller's
-  `prompt_agent` before sending (`agent-fabric-examples` `tools/README.md`).
+  `prompt_agent` before sending (`reference-agents/README.md`, "The agent tools").
 - **`traceparent` from any client files as OpenClaw** until M3-31 (§3.3).
 - **What is measured, and where.** Every add-on, against real turns on
   the test rig: PI in the examples' F19 and OpenClaw in F20 (2026-09-23),
@@ -938,7 +938,7 @@ fresh session with a paste; each ends with a run that is recorded.
 
 | Step | Public repo (`synadia-agents`, one PR on a branch) | This repo | Examples, tests | Done when |
 | --- | --- | --- | --- | --- |
-| **B2 PI** | `agents/pi`: `AgentTools` (the blocking three) through `pi.registerTool`, one `Agents` client with the plugin's signer, the extension point of §2 with the PI events, `agents/EXTENSIONS.md` and the README paragraph of §9, the peer range to include 0.85, CHANGELOG; Francesco's `agents/pi/extensions/agent-tools.ts` as reference for the registration and where the active request is | `plugins/pi`: the add-on of §3.2 with its tests; gap 3 measured and written into this doc | examples: `harnesses/pi/config/nats-channel.json` and `run.sh` name the add-on in place of `tracing`; tests: `internal/piagent` sets the variable and the `aft.yaml` sibling for this repo | the examples' team on the rig (`make demo` in `agent-fabric-examples`) shows the editor's calls on its child thread, PI `full`, the `asked` row naming it, recorded as a finding; `gate/m2` `TestPIAtLeaf` green with its two waivers deleted |
+| **B2 PI** | `agents/pi`: `AgentTools` (the blocking three) through `pi.registerTool`, one `Agents` client with the plugin's signer, the extension point of §2 with the PI events, `agents/EXTENSIONS.md` and the README paragraph of §9, the peer range to include 0.85, CHANGELOG; Francesco's `agents/pi/extensions/agent-tools.ts` as reference for the registration and where the active request is | `plugins/pi`: the add-on of §3.2 with its tests; gap 3 measured and written into this doc | examples: `harnesses/pi/config/nats-channel.json` and `run.sh` name the add-on in place of `tracing`; tests: `internal/piagent` sets the variable and the `aft.yaml` sibling for this repo | the examples' team on the rig (`make demo` in the examples repository) shows the editor's calls on its child thread, PI `full`, the `asked` row naming it, recorded as a finding; `gate/m2` `TestPIAtLeaf` green with its two waivers deleted |
 | **B3 OpenClaw** | `agents/openclaw`: `AgentTools` registered through the channel plugin's tools (Francesco's `channel.ts` diff as reference), the client, the extension point with the OpenClaw events, `extensions` in `openclaw.plugin.json`, README, CHANGELOG, `dist/` rebuilt with tsup | gap 2 decided and built first; `plugins/openclaw`: the add-on of §3.3 | examples: `harnesses/openclaw/config/openclaw.json`, `run.sh` | the team on the rig shows the summarizer's thread with its call, the pair's outcome and duration, OpenClaw `full` with both halves, recorded as a finding |
 | **B4 Claude Code** | `agents/claude-code` (#215): `AgentTools` on the MCP tool handlers, `request_id`, the hooks back as neutral session events (`hooks/hooks.json` with `SessionStart`, `Stop`, `PreToolUse`; `hooks/session-event.ts`), the client, the extension point with the Claude Code events, README, CHANGELOG, the bundle rebuilt; no SDK change, since gap 1 was not needed (the snapshot re-entry, §3.5) | `plugins/claude-code`: the add-on of §3.4 (#8) | examples: `harnesses/claude-code/`, the live run parked on F21 (2026-09-23) and done on 2026-09-24 (F24, F25); tests: step 8b, opt-in, with the two keys, Anthropic as the provider and a pseudo-terminal, an Anthropic key on the runner (§3.4, §6) | 8b's gate passes: an SDK agent prompts Claude Code, which calls a tool and replies, its calls on the child thread with the pair and the closing call inside the window; the report names the model |
 | **B5 the waivers and the team** | — | this doc's §7 updated with what was measured | tests: `scenario.PluginsPending` and the `Untraced` flag on PI's `gate/m3` member removed; `gate/m2` whole on the rig; `gate/m3` on NGS with PI's member unwaived, on Mario's `-apply`; examples: `harnesses/README.md` and `team/README.md` say the harnesses are traced; Claude Code as a sixth role when 8b is done, with the same two keys, Anthropic as its provider and a pseudo-terminal (§6) | `aft run` on the rig green but for the known F8; `aft run -target ngs -apply gate/m3` green with nothing waived; the team's run recorded |

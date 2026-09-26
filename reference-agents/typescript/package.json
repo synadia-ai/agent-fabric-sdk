@@ -1,0 +1,32 @@
+{
+  "name": "agent-fabric-example-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The TypeScript reference agent of the Synadia Agent Fabric.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file=.env --import tsx src/main.ts",
+    "echo": "node --env-file=.env --import tsx src/echo.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prompt": "node --env-file=.env --import tsx src/prompt.ts"
+  },
+  "dependencies": {
+    "@nats-io/nats-core": "^3.4.0",
+    "@nats-io/transport-node": "^3.4.0",
+    "@synadia-ai/agent-fabric": "file:../../typescript",
+    "@synadia-ai/agent-service": "file:../../../synadia-agents/agent-sdk/typescript",
+    "@synadia-ai/agents": "file:../../../synadia-agents/client-sdk/typescript"
+  },
+  "devDependencies": {
+    "@nats-io/nkeys": "^2.0.3",
+    "@types/node": "^20.16.0",
+    "ajv": "^8.17.1",
+    "typescript": "~5.6.0",
+    "vitest": "^3.2.0",
+    "tsx": "^4.19.0"
+  }
+}
