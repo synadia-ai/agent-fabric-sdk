@@ -127,9 +127,10 @@ unbound.
 
 ## Running Claude Code on the fabric
 
-Measured on Claude Code 2.1.281 (2026-09-24, `agent-fabric-examples`
-`docs/findings.md` F24 and F25). The worked version is that repository's
-`harnesses/claude-code/` (`run.sh`, `env.example`, its README); what
+Measured on Claude Code 2.1.281 (2026-09-24, the reference agents' F24 and
+F25, since 2026-09-26 in `agent-fabric-live` `docs/findings-examples.md`).
+The worked version is `agent-fabric-live`'s `harnesses/claude-code/`
+(`run.sh`, `env.example`, its README; the examples' until then); what
 follows is the recipe it implements.
 
 1. **Claude Code and bun.** `claude` on `PATH`, and `bun`: the plugin's
