@@ -1,0 +1,64 @@
+# The Python reference agent
+
+**Date:** 2026-09-27 · **Status:** the same agent as `agents/ts`, in Python, with the same tests, including the one where the TypeScript agent and the Python one prompt each other. On the SDK's agent tools with the fabric package's ScratchPad extension, and the fabric package's ScratchPad, built from the environment, so the agent holds no ScratchPad code; three tools offered by default (`AGENT_TOOLS`, below); it serves four prompts at once. Run against a fabric through the model proxy with Sonnet 5.
+
+## What is here
+
+| Path | What |
+| --- | --- |
+| `fabric_agent/agent.py` | the agent: the four behaviours, each marked where it happens |
+| `fabric_agent/__main__.py` | starts one agent from `.env`; `uv run python -m fabric_agent` |
+| `fabric_agent/echo.py` | the smallest agent, behaviour (1) alone: a signed identity, tracing on through the fabric package, every prompt answered with the prompt; `uv run python -m fabric_agent.echo`. Step 1 of `docs/getting-started/python.md` |
+| `fabric_agent/prompt.py` | a caller for the command line: `uv run python -m fabric_agent.prompt <env file> <address or kind> "<text>"`, signed with that file's credentials; the twin of `agents/ts/src/prompt.ts` |
+| `fabric_agent/config.py` | every variable the agent reads, with its default; reads the `.env` file |
+| `fabric_agent/model.py` | one chat-completions client pointed at the proxy, and the loop that runs the model's tool calls |
+| `fabric_agent/tools.py` | the model loop's side of the SDK's agent tools: their definitions as chat-completions `function`s, not a word changed, and a call run by name with the model's tool-call id |
+| `tests/test_tools.py` | the tools as the agent wires them, on a real server: the definitions word for word what the SDK's files derive for the tools offered, the three by default and the six with `AGENT_TOOLS=all`; the edge `prompt_agent` writes has the served thread as its parent; the grant before a reference of its own is handed over, the creator asked for another's, the references taken out for an agent that reads none, only a given reference handed on; the two loop guards; errors in words |
+| `tests/test_agent.py` | the whole agent against a fake model: the key and the two trace headers on every call, the three blocking tools offered by default, a tool call carried out as a child thread, a question from the prompted agent answered by the model with `answer_agent`, the reply, the history; the reply committed and granted to the verified caller; a reference of its own handed on with a grant under the model's call; a grant request answered in code |
+| `tests/test_grant_request.py` | the fabric package's grant request between signed agents, on a real server, over a ScratchPad in memory: the creator grants a third agent at the request of one it granted; no signature, a replay, a requester never granted, a requester granted only on request, a request for oneself and another volume's reference are refused |
+| `tests/test_interop.py` | the TypeScript agent (a subprocess) and this one prompt each other; each child thread under the delegating agent's served thread |
+| `env.example` | the one file per agent; copy to `.env` |
+
+ScratchPad comes from the fabric package: `scratchpad_from_env` in `fabric_agent/agent.py` builds it from `SCRATCHPAD_VOLUME` and the package's other three variables, over the `sp` command line, and gives `None` when the volume is unset. `__main__.py` passes it the environment it read, `.env` included. The package tests it against a stand-in `sp`.
+
+New here? `docs/getting-started/python.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
+
+## Prerequisites
+
+- Python 3.11 or later and `uv`.
+- `nats-server` on PATH for the tests (`brew install nats-server`); without it the fabric tests skip themselves.
+- Until the packages are published: `make setup` at the repository's root, which checks the SDK checkout `../../../synadia-agents` and the fabric package's checkout `../../../agent-fabric-sdk` are there and on their branches (the `Makefile` names them) and installs both agents. The two SDK packages and `synadia-ai-agent-fabric` are path dependencies from them (`pyproject.toml`, `[tool.uv.sources]`), installed editable by `uv sync`; nothing has to be built there for Python. The SDK carries the agent tools (`AgentTools`). The fabric package is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratch_pad_extension`, the grant request), and the ScratchPad they run on (`scratchpad_from_env`). The agent wires them in `fabric_agent/agent.py`: `fabric_tracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, the grant endpoint (`extra_endpoints`), and `max_concurrent_prompts=4`.
+- For the interop test: `agents/ts` installed (`make setup` does it) and `node` on PATH.
+- For ScratchPad, which is optional: the `sp` binary, ScratchPad's command line, built from ScratchPad's repository, and a credentials file (an nkey seed alone is not a form `sp` takes).
+
+## Install and test
+
+```sh
+make setup            # at the repository's root
+uv run pytest
+```
+
+## Run
+
+```sh
+cp env.example .env      # fill in the credentials path, the proxy URL, the virtual key, the model
+uv run python -m fabric_agent
+```
+
+The agent needs a fabric that already stands, exactly as the TypeScript agent does (`../ts/README.md`).
+
+## The tools the model is offered
+
+`AGENT_TOOLS` in `.env` says which of the SDK's agent tools the model is shown (`fabric_agent/config.py`; `fabric_agent/tools.py` turns it into `AgentTools`' `tools` option):
+
+| `AGENT_TOOLS` | The model is offered |
+| --- | --- |
+| `blocking`, the default | `discover_agents`, `prompt_agent` and `answer_agent`. Every prompt waits for its reply, and a question the prompted agent asks comes back to the model to answer. |
+| `all` | the six: also `prompt_agent`'s `wait: false`, `wait_agent`, `cancel_agent` and `list_agent_calls`, for a model that runs prompts side by side |
+| `none` | nothing, for a role that must answer itself: a model with the tools in reach may delegate what it was asked, even back to its caller |
+
+Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six (`docs/findings.md` F18).
+
+## How it reads
+
+`fabric_agent/agent.py` is the file to read: the list of the four behaviours with the code under each. It mirrors `agents/ts/src/agent.ts` line for line where the packages allow; the differences are the packages' own (`session_name` for the instance name, `PromptStream` for the handler's response handle, `execute(name, args, tool_call_id=…)` for `execute(name, args, { toolCallId })`, and in the fabric package a context variable instead of an `AsyncLocalStorage` for the ambient trace scope), and one of the host's: the Python `AgentService` serves one prompt at a time unless told otherwise, so the agent sets `max_concurrent_prompts` (four; `MAX_CONCURRENT_PROMPTS` in `agent.py` says why).
