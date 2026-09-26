@@ -20,19 +20,20 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   src/trace.ts       the vocabulary: options, scope, traceHeaders, edge record, counts
   src/tracing.ts     fabricTracing(): the SDK's three hooks built from it
   src/served.ts      the served record's vocabulary and its publisher, for the harness add-ons
-  src/scratchpad.ts  references' vocabulary, and the ScratchPad port the agent implements
+  src/scratchpad.ts  references' vocabulary, and the ScratchPad port the extension runs on
   src/grant-request.ts            requestGrant, grantRequestEndpoint, the creator's rule
   src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
+  src/scratchpad-cli.ts           spCliScratchPad(), scratchPadFromEnv(): the port's ready implementation over `sp`
   src/plugin-contract.ts          the harness plugins' extension contract, as types — TypeScript only
   src/loop-guard.ts               loopGuard(): the 409 guard every add-on returns — TypeScript only
   src/plugin-settings.ts          resolveEdgeSubject(): the add-ons' one setting — TypeScript only
   test/unit/         no server
   test/integration/  a nats-server per file; the e2e and the interop with Python
-  test/harness/      nats-server launcher (adapted from the protocol SDK's)
+  test/harness/      nats-server launcher (adapted from the protocol SDK's); fake-sp.mjs, a stand-in `sp`
   test/support/      fixtures, the schema validators, host/caller helpers, the ScratchPad fake
 python/              synadia-ai-agent-fabric — uv, ruff, mypy (strict), pytest
   src/synadia_ai/agent_fabric/{trace,tracing,served}.py   the same three modules
-  src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension}.py
+  src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension,scratchpad_cli}.py
   tests/             the same suites; conftest starts the servers lazily
 test-fixtures/       shared by both suites — see its README for every file's source
   schemas/           the contracts, from synadia-agent-fabric: edge.json, served.json
@@ -84,8 +85,13 @@ plugins/             the fabric add-ons for the harness plugins, one package per
   and the parity rule does not reach it. An add-on imports nothing of its
   harness, not even its types.
 - **The ScratchPad extension holds the policy, not a client.** It never
-  talks to ScratchPad or shells out to `sp`: the agent passes its own
-  client behind the `ScratchPad` port (`owns`, `grantRead`, `granted`).
+  talks to ScratchPad or shells out to `sp`: it runs on whatever sits
+  behind the `ScratchPad` port (`owns`, `grantRead`, `granted`). The
+  package's own implementation of that port, `scratchpad-cli` /
+  `scratchpad_cli`, is the one piece that drives `sp`, moved from the
+  examples' agents at `1ed3c45`; a later one speaking NATS directly
+  replaces it behind the same `ScratchPadClient`. The variables it reads
+  (`SCRATCHPAD_VOLUME`, `_BIN`, `_DIR`, `_GRANT_TTL_S`) are a contract.
 
 ## The protocol SDK during development
 

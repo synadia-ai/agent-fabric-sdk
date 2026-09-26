@@ -20,6 +20,10 @@ It carries tracing and the agent tools' ScratchPad extension:
 * :func:`scratch_pad_extension` — the fabric's rules for ScratchPad
   references on ``AgentTools``' three extension hooks, over the agent's own
   client behind the :class:`ScratchPad` port.
+* :class:`SpCliScratchPad`, :func:`scratchpad_from_env` — the ready
+  implementation of that port and the agent's commit and read
+  (:class:`ScratchPadClient`), over ScratchPad's ``sp`` command line, built
+  from options or from the four ``SCRATCHPAD_*`` variables.
 * :func:`request_grant`, :func:`grant_request_endpoint` — the grant request,
   both sides: asking a reference's creator to let one more agent read it,
   and answering.
@@ -56,6 +60,18 @@ from .scratchpad import (
     reads_references,
     reference_creator,
     remove_references,
+)
+from .scratchpad_cli import (
+    DEFAULT_GRANT_TTL_S,
+    DEFAULT_SP_BIN,
+    SCRATCHPAD_BIN_VAR,
+    SCRATCHPAD_DIR_VAR,
+    SCRATCHPAD_GRANT_TTL_S_VAR,
+    SCRATCHPAD_VOLUME_VAR,
+    ScratchPadClient,
+    SpCliConnection,
+    SpCliScratchPad,
+    scratchpad_from_env,
 )
 from .scratchpad_extension import (
     READS_SCRATCHPAD_REFERENCES_FIELD,
@@ -109,6 +125,8 @@ from .tracing import (
 __all__ = [
     "DEFAULT_EDGE_SUBJECT",
     "DEFAULT_GRANT_REQUEST_TIMEOUT_S",
+    "DEFAULT_GRANT_TTL_S",
+    "DEFAULT_SP_BIN",
     "EDGE_RECORD_VERSION",
     "GRANT_REQUEST_ENDPOINT",
     "HARNESS_THREAD_ID_MAX",
@@ -117,6 +135,10 @@ __all__ = [
     "REFERENCE_PREFIX",
     "ROOT_ID_FIELD",
     "ROOT_ID_HEADER",
+    "SCRATCHPAD_BIN_VAR",
+    "SCRATCHPAD_DIR_VAR",
+    "SCRATCHPAD_GRANT_TTL_S_VAR",
+    "SCRATCHPAD_VOLUME_VAR",
     "SERVED_RECORD_VERSION",
     "THREAD_ID_FIELD",
     "THREAD_ID_HEADER",
@@ -130,11 +152,14 @@ __all__ = [
     "Grantee",
     "Harness",
     "ScratchPad",
+    "ScratchPadClient",
     "ScratchPadExtension",
     "ServedPhase",
     "ServedPublisher",
     "ServedStatus",
     "ServedTurn",
+    "SpCliConnection",
+    "SpCliScratchPad",
     "TraceIds",
     "TraceOptions",
     "TraceRecordCounts",
@@ -162,6 +187,7 @@ __all__ = [
     "remove_references",
     "request_grant",
     "scratch_pad_extension",
+    "scratchpad_from_env",
     "served_publisher",
     "trace_headers",
     "trace_record_counts",

@@ -10,7 +10,10 @@ It carries **tracing**: the signed `edge` record before every prompt, the
 heartbeat; and, for the harness add-ons, the signed `served` record that
 binds a served thread to the harness's own thread id, with its publisher.
 And the agent tools' **ScratchPad extension**: the fabric's rules
-for handing content over by reference, on the protocol SDK's `AgentTools`.
+for handing content over by reference, on the protocol SDK's `AgentTools`;
+and **ScratchPad by configuration**: a ready implementation of the
+extension's port, with the agent's commit and read, over ScratchPad's `sp`
+command line, built from four `SCRATCHPAD_*` variables.
 Later it takes the proxy helpers.
 
 Under [`plugins/`](plugins/) sit the fabric **add-ons** for the harness
@@ -109,12 +112,18 @@ The prompt rewrite, for each reference in the prompt:
   carries the served prompt's thread and root and the model's tool-call
   ID, so it shows under the tool call that caused it.
 
-**The package holds the policy; the agent brings its ScratchPad.** There is
-no ScratchPad client for TypeScript or Python yet, so the agent passes its
-own behind the `ScratchPad` port: `owns(reference)`,
-`grantRead(reference, grantee, trace, toolCallId?, kind?)` and
-`granted(reference, grantee)`, each sync or async. The implementation keeps
-the ledger of whom it granted what, and how: `first-hand` or `on-request`.
+**The package holds the policy; the agent brings its ScratchPad, or takes
+the package's.** The extension runs on the `ScratchPad` port:
+`owns(reference)`, `grantRead(reference, grantee, trace, toolCallId?, kind?)`
+and `granted(reference, grantee)`, each sync or async. The implementation
+keeps the ledger of whom it granted what, and how: `first-hand` or
+`on-request`. There is no ScratchPad client for TypeScript or Python yet, so
+the package's own implementation, `spCliScratchPad` / `SpCliScratchPad`,
+drives ScratchPad's command line `sp`, which must be on the machine; built
+from the environment with `scratchPadFromEnv()` / `scratchpad_from_env()`,
+it needs no ScratchPad code in the agent (the packages' READMEs, "ScratchPad
+without writing ScratchPad code"). The extension itself never talks to
+ScratchPad.
 
 **The grant request.** An agent may read another agent's reference but not
 pass it on: only the creator grants. So the requester sends the creator,
@@ -140,13 +149,14 @@ into a grant or a request only when it is one the edge record would carry.
 ```ts
 import { AgentService } from "@synadia-ai/agent-service";
 import { Agents, AgentSubject, AgentTools } from "@synadia-ai/agents";
-import { fabricTracing, grantRequestEndpoint, READS_REFERENCES_KEY, scratchPadExtension }
-  from "@synadia-ai/agent-fabric";
+import { activeTrace, fabricTracing, grantRequestEndpoint, READS_REFERENCES_KEY, scratchPadExtension,
+  scratchPadFromEnv } from "@synadia-ai/agent-fabric";
 
 const address = AgentSubject.new("triage", "acme", "main").prompt;
 const tracing = fabricTracing();
 const agents = new Agents({ nc, identity: { signer }, interceptors: [tracing.promptInterceptor] });
-const references = scratchPadExtension({ scratchPad, agents }); // scratchPad: your port
+const scratchPad = scratchPadFromEnv(process.env, { creator: address })!; // or your own port
+const references = scratchPadExtension({ scratchPad, agents });
 const tools = new AgentTools({ agents, selfAddress: address, extensions: [references] });
 const svc = new AgentService({ nc, agent: "triage", owner: "acme", name: "main", identity: { signer },
   interceptors: [tracing.requestInterceptor, tools.requestInterceptor, references.requestInterceptor],
@@ -154,7 +164,7 @@ const svc = new AgentService({ nc, agent: "triage", owner: "acme", name: "main",
   extraEndpoints: [grantRequestEndpoint({ promptAddress: address, scratchPad })] });
 svc.onPrompt(async (envelope, response) => {
   const answer = await runModel(envelope.prompt, tools); // tools.execute(name, args, { toolCallId })
-  const ref = await commit(answer);                       // your ScratchPad client
+  const ref = await scratchPad.commit(answer, "/replies/r.md", activeTrace());
   const handed = await references.grantCaller(ref, response.sender);
   await response.send(handed ? `${answer}\n\n${ref}` : answer);
 });
@@ -166,12 +176,13 @@ svc.onPrompt(async (envelope, response) => {
 from synadia_ai.agents import Agents, AgentSubject, AgentTools, Identity
 from synadia_ai.agent_service import AgentService, ServiceIdentity
 from synadia_ai.agent_fabric import (READS_REFERENCES_KEY, fabric_tracing,
-    grant_request_endpoint, scratch_pad_extension)
+    grant_request_endpoint, scratch_pad_extension, scratchpad_from_env)
 
 address = AgentSubject.new("triage", "acme", "main").prompt
 tracing = fabric_tracing()
 agents = Agents(nc=nc, identity=Identity(signer=signer), interceptors=[tracing.prompt_interceptor])
-references = scratch_pad_extension(scratch_pad=scratch_pad, agents=agents)  # your port
+scratch_pad = scratchpad_from_env(creator=address)  # or your own port
+references = scratch_pad_extension(scratch_pad=scratch_pad, agents=agents)
 tools = AgentTools(agents, self_address=address, extensions=[references])
 svc = AgentService(nc=nc, agent="triage", owner="acme", session_name="main",
     identity=ServiceIdentity(signer=signer), max_concurrent_prompts=4,
@@ -181,7 +192,7 @@ svc = AgentService(nc=nc, agent="triage", owner="acme", session_name="main",
     extra_endpoints=[grant_request_endpoint(prompt_address=address, scratch_pad=scratch_pad)])
 async def handle(envelope, stream):
     answer = await run_model(envelope.prompt, tools)  # await tools.execute(name, args, tool_call_id=...)
-    ref = await commit(answer)                        # your ScratchPad client
+    ref = await scratch_pad.commit(answer, "/replies/r.md", None)
     handed = await references.grant_caller(ref, stream.sender)
     await stream.send(f"{answer}\n\n{ref}" if handed else answer)
 svc.on_prompt(handle)
@@ -201,7 +212,9 @@ The same surface in both languages (TypeScript names; Python in snake_case):
 | `traceRecordCounts()` | Process-wide `{ published, dropped }` — what the heartbeat reports as `records_published` / `records_dropped` |
 | `TraceOptions`, `TraceScope`, `TraceRecordCounts`, `FabricTracing`, `isThreadId`, `randomThreadId`, `validToolCallId`, the constants | The rest of the vocabulary |
 | `scratchPadExtension({ scratchPad, agents, discoverTimeoutMs?, grantRequestTimeoutMs? })` → `ScratchPadExtension` | The extension for `AgentTools`' `extensions`: the three hooks, plus `remember(text)`, `requestInterceptor` (remembers the references in served prompts) and `grantCaller(reference, sender)` (the reply side: grants a verified sender read first-hand; `false` for any other) |
-| `ScratchPad`, `Grantee`, `GrantKind`, `TraceIds` | The port the agent implements, and its types |
+| `ScratchPad`, `Grantee`, `GrantKind`, `TraceIds` | The port the extension runs on, and its types |
+| `spCliScratchPad({ volume, nats, bin?, dir?, grantTtlS?, creator? })` → `ScratchPadClient` | The port's ready implementation over ScratchPad's `sp` CLI, with the agent's `commit(text, path, trace)` and `read(reference, trace)`. Python: `SpCliScratchPad(...)` |
+| `scratchPadFromEnv(env?, { creator?, nats? })` → `ScratchPadClient \| undefined` | The same from `SCRATCHPAD_VOLUME` (unset: off), `SCRATCHPAD_BIN`, `SCRATCHPAD_DIR`, `SCRATCHPAD_GRANT_TTL_S` and the agent's `NATS_CONTEXT` or `NATS_CREDS`/`NATS_URL`. Python: `scratchpad_from_env(env=None, *, creator=None, nats=None)` |
 | `findReferences`, `removeReferences`, `referenceCreator`, `readsReferences`, `granteeFromIdentity`, `READS_REFERENCES_KEY`, `REFERENCE_PREFIX` | The references' vocabulary |
 | `requestGrant(agents, creatorAddress, request, { timeoutMs? })` | The requester's side; never throws, a refusal carries its reason |
 | `grantRequestEndpoint({ promptAddress, scratchPad, logger? })` | The creator's side: an extra endpoint for the agent's `AgentService` (`extraEndpoints` / `extra_endpoints`) |
