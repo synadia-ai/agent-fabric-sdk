@@ -48,6 +48,11 @@ PUBLIC = {
     "reads_references",
     "grantee_from_identity",
     "READS_REFERENCES_KEY",
+    # The port's implementation over the sp CLI, and from the environment.
+    "ScratchPadClient",
+    "SpCliScratchPad",
+    "SpCliConnection",
+    "scratchpad_from_env",
     # The grant request, both sides.
     "request_grant",
     "grant_request_endpoint",
