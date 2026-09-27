@@ -17,6 +17,12 @@
 // two headers for the request so the proxy files PI's own model calls on
 // the served thread. The `409` loop guard is its own two interceptors,
 // after tracing's (`loopGuard`, from the fabric package).
+//
+// ScratchPad (§9): when a volume is configured, the add-on sets the
+// environment the package's skill (`skill/scratchpad`, given to PI with
+// `--skill`) reads through `scripts/sp`: the connection, the workspace and
+// the volume once the service is up, the served prompt's trace and caller
+// from its hand-over to its end (`scratchpad.ts`).
 
 import {
   activeTrace,
@@ -30,6 +36,7 @@ import {
   type ServedRequest,
   type TraceScope,
 } from "@synadia-ai/agent-fabric";
+import { exportScratchPad, resolveScratchPad, ServedPromptEnv, SP_VARS } from "./scratchpad.js";
 
 /** The extension's name, as the plugin's status output lists it. */
 export const EXTENSION_NAME = "agent-fabric";
@@ -44,7 +51,8 @@ export const IDENTITY_OFF_WARNING =
  * before it connects, with what it knows then. Throws `NatsAgentError` for
  * an edge subject that can never be published to.
  *
- * `env` is where the variable is read from; a test passes its own.
+ * `env` is where the variables are read from, and where ScratchPad's are
+ * set for PI's bash tool; a test passes its own.
  */
 export function createFabricExtension(
   ctx: AgentExtensionContext,
@@ -69,6 +77,8 @@ export function createFabricExtension(
     request === undefined ? undefined : scopes.get(request.id);
 
   let warnedIdentityOff = false;
+  let scratchPadOn = false;
+  const promptEnv = new ServedPromptEnv(env);
 
   return {
     name: EXTENSION_NAME,
@@ -81,12 +91,11 @@ export function createFabricExtension(
     // between them does not matter.
     promptInterceptors: [tracing.promptInterceptor, guard.promptInterceptor],
     heartbeatExtras: tracing.heartbeatExtras,
-    // No `toolExtensions`: a harness reads no ScratchPad reference in the
-    // MVP (level D, Phase III; `docs/plugins.md` §3.1). No `stopping`: an
+    // No `toolExtensions` yet (§9.1 designs `scratchPadExtension` here). No `stopping`: an
     // edge record is published before the prompt it describes and counted
     // as it goes, so there is nothing to flush when the plugin stops.
 
-    started({ service }) {
+    async started({ service }) {
       if (ctx.settings.senderIdentity !== "signed" && !warnedIdentityOff) {
         warnedIdentityOff = true;
         log.warn(IDENTITY_OFF_WARNING);
@@ -97,6 +106,17 @@ export function createFabricExtension(
             ? " (propagate-only: lineage forwarded, no edge record published)"
             : `, edge records on ${edgeSubject}`),
       );
+      const scratchPad = await resolveScratchPad(ctx, env);
+      if (scratchPad !== undefined) {
+        exportScratchPad(scratchPad, env);
+        env[SP_VARS.creator] = service.subject.prompt;
+        scratchPadOn = true;
+        log.info(
+          `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +
+            (scratchPad.dir !== undefined ? `, workspace ${scratchPad.dir}` : ", no workspace") +
+            ", for the skill's scripts/sp",
+        );
+      }
     },
 
     events: {
@@ -107,9 +127,13 @@ export function createFabricExtension(
       },
       promptEnded(request) {
         scopes.delete(request.id);
+        promptEnv.leave(request);
       },
       aroundInject(request, run) {
         const scope = scopes.get(request.id);
+        // The hand-over to PI's loop: from here to its end this prompt is
+        // the one PI works on, and the one `scripts/sp` works for.
+        if (scratchPadOn) promptEnv.enter(request, scope);
         return scope === undefined ? run() : bindActiveTrace(scope, run);
       },
       providerHeaders(request) {
