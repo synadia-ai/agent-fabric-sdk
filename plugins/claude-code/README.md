@@ -266,8 +266,8 @@ every add-on under `plugins/`.
 Built like the fabric package (tsup, ESM and CJS, vitest, eslint,
 prettier). It links `@synadia-ai/agent-fabric` at `file:../../typescript`,
 built first, and the two protocol SDK packages by the same `file:` links
-the fabric package uses; no lockfile is committed while the links point
-outside the repo. Nothing of Claude Code is a dependency. The tests: unit, a
+the fabric package uses; its `package-lock.json` is committed, and a clean clone
+installs with `npm ci`. Nothing of Claude Code is a dependency. The tests: unit, a
 fake of the plugin driving the events in the MCP server's order
 (`test/support/fake-plugin.ts`: the handler open until the reply, a tool
 call re-entered through the handler's snapshot); integration, the factory's

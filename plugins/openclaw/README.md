@@ -155,8 +155,8 @@ every add-on under `plugins/`.
 Built like the fabric package (tsup, ESM and CJS, vitest, eslint,
 prettier). It links `@synadia-ai/agent-fabric` at `file:../../typescript`,
 built first, and the two protocol SDK packages by the same `file:` links
-the fabric package uses; no lockfile is committed while the links point
-outside the repo. Nothing of OpenClaw is a dependency, not even its types:
+the fabric package uses; its `package-lock.json` is committed, and a clean clone
+installs with `npm ci`. Nothing of OpenClaw is a dependency, not even its types:
 the seed needs `node:async_hooks` and the symbol's name. The tests: unit, a
 fake of the plugin driving the events (`test/support/fake-plugin.ts`) and
 the seed on its own; integration, the factory's hooks on a real
