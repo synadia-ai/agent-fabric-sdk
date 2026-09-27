@@ -18,7 +18,10 @@ export interface NativeWorkerOptions {
 }
 
 /** Start the public built SDK with no executable available through PATH. */
-export function startNativeWorker(options: NativeWorkerOptions, mode: "publish" | "recover") {
+export function startNativeWorker(
+  options: NativeWorkerOptions,
+  mode: "publish" | "recover" | "lock-probe",
+) {
   const require = createRequire(import.meta.url);
   const child = spawn(
     process.execPath,

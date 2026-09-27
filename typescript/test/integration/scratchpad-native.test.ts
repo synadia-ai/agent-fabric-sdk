@@ -85,6 +85,30 @@ describe.skipIf(!coreRoot)("native ScratchPad against the real public service", 
         creator,
       }),
     ).rejects.toMatchObject({ code: "busy", local: true });
+    const lockProbe = startNativeWorker(
+      {
+        url: fixture.config.url,
+        credentials: fixture.config.users.owner.credentials,
+        volume: fixture.config.volume,
+        dir: stateDirectory,
+        creator,
+        timeoutMs: 5000,
+        bytes: 0,
+        path: "/unused",
+        operationId: "lock-probe",
+        emptyPath,
+      },
+      "lock-probe",
+    );
+    workers.push(lockProbe);
+    const lockRefusal = await lockProbe.event();
+    expect(lockRefusal).toEqual({
+      event: "refused",
+      code: "busy",
+      local: true,
+      successfulOpens: 0,
+    });
+    expect(await lockProbe.exited()).toEqual({ code: 0, signal: null });
     const missingJournal = join(directory, "missing-journal");
     await mkdir(missingJournal, { mode: 0o700 });
     const beforeRefusal = await pad.describe();
@@ -354,7 +378,9 @@ describe.skipIf(!coreRoot)("native ScratchPad against the real public service", 
         serviceRestarts: finalCounts["service_restarts"],
         exactRecoveredReceipts: 1,
         workerPathExecutables: 0,
-        lockedWorkspaceRefusals: 1,
+        lockedWorkspaceRefusals: 2,
+        liveProcessLockRefusals: 1,
+        competingProcessSuccessfulOpens: lockRefusal["successfulOpens"],
         missingJournalRefusals: 1,
         liveGrantReleaseRefusals: 1,
         retentionReuseCycles: 10,
