@@ -69,7 +69,7 @@ release-critical.
 
 ## 2. The extension point the public plugin exposes
 
-This section is the neutral contract. It is written so that §9 can be pasted
+This section is the neutral contract. It is written so that §10 can be pasted
 into the public repo without a fabric word. Names are proposals.
 
 ### 2.1 Naming the module: the variable and its config twin
@@ -423,11 +423,10 @@ entry's `options.edgeSubject` or the variable `SYNADIA_FABRIC_EDGE_SUBJECT`,
 validated by the fabric package (`assertValidTraceOptions`). The add-on's
 presence is the switch; there is no `tracing` setting (§4).
 
-**ScratchPad.** Not in a harness for the MVP. The fabric package's
-`scratchPadExtension` exists and fits `toolExtensions`, but a harness hands
-files over as attachments only; references in a harness are level D, Phase
-III (`synadia-agent-fabric/docs/agent-tools.md` §2.3). The add-ons return
-no `toolExtensions`.
+**ScratchPad.** Not built yet: the add-ons return no `toolExtensions`
+today. Level B applies to the harnesses too, the model using ScratchPad's
+skill and the sp command line through the harness's shell tool, with the
+add-on returning `scratchPadExtension`; §9 is the design.
 
 ### 3.2 PI — the SDK's headers on PI's own model calls
 
@@ -685,7 +684,7 @@ session, a pseudo-terminal when scripted (§6 step 7).
 | The `409` loop guard | nothing | returns its request and prompt interceptors | `RequestRejectedError` | `loopGuard()`, `loop-guard.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23), and the scope it reads |
 | The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, read by the add-on alone | nothing | `resolveEdgeSubject()` gives every add-on the precedence (`plugin-settings.ts`, TypeScript only); validates it |
 | `senderIdentity: signed` | the plugin's setting, as today | required for any record; warns once without it | identity | warns once when a record is due |
-| ScratchPad references | nothing | nothing for the MVP (level D, Phase III) | the tools' extension hooks | `scratchPadExtension`, for SDK-built agents |
+| ScratchPad references | the neutral `metadata` field, to be added (§9.6) | designed, not built: the skill, `scripts/sp`, `scratchPadExtension` (§9) | the tools' extension hooks | `scratchPadExtension`, `spCliScratchPad` |
 | The proxy's half: the SDK pair, the harness pairs, the `traceparent` flaw | — | — | — | the proxy (`agent-fabric-model-proxy`), M3-31 |
 
 ## 5. Packaging and loading
@@ -921,9 +920,11 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
   change that checks a class by `instanceof` alone would break it silently.
 - **The `409` guard over-refuses** a sibling prompt of the same tree that
   arrives while the harness waits in it (§3.1).
-- **No ScratchPad references in a harness.** Level D, Phase III. A
-  reference in a prompt to a harness is removed by the caller's
-  `prompt_agent` before sending (`reference-agents/README.md`, "The agent tools").
+- **No ScratchPad references in a harness yet.** A reference in a prompt
+  to a harness is removed by the caller's `prompt_agent` before sending
+  (`reference-agents/README.md`, "The agent tools"), until the harness
+  registers that it reads them, which needs the public plugin's `metadata`
+  field (§9.6).
 - **`traceparent` from any client files as OpenClaw** until M3-31 (§3.3).
 - **What is measured, and where.** Every add-on, against real turns on
   the test rig: PI in the examples' F19 and OpenClaw in F20 (2026-09-23),
@@ -938,7 +939,7 @@ fresh session with a paste; each ends with a run that is recorded.
 
 | Step | Public repo (`synadia-agents`, one PR on a branch) | This repo | Examples, tests | Done when |
 | --- | --- | --- | --- | --- |
-| **B2 PI** | `agents/pi`: `AgentTools` (the blocking three) through `pi.registerTool`, one `Agents` client with the plugin's signer, the extension point of §2 with the PI events, `agents/EXTENSIONS.md` and the README paragraph of §9, the peer range to include 0.85, CHANGELOG; Francesco's `agents/pi/extensions/agent-tools.ts` as reference for the registration and where the active request is | `plugins/pi`: the add-on of §3.2 with its tests; gap 3 measured and written into this doc | examples: `harnesses/pi/config/nats-channel.json` and `run.sh` name the add-on in place of `tracing`; tests: `internal/piagent` sets the variable and the `aft.yaml` sibling for this repo | the examples' team on the rig (`make demo` in the examples repository) shows the editor's calls on its child thread, PI `full`, the `asked` row naming it, recorded as a finding; `gate/m2` `TestPIAtLeaf` green with its two waivers deleted |
+| **B2 PI** | `agents/pi`: `AgentTools` (the blocking three) through `pi.registerTool`, one `Agents` client with the plugin's signer, the extension point of §2 with the PI events, `agents/EXTENSIONS.md` and the README paragraph of §10, the peer range to include 0.85, CHANGELOG; Francesco's `agents/pi/extensions/agent-tools.ts` as reference for the registration and where the active request is | `plugins/pi`: the add-on of §3.2 with its tests; gap 3 measured and written into this doc | examples: `harnesses/pi/config/nats-channel.json` and `run.sh` name the add-on in place of `tracing`; tests: `internal/piagent` sets the variable and the `aft.yaml` sibling for this repo | the examples' team on the rig (`make demo` in the examples repository) shows the editor's calls on its child thread, PI `full`, the `asked` row naming it, recorded as a finding; `gate/m2` `TestPIAtLeaf` green with its two waivers deleted |
 | **B3 OpenClaw** | `agents/openclaw`: `AgentTools` registered through the channel plugin's tools (Francesco's `channel.ts` diff as reference), the client, the extension point with the OpenClaw events, `extensions` in `openclaw.plugin.json`, README, CHANGELOG, `dist/` rebuilt with tsup | gap 2 decided and built first; `plugins/openclaw`: the add-on of §3.3 | examples: `harnesses/openclaw/config/openclaw.json`, `run.sh` | the team on the rig shows the summarizer's thread with its call, the pair's outcome and duration, OpenClaw `full` with both halves, recorded as a finding |
 | **B4 Claude Code** | `agents/claude-code` (#215): `AgentTools` on the MCP tool handlers, `request_id`, the hooks back as neutral session events (`hooks/hooks.json` with `SessionStart`, `Stop`, `PreToolUse`; `hooks/session-event.ts`), the client, the extension point with the Claude Code events, README, CHANGELOG, the bundle rebuilt; no SDK change, since gap 1 was not needed (the snapshot re-entry, §3.5) | `plugins/claude-code`: the add-on of §3.4 (#8) | examples: `harnesses/claude-code/`, the live run parked on F21 (2026-09-23) and done on 2026-09-24 (F24, F25); tests: step 8b, opt-in, with the two keys, Anthropic as the provider and a pseudo-terminal, an Anthropic key on the runner (§3.4, §6) | 8b's gate passes: an SDK agent prompts Claude Code, which calls a tool and replies, its calls on the child thread with the pair and the closing call inside the window; the report names the model |
 | **B5 the waivers and the team** | — | this doc's §7 updated with what was measured | tests: `scenario.PluginsPending` and the `Untraced` flag on PI's `gate/m3` member removed; `gate/m2` whole on the rig; `gate/m3` on NGS with PI's member unwaived, on Mario's `-apply`; examples: `harnesses/README.md` and `team/README.md` say the harnesses are traced; Claude Code as a sixth role when 8b is done, with the same two keys, Anthropic as its provider and a pseudo-terminal (§6) | `aft run` on the rig green but for the known F8; `aft run -target ngs -apply gate/m3` green with nothing waived; the team's run recorded |
@@ -956,12 +957,256 @@ names 1.3.14 as the version that builds the committed bundle; this machine
 has bun 1.4.0). `bun run verify:bundle` before the commit. Francesco is
 informed when Mario says (B6).
 
-## 9. Appendix: the text for the public repo
+## 9. ScratchPad in the harnesses
+
+**Status:** design, nothing built · **Date:** 2026-09-27
+
+Level B of ScratchPad applies to every agent on the fabric, the three
+harnesses included: the model publishes, reads and hands on content itself.
+In a harness it does so through ScratchPad's skill and the sp command line,
+which the model runs through the harness's own shell tool. This section is
+the design, the answers it rests on per harness, what it costs, and what
+the operator has to do. It replaces the "not in a harness" of §3.1 and §7
+for level B.
+
+Every answer carries how it is known: **measured** (something was run on
+this machine) or **read** (docs or code, with the place). The versions read
+and run: PI 0.85.1, OpenClaw 2026.9.4, Claude Code 2.1.282 (the test
+install) and 2.1.283 (the `claude` on `PATH`), the public plugins at
+`synadia-agents` `sdk-release-rollout` `e8355c3`, the sp command line at
+ScratchPad `79f8927`. Harness paths are relative to the harness's installed
+package.
+
+### 9.1 The design
+
+Each add-on package carries one skill directory:
+
+```
+skill/scratchpad/
+  SKILL.md             ScratchPad's skill, adapted (below)
+  scripts/sp           the wrapper the model runs; POSIX sh
+  bin/sp-darwin-arm64  the sp command line at a pinned commit (§9.8);
+  bin/sp-darwin-amd64    or these four come from per-platform packages
+  bin/sp-linux-arm64
+  bin/sp-linux-amd64
+```
+
+**The wrapper, `scripts/sp`.** It picks the binary from `uname -s` and
+`uname -m`, adds the connection, and replaces itself with the binary, so
+exit codes 0–3 and the JSON on stdout and stderr pass through unchanged:
+
+- `--url "$NATS_URL" --creds "$NATS_CREDS" --dir "$SCRATCHPAD_DIR"` on every
+  call;
+- `--volume "$SCRATCHPAD_VOLUME"` on `init` only;
+- `--thread-id "$SP_THREAD_ID" --root-id "$SP_ROOT_ID"` when both are set
+  (§9.7);
+- it refuses, with exit 2 and sp's own error shape, a call that passes any
+  of those flags itself, and the `grant` command.
+
+The rules come from the command line itself:
+
+| Rule | Why | How known |
+| --- | --- | --- |
+| The wrapper turns variables into flags | sp reads no environment at all: every value is a flag (`internal/volumecli/cli.go:150-158`), and there is no `Getenv` or `LookupEnv` in `cmd/sp` or `internal/volumecli` | read, at `79f8927` |
+| `--volume` on `init` only | `read` and `hydrate` refuse a `--volume` other than the reference's (`internal/volumecli/share.go:21`), and a harness reads other agents' references; the workspace commands check it only when it is given (`workspace.go:53`); `init` requires it (`workspace.go:101`) | read |
+| `--dir` on every call | `read` accepts it: `sp read --url … --creds … --ref … --dir ws --volume V` parsed and failed on the token, not the flags | measured |
+| The model's own connection flags are refused | Go's flag package keeps the last value of a repeated flag, so a model could otherwise point sp elsewhere; the connection stays out of the model's hands | read (Go `flag`) |
+| Variables, not a command prefix | Claude Code's allow rules do not match past a `VAR=… cmd` prefix unless the variable is on its known-safe list (permissions docs, "Wrappers") | read |
+| `grant` is refused | the fabric's grants are first-hand and kept in a ledger by the agent tools' ScratchPad extension (`typescript/src/scratchpad-extension.ts`); a grant the model made with sp would bypass the ledger and the rule that only an agent that reads references gets one | design choice |
+
+**The skill.** ScratchPad's skill, with three changes: every example runs
+`scripts/sp` and passes no `--url`, `--creds`, `--dir` or `--volume`; the
+"publish and share" part ends at the reference, which the model hands on
+in `prompt_agent` (or in its reply) and the agent tools grant; and, for
+Claude Code, `allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/sp *)`.
+
+**The variables.** The names are the package's existing contract for
+`scratchPadFromEnv` (`typescript/src/scratchpad-cli.ts`, `SCRATCHPAD_VOLUME`,
+`SCRATCHPAD_DIR`, with `NATS_URL` and `NATS_CREDS`). The add-on resolves
+them once at start: from its config entry's `options`, else from the same
+variables, else, for the connection, from the plugin's own NATS context.
+The plugins connect through a context (`"context": "…"` in their config,
+which the add-on reads in `settings.config`), and sp reads no context, so
+the add-on reads the context file for its URL and credentials path. The
+connection must be the plugin's own: a caller grants read to the principal
+it prompted, which is the identity the plugin registered with.
+`SCRATCHPAD_DIR` defaults to `<stateDir>/scratchpad`, which the add-on
+creates, since sp requires the directory to exist. `SCRATCHPAD_VOLUME` has
+no default: the operator reserves a volume for the harness's identity,
+as for any SDK-built agent.
+
+**The references.** The add-on returns `scratchPadExtension` in
+`toolExtensions`, on `spCliScratchPad` over the same binary and the same
+workspace directory, so references the model hands to another agent are
+granted, removed or refused by the rules every SDK-built agent follows.
+Two build notes. The extension needs the plugin's `Agents` client, which
+arrives in `started()`, after the factory has returned its
+`toolExtensions`; the add-on returns a thin extension that forwards to the
+real one once `started()` built it. And the model's sp calls and the
+extension share one workspace, not copies of it (the skill forbids
+copies). sp locks the workspace per command (`internal/volumecli/README.md`,
+"Workspace files"), so this is safe, but a mutation the model left pending
+makes the extension's next grant fail with `pending` until someone runs
+`recover`. The reference is then removed from the prompt and the result
+says so.
+
+**What the public plugin must add, for all three.** One neutral field on
+the extension contract, `metadata`: string keys the plugin merges into its
+`AgentService`'s `extraMetadata`, its own keys winning. Without it no
+harness can say that it reads references (§9.6). Nothing in the field
+names ScratchPad.
+
+### 9.2 Registration: making the harness load the skill
+
+Can the extension module make the harness load a skill directory at
+runtime? What is the smallest step otherwise?
+
+| Harness | Answer | Source | How known |
+| --- | --- | --- | --- |
+| PI | **Not from our module.** An extension can add skills at runtime by answering `resources_discover` with `{ skillPaths }`, but our module is handed only its context, never PI's extension API, and the public plugin does not forward that event. PI loads skills from `~/.pi/agent/skills/`, `~/.agents/skills/`, a trusted project's `.pi/skills/`, a package's `pi.skills`, the `skills` setting, and `--skill <path>`. A package's `pi.skills` loads only when the package directory is given to `-e`, not a file in it, and the demo gives a file. **Smallest step:** one flag, `--skill <add-on>/skill/scratchpad`, which also loads under `--no-skills`. Or, the recommended form, `-e <add-on>/pi`, a small PI extension in our package that answers `resources_discover` and also gates the shell (§9.5) | `docs/skills.md` "Locations"; `docs/extensions.md` "resources_discover"; `dist/core/resource-loader.js:230-246, 277, 312-332`; the plugin's `extensions/extensions.ts:66-75`, `nats-channel.ts:828-970` | read; the directory-versus-file rule measured through PI's `DefaultResourceLoader` with a fake package |
+| OpenClaw | **Not through an API.** The plugin API has no skill registration, and our module gets no API. A plugin manifest may list `skills`, but a path whose real path leaves the plugin root is refused, and a ScratchPad skill in the public plugin would break the one-way rule anyway. Our module could copy the directory into `<stateDir>/skills` (the managed directory, which is watched). That was rejected: it writes into the harness's home unasked and outlives the add-on. **Smallest step:** one config entry, `skills.load.extraDirs: ["<add-on>/skill"]`. Where an agent has a skill allowlist, the skill must also be named there: the demo sets `agents.defaults.skills: []`, which hides every skill | `docs/tools/skills.md` (locations, 39-48; plugin skills, 242-258; gating, 206-233, 461-520; watching, 703-745); `dist/plugin-skills-*.mjs:180-212`; the plugin's `src/extensions.ts:61-86` | read |
+| Claude Code | **Not from our module.** The MCP server cannot register a skill. The documented runtime route is a `SessionStart` hook that writes into a skills directory and returns `reloadSkills: true`, and hooks belong to a plugin. The public plugin could carry the skill in its `skills/`, but that would break the one-way rule. **Smallest step:** the add-on package is also a Claude Code plugin in its own right (`.claude-plugin/plugin.json`, `skills/scratchpad/`), loaded with a second `--plugin-dir <add-on>` or with `CLAUDE_CODE_PLUGIN_DIRS` (2.1.280 and later). Its paths stay inside its own root, as Claude Code requires. The skill's name is then `<plugin>:scratchpad` | skills docs, "Choose where skills load"; hooks docs, "SessionStart decision control"; plugins reference, "Path rules / Containment"; env-vars docs, `CLAUDE_CODE_PLUGIN_DIRS` | read |
+
+### 9.3 Paths: how the model finds `scripts/sp`
+
+| Harness | Answer | Source | How known |
+| --- | --- | --- | --- |
+| PI | The system prompt lists each skill with `<location>`, the absolute path of its `SKILL.md`, and says: "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands." There is no variable. The list appears only when a tool named `read` or `bash` is active, so under the demo's `--no-builtin-tools` it appears only if our PI extension's tool is named `bash` (§9.5; not measured) | `dist/core/skills.js:275-297`; `dist/core/system-prompt.js:13-14, 30, 111` | read; the rendering measured |
+| OpenClaw | The same shape: `<location>` is the absolute `SKILL.md` path (with `~/` shortened), and the line before the list tells the model to resolve relative paths against the skill directory. `{baseDir}` in a skill is left to the model, since no code substitutes it. The skills section appears only when the `read` tool is visible | `dist/skill-contract-*.mjs:38-58`; `dist/system-prompt-params-*.mjs:260, 726`; `docs/tools/creating-skills.md:134-140` | read |
+| Claude Code | `${CLAUDE_SKILL_DIR}` is substituted in the skill's text and in the Bash rules of its `allowed-tools`. For a plugin skill, it is the skill's directory inside the plugin. The loaded skill also starts with "Base directory for this skill: …". The Skill tool delivers the text, so the `Read` tool may stay denied | skills docs, "Available string substitutions" | read; the "Base directory" line measured in the binary |
+
+### 9.4 Environment: what the shell tool inherits
+
+The four variables are static per agent. Setting them once at start is
+enough.
+
+| Harness | Answer | Source | How known |
+| --- | --- | --- | --- |
+| PI | **Yes.** The bash tool builds the child's environment on every call from `process.env` (plus PI's `PI_*` keys and its bin dir on `PATH`). There is no scrubbing and no spawn hook on the built-in tool. A variable our module sets at load reaches `scripts/sp`, and so does a later change | `dist/utils/shell.js:115-125`; `dist/core/tools/bash.js:50-53, 119-140`; `dist/core/agent-session.js:2191-2193` | **measured**: PI's bash tool run from a script with a variable set at load and changed later |
+| OpenClaw | **Yes, on the gateway host.** The exec child's environment is built per call from `process.env`, passed through a blocklist filter, plus `OPENCLAW_SHELL=exec`. The sandbox is off by default, so exec runs on the gateway. In a sandbox, `process.env` would not pass | `dist/bash-tools-*.mjs:2996, 3029-3052`; `docs/tools/exec.md:46, 73, 82` | read; the filter measured: it keeps `SCRATCHPAD_*` and `NATS_URL` (`NATS_CREDS` was not tried by name; the filter is a blocklist) and drops `NODE_OPTIONS` |
+| Claude Code | **Not from our module.** It runs in the MCP server, a child of Claude Code and a sibling of the Bash tool's processes, so its `process.env` reaches neither. The Bash tool inherits Claude Code's launch environment and the settings' `env`. A `SessionStart` hook can append exports to `CLAUDE_ENV_FILE`, and they persist for later Bash commands. `CLAUDE_PLUGIN_ROOT` is not in the Bash tool's environment. So the operator sets the four variables in the launch environment or in `settings.json` `env`, or the add-on's own plugin ships a `SessionStart` hook that resolves them the way the module does (§9.1) and writes them to `CLAUDE_ENV_FILE` | env-vars docs (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`); settings reference, `env`; hooks docs, "Persist environment variables"; plugins reference, "Where each variable resolves" | read (the sibling processes: OS semantics) |
+
+### 9.5 Shell: allowing exactly `scripts/sp`
+
+| Harness | Answer | Source | How known |
+| --- | --- | --- | --- |
+| PI | **PI has no per-command gate.** `--tools`, `--exclude-tools`, `--no-builtin-tools` and `--no-tools` switch whole tools. The skill field `allowed-tools` is documented as experimental and has no hit in `dist`, so nothing enforces it. Only a PI extension can gate: `tool_call` can block or rewrite a call, and `registerTool({ name: "bash" })` replaces the tool. Our module gets neither hook. **Design:** the PI extension in our package (`-e <add-on>/pi`, §9.2) registers a `bash` tool whose `execute` accepts only `<skill dir>/scripts/sp` and its arguments, split as argv, and runs them without a shell. That closes `;`, `&&` and `$( )`, which a string check on the command would let through. The demo runs `--no-builtin-tools`, so today PI has no shell at all. Extension tools stay on under that flag | `docs/usage.md:212-214`; `docs/skills.md` "Frontmatter"; `docs/extensions.md` "tool_call", `:2082` | read |
+| OpenClaw | **Yes, by configuration.** Gateway exec defaults to no approvals (`full`). For exactly one command: put `exec` and `read` in `tools.allow`, set exec to allowlist mode with ask off, and add one allowlist entry, the absolute path of `scripts/sp`, to the per-agent approvals (kept in OpenClaw's state database, edited with `openclaw approvals`). Keep `safeBins` unset and `autoAllowSkills` off. Chains need every part allowlisted, and redirections are refused. **Unknown:** whether a shebang script is bound by its own path or by its interpreter. **Also:** the `read` tool, which the skills list requires, can read any file the gateway can, the credentials included. The demo allows only the three agent tools, disables `elevated` and `commands.bash`, and hides all skills | `docs/tools/exec.md:107, 121-130, 215, 227-229`; `docs/tools/exec-approvals.md:100-170, 422-494`; the "Interpreter/runtime commands" part of the advanced approvals doc | read |
+| Claude Code | **Yes, by permission rules.** Rules are evaluated deny, then ask, then allow, and an allow cannot carve an exception out of a deny. A compound command (`&&`, `\|\|`, `;`, `\|`, `&`, newlines) must match a rule in every part. A skill's `allowed-tools` grants without a prompt, only during the turn that invoked the skill, and deny rules still win. The demo denies `Bash` and `Skill` outright, which removes both from the model's context. **Change:** take `Bash` and `Skill` out of `deny`; add `Bash(<add-on>/skill/scratchpad/scripts/sp *)` and `Skill(<plugin>:scratchpad)` to `allow`; set `defaultMode: "dontAsk"`, which denies every call that would otherwise prompt. Without it, the demo's default mode waits on a terminal dialog that no one answers, because the channel relays prompts only with `permissions.mode: "query"` | permissions docs, "Manage permissions", "Compound commands"; skills docs, `allowed-tools`; permission-modes docs; the plugin's `server.ts:593` | read |
+
+### 9.6 References: declaring `reads_scratchpad_references: true`
+
+A caller's `prompt_agent` keeps references only for an agent whose
+registration carries `scratchpad_refs_ok: "true"`, which discovery shows as
+`reads_scratchpad_references` (`typescript/src/scratchpad.ts:43, 142-144`,
+`scratchpad-extension.ts:138-141`). That key is registration metadata,
+`$SRV.INFO`, fixed when the service starts (`agent-sdk/typescript/src/service.ts:676-690`),
+so the heartbeat, which the add-on can extend, does not carry it.
+
+| Harness | Answer | Source | How known |
+| --- | --- | --- | --- |
+| PI | **Not possible today.** The plugin passes `extraMetadata: { cwd }`, hard-coded, and the contract has no metadata field | `extensions/nats-channel.ts:771-773`; `extensions/extensions.ts:128-145` | read |
+| OpenClaw | **Not possible today.** `extraMetadata` is `{ platform, description }`, hard-coded. The account config schema has no metadata field, and unknown keys reach `settings.config` but no metadata | `src/gateway.ts:289-292`; `src/extensions.ts:150-166`; `openclaw.plugin.json` | read |
+| Claude Code | **Not possible today.** The service is built with no `extraMetadata`, and the contract has no metadata field | `server.ts:494-512`; `src/extensions.ts:163-179` | read |
+
+**For all three: the public plugin's `metadata` field of §9.1.** The add-on
+sets the key only when ScratchPad is configured (`SCRATCHPAD_VOLUME` set).
+Until the field exists, a harness can publish and hand on its own
+references, but references handed to it are taken out by the caller.
+
+### 9.7 Trace context: `SP_THREAD_ID` and `SP_ROOT_ID` (optional for level B)
+
+sp takes the pair as `--thread-id` and `--root-id` (`internal/volumecli/cli.go:155-156, 295`),
+and the wrapper adds them from `SP_THREAD_ID` and `SP_ROOT_ID`. The ids are
+per served prompt, so they cannot be set once at start.
+
+| Harness | Answer | Source | How known |
+| --- | --- | --- | --- |
+| PI | **Yes, with a caveat.** The add-on sets the two variables in `process.env` at `promptAccepted` (inside the request's scope, from `activeTrace()`) and deletes them at `promptEnded`. The bash tool reads `process.env` on every call. The variables are process-wide, which is sound only because the plugin serves one prompt at a time; local typing during a remote turn gets the served ids (§7, "PI's turn boundaries"). The PI extension of §9.5 could instead pass them per call. No tool-call id | `dist/core/tools/bash.js:119-140`; the plugin's prompt queue | **measured** (the per-call read) |
+| OpenClaw | **Yes through the public plugin; roughly without it.** OpenClaw's `resolve_exec_env` plugin hook adds variables to every exec call, and only the public plugin holds the API. The fallback is the PI approach, `process.env` set around `aroundDispatch`. It is read per call, but it is process-wide and depends on one turn at a time (§3.1) | `docs/plugins/hooks/reference.md:146`; `dist/bash-tools-*.mjs:2920-2948, 2999-3003` | read |
+| Claude Code | **Not from our module.** Its environment does not reach the Bash tool (§9.4). The only per-call route is a `PreToolUse` hook on `Bash` that rewrites the command (`updatedInput`) and returns `allow`, since the rewritten command must still pass the rules. It would read the served ids from a file the module writes. That hook would live in the add-on's own plugin, and it is not designed further here. The public plugin's `PreToolUse` hook matches only the agent tools and prints nothing | hooks docs, "PreToolUse decision control"; the plugin's `hooks/hooks.json`, `hooks/session-event.ts:35-47` | read |
+
+### 9.8 Packaging the sp command line
+
+Built from ScratchPad at `79f8927` (a clean `git archive`), with
+`CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' ./cmd/sp` and Go 1.27.0.
+All **measured** on 2026-09-27:
+
+| Target | Size | gzip -9 | Notes |
+| --- | --- | --- | --- |
+| darwin/arm64 | 7,270,370 B (6.9 MiB) | 2,960,396 B | Mach-O, ad-hoc signed by the linker (`codesign -dv`); runs: the usage JSON, exit 2 |
+| darwin/amd64 | 7,894,432 B (7.5 MiB) | 3,231,604 B | Mach-O x86_64 |
+| linux/arm64 | 7,143,584 B (6.8 MiB) | 2,847,582 B | static ELF, stripped |
+| linux/amd64 | 7,708,832 B (7.4 MiB) | 3,175,581 B | static ELF, stripped |
+| all four in one npm package | 30.0 MB unpacked | 12.5 MB packed | `npm pack` of a package holding only the four |
+
+The add-ons today are 36–64 KB each (`dist/`).
+
+| Option | Install cost | Publishing cost | Verdict |
+| --- | --- | --- | --- |
+| **All four in each add-on package** | 12.5 MB download, 30.0 MB on disk, three quarters of it for other platforms | none beyond the add-on | while building: no extra packages, one pin |
+| **Per-platform optional packages** (`…-sp-<os>-<arch>`, with npm's `os` and `cpu` fields, as `optionalDependencies` of each add-on) | about 3 MB download, 7.5 MB on disk; shared by the three add-ons | four more packages per sp pin | **at the release**. Stated honestly: an install with optional dependencies omitted, or a lockfile made on another platform, can leave the binary out, so the wrapper names the missing package in its error |
+| **Download on first use** | a network fetch inside the model's first shell call | a public host for the binaries plus checksums | **rejected**. ScratchPad's repository is private, so it would need a host of our own, which makes the binaries as public as npm does, and it adds a network failure to a tool call |
+
+**Stated honestly: any published option makes the sp binaries public**
+while ScratchPad's source stays private. Publishing them is the
+ScratchPad owners' decision to make before the release.
+
+### 9.9 What the operator does, per harness
+
+Common to all three: reserve a ScratchPad volume for the harness's
+identity and set `SCRATCHPAD_VOLUME` (or the config entry's `options`);
+keep `<stateDir>/scratchpad` on persistent storage; and use
+`senderIdentity: signed`, as tracing already requires.
+
+| Harness | Steps | Built by us |
+| --- | --- | --- |
+| PI | one flag, `-e <add-on>/pi`; nothing else, since the connection comes from the plugin's context and the environment reaches bash | the PI extension (skill path, `bash` restricted to `scripts/sp`, optionally the per-call ids) and the add-on's variables |
+| OpenClaw | four config changes: `skills.load.extraDirs`; the skill named in the agent's skill allowlist (the demo's `[]`); `exec` and `read` in `tools.allow`; exec in allowlist mode with one approvals entry for `scripts/sp` | the add-on's variables |
+| Claude Code | one flag, `--plugin-dir <add-on>` (or `CLAUDE_CODE_PLUGIN_DIRS`); four settings changes: `Bash` and `Skill` out of `deny`, the two `allow` rules, `defaultMode: "dontAsk"`; the four variables in the launch environment or `settings.json` `env`, unless the add-on's plugin writes them from a `SessionStart` hook | the plugin manifest in the add-on package, optionally that hook |
+| Public plugin, all three | — | the `metadata` field of §9.1, one neutral change per plugin |
+
+### 9.10 Recommendation: PI first
+
+**PI first, end to end.** It has the easiest registration and the least
+setup: one flag, and the environment reaches the shell tool without any
+setting. Both are measured on PI 0.85.1. The per-call trace ids come
+without a public-plugin change (§9.7). PI already runs headless on the test
+rig, unlike Claude Code, which runs only in an interactive session with an
+Anthropic credential (§7). The cost is ours: the small PI extension that
+restricts `bash` to `scripts/sp`, because PI has no gate of its own.
+
+**Claude Code second.** Its gate and its paths are the best documented of
+the three: exact permission rules, `${CLAUDE_SKILL_DIR}` in `allowed-tools`,
+and `dontAsk`. But the environment is a settings step, or a hook of ours,
+and it is the heaviest harness to run.
+
+**OpenClaw last.** It needs the most configuration: four entries, one of
+them in a state database. It leaves one unknown open, how a shebang script
+is bound by the approvals. And the `read` tool that its skills list needs
+can read the credentials.
+
+**What blocks the design, per harness:**
+
+- **All three:** the registration key `scratchpad_refs_ok` needs the public
+  plugin's `metadata` field. Without it, references cannot be handed to a
+  harness (§9.6). No add-on-only route exists.
+- **PI:** "exactly `scripts/sp`" cannot be enforced by PI or by our module.
+  It needs our PI extension, loaded by the operator's `-e`. With `--skill`
+  alone, bash is unrestricted.
+- **Claude Code:** our module cannot give the shell its environment. It
+  needs a launch or settings step, or a hook in the add-on's own plugin.
+  The per-call ids need that hook too.
+- **OpenClaw:** nothing is impossible. The gate depends on the unknown
+  shebang binding, which the first OpenClaw session measures, and the skills
+  list forces a `read` tool that is not confined to the skill.
+
+## 10. Appendix: the text for the public repo
 
 To be pasted as it is. No fabric word appears below; the check of §8 is
 run on it.
 
-### 9.1 `agents/EXTENSIONS.md`
+### 10.1 `agents/EXTENSIONS.md`
 
 > # Extensions
 >
@@ -1024,7 +1269,7 @@ run on it.
 > runs on its own installed copy of the SDK packages; the plugin's status
 > output names the extensions it loaded.
 
-### 9.2 The paragraph for each plugin's README
+### 10.2 The paragraph for each plugin's README
 
 **PI** (`agents/pi/README.md`, a section "Extensions" after "In-PI commands"):
 
