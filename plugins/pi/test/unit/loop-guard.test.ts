@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 import { activeTrace, bindActiveTrace, type TraceScope } from "@synadia-ai/agent-fabric";
-import createExtension, {
+import {
+  createFabricExtension as createExtension,
   LOOP_GUARD_CODE,
   loopGuard,
   loopGuardDescription,

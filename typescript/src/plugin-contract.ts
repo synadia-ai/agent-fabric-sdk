@@ -112,6 +112,14 @@ export interface AgentExtension {
   readonly heartbeatExtras?: () => Readonly<Record<string, unknown>>;
   /** For the plugin's `AgentTools`: `extensions`. */
   readonly toolExtensions?: ReadonlyArray<AgentToolsExtension>;
+  /**
+   * Keys for the service's registration metadata, read once before the
+   * service starts. A key is one or more of `A-Z a-z 0-9 _ - .`, a value a
+   * string; anything else fails the plugin's start. The plugin's own keys
+   * and the protocol's registration keys win over an entry of the same name
+   * (`agents/EXTENSIONS.md` in `synadia-agents`, from #218).
+   */
+  readonly metadata?: Readonly<Record<string, string>>;
   /** After the service started. Awaited, bounded by the plugin. */
   started?(handles: AgentExtensionHandles): void | Promise<void>;
   /** Before the plugin stops its service. Awaited, bounded by the plugin. */

@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { READS_REFERENCES_KEY } from "@synadia-ai/agent-fabric";
 import createExtension, { SCRATCHPAD_OPTION, SP_VARS } from "../../src/index.js";
 import { extensionContext, recordingLogger, serve } from "../support/fake-plugin.js";
 
@@ -38,7 +39,7 @@ async function started(
   overrides: Parameters<typeof extensionContext>[0] = {},
 ) {
   const { logger, lines } = recordingLogger();
-  const ext = createExtension(extensionContext({ logger, ...overrides }), env);
+  const ext = await createExtension(extensionContext({ logger, ...overrides }), env);
   await ext.started!(handles as never);
   return { ext, lines };
 }
@@ -206,5 +207,32 @@ describe("per served prompt", () => {
     ext.events!.aroundInject!(served.request, () => undefined);
     expect(env).toEqual({});
     await served.end();
+  });
+});
+
+describe("references: the registration", () => {
+  const configured = (): Record<string, string | undefined> => ({
+    SCRATCHPAD_VOLUME: "pi-vol",
+    NATS_URL: "nats://127.0.0.1:4222",
+    NATS_CREDS: "/keys/pi.creds",
+  });
+
+  it("declares that PI reads references when ScratchPad is on", async () => {
+    const ext = await createExtension(extensionContext({ stateDir: home }), configured());
+    expect(ext.metadata).toEqual({ [READS_REFERENCES_KEY]: "true" });
+  });
+
+  it("declares nothing when ScratchPad is off", async () => {
+    const ext = await createExtension(extensionContext({ stateDir: home }), {});
+    expect(ext.metadata).toBeUndefined();
+  });
+
+  it("sets the connection before the plugin connects, the creator once the service is up", async () => {
+    const env = configured();
+    const ext = await createExtension(extensionContext({ stateDir: home }), env);
+    expect(env[SP_VARS.dir]).toBe(join(home, "scratchpad"));
+    expect(env[SP_VARS.creator]).toBeUndefined();
+    await ext.started!({ agents: {}, service: { subject: { prompt: ADDRESS } } } as never);
+    expect(env[SP_VARS.creator]).toBe(ADDRESS);
   });
 });

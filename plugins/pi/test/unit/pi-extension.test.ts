@@ -14,8 +14,9 @@ import {
   traceRecordCounts,
   type TraceScope,
 } from "@synadia-ai/agent-fabric";
-import createExtension, {
+import defaultExport, {
   createFabricExtension,
+  fabricExtension,
   EDGE_SUBJECT_VAR,
   EXTENSION_NAME,
   IDENTITY_OFF_WARNING,
@@ -35,12 +36,15 @@ const ROOT = "b".repeat(32);
 const NO_ENV: NodeJS.ProcessEnv = {};
 
 describe("the factory", () => {
-  it("is the default export, and the named one", () => {
-    expect(createExtension).toBe(createFabricExtension);
+  it("is the default export, and the named one, resolving ScratchPad first", async () => {
+    expect(defaultExport).toBe(fabricExtension);
+    const ext = await defaultExport(extensionContext(), NO_ENV);
+    expect(ext.name).toBe(EXTENSION_NAME);
+    expect(ext.toolExtensions).toBeUndefined();
   });
 
   it("returns the extension of the contract: tracing's hooks, the guard, no tool extensions", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     expect(ext.name).toBe(EXTENSION_NAME);
     expect(ext.requestInterceptors).toHaveLength(2);
     expect(ext.promptInterceptors).toHaveLength(2);
@@ -58,7 +62,7 @@ describe("the factory", () => {
   });
 
   it("reports the process-wide record counts on the heartbeat", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const counts = traceRecordCounts();
     expect(ext.heartbeatExtras!()).toEqual({
       records_published: counts.published,
@@ -86,7 +90,7 @@ describe("the one setting, the edge subject", () => {
 
   it("takes null as propagate-only: lineage, no records, no counts on the heartbeat", () => {
     expect(resolveEdgeSubject({ edgeSubject: null }, NO_ENV)).toBeNull();
-    const ext = createExtension(extensionContext({ options: { edgeSubject: null } }), NO_ENV);
+    const ext = createFabricExtension(extensionContext({ options: { edgeSubject: null } }), NO_ENV);
     expect(ext.heartbeatExtras!()).toEqual({});
   });
 
@@ -97,9 +101,9 @@ describe("the one setting, the edge subject", () => {
     ["a number", 42],
   ])("refuses %s at construction, so the plugin starts plain and says why", (_what, value) => {
     expect(() =>
-      createExtension(extensionContext({ options: { edgeSubject: value } }), NO_ENV),
+      createFabricExtension(extensionContext({ options: { edgeSubject: value } }), NO_ENV),
     ).toThrow(NatsAgentError);
-    expect(() => createExtension(extensionContext(), { [EDGE_SUBJECT_VAR]: "" })).toThrow(
+    expect(() => createFabricExtension(extensionContext(), { [EDGE_SUBJECT_VAR]: "" })).toThrow(
       NatsAgentError,
     );
   });
@@ -107,7 +111,7 @@ describe("the one setting, the edge subject", () => {
 
 describe("a served request with the pair in its envelope", () => {
   it("gives PI's provider requests the two headers of the served thread, the hint rising per call", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const served = serve(ext, "r1", { thread_id: THREAD, root_id: ROOT });
     await served.accepted;
 
@@ -134,7 +138,7 @@ describe("a served request with the pair in its envelope", () => {
   });
 
   it("runs the injected turn inside the served scope, replacing whatever context injects it", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const served = serve(ext, "r1", { thread_id: THREAD, root_id: ROOT });
     await served.accepted;
 
@@ -154,7 +158,7 @@ describe("a served request with the pair in its envelope", () => {
   });
 
   it("writes the edge of a prompt sent from the tool call under the served thread, with the tool-call ID", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const served = serve(ext, "r1", { thread_id: THREAD, root_id: ROOT }, "ACME.caller");
     await served.accepted;
 
@@ -176,7 +180,7 @@ describe("a served request with the pair in its envelope", () => {
   });
 
   it("forgets the request when the plugin settles it", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const served = serve(ext, "r1", { thread_id: THREAD, root_id: ROOT });
     await served.accepted;
     expect(ext.events!.providerHeaders!(served.request)).toBeDefined();
@@ -187,7 +191,7 @@ describe("a served request with the pair in its envelope", () => {
 
 describe("a served request without the pair", () => {
   it("gets a root minted for it, which its provider requests carry", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const served = serve(ext, "r2", {});
     await served.accepted;
     const headers = ext.events!.providerHeaders!(served.request)!;
@@ -197,7 +201,7 @@ describe("a served request without the pair", () => {
   });
 
   it("is refused with 400 on a half pair, before the add-on sees it", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const served = serve(ext, "r3", { thread_id: THREAD });
     await expect(served.accepted).rejects.toMatchObject({
       name: "RequestRejectedError",
@@ -208,7 +212,7 @@ describe("a served request without the pair", () => {
 });
 
 describe("a request the add-on never saw", () => {
-  const ext = createExtension(extensionContext(), NO_ENV);
+  const ext = createFabricExtension(extensionContext(), NO_ENV);
   const unknown = servedRequest("never", {});
 
   it("gets no headers", () => {
@@ -237,7 +241,7 @@ describe("started", () => {
 
   it("warns once, and only once, when the plugin's identity is off", async () => {
     const { logger, lines } = recordingLogger();
-    const ext = createExtension(extensionContext({ senderIdentity: "off", logger }), NO_ENV);
+    const ext = createFabricExtension(extensionContext({ senderIdentity: "off", logger }), NO_ENV);
     await ext.started!(handles as never);
     await ext.started!(handles as never);
     const warnings = lines.filter((l) => l.level === "warn");
@@ -246,7 +250,10 @@ describe("started", () => {
 
   it("does not warn when the identity is signed, and logs the definitive address", async () => {
     const { logger, lines } = recordingLogger();
-    const ext = createExtension(extensionContext({ senderIdentity: "signed", logger }), NO_ENV);
+    const ext = createFabricExtension(
+      extensionContext({ senderIdentity: "signed", logger }),
+      NO_ENV,
+    );
     await ext.started!(handles as never);
     expect(lines.filter((l) => l.level === "warn")).toEqual([]);
     expect(lines.filter((l) => l.level === "info").map((l) => l.message)).toEqual([

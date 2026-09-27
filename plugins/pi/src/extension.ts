@@ -21,8 +21,9 @@
 // ScratchPad (§9): when a volume is configured, the add-on sets the
 // environment the package's skill (`skill/scratchpad`, given to PI with
 // `--skill`) reads through `scripts/sp`: the connection, the workspace and
-// the volume once the service is up, the served prompt's trace and caller
-// from its hand-over to its end (`scratchpad.ts`).
+// the volume before the plugin connects, the served prompt's trace and
+// caller from its hand-over to its end. It registers PI as reading
+// references (`scratchpad.ts`).
 
 import {
   activeTrace,
@@ -35,8 +36,15 @@ import {
   type AgentExtensionContext,
   type ServedRequest,
   type TraceScope,
+  READS_REFERENCES_KEY,
 } from "@synadia-ai/agent-fabric";
-import { exportScratchPad, resolveScratchPad, ServedPromptEnv, SP_VARS } from "./scratchpad.js";
+import {
+  exportScratchPad,
+  resolveScratchPad,
+  ServedPromptEnv,
+  SP_VARS,
+  type ScratchPadSettings,
+} from "./scratchpad.js";
 
 /** The extension's name, as the plugin's status output lists it. */
 export const EXTENSION_NAME = "agent-fabric";
@@ -48,15 +56,29 @@ export const IDENTITY_OFF_WARNING =
 
 /**
  * The factory: the module's default export. Called once by the plugin,
- * before it connects, with what it knows then. Throws `NatsAgentError` for
- * an edge subject that can never be published to.
+ * before it connects, with what it knows then. Resolves ScratchPad's
+ * settings (which may read the plugin's NATS context) and builds the
+ * extension with them. Throws `NatsAgentError` for an edge subject that can
+ * never be published to.
  *
  * `env` is where the variables are read from, and where ScratchPad's are
  * set for PI's bash tool; a test passes its own.
  */
+export async function fabricExtension(
+  ctx: AgentExtensionContext,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<AgentExtension> {
+  return createFabricExtension(ctx, env, await resolveScratchPad(ctx, env));
+}
+
+/**
+ * The extension, built synchronously from settings already resolved:
+ * without `scratchPad`, tracing and the guard alone.
+ */
 export function createFabricExtension(
   ctx: AgentExtensionContext,
   env: NodeJS.ProcessEnv = process.env,
+  scratchPad?: ScratchPadSettings,
 ): AgentExtension {
   const edgeSubject = resolveEdgeSubject(ctx.options, env);
   const tracing = fabricTracing({ edgeSubject });
@@ -77,8 +99,10 @@ export function createFabricExtension(
     request === undefined ? undefined : scopes.get(request.id);
 
   let warnedIdentityOff = false;
-  let scratchPadOn = false;
+  const scratchPadOn = scratchPad !== undefined;
   const promptEnv = new ServedPromptEnv(env);
+  // Set before the plugin connects, so a command PI runs at any time finds them.
+  if (scratchPad !== undefined) exportScratchPad(scratchPad, env);
 
   return {
     name: EXTENSION_NAME,
@@ -91,11 +115,14 @@ export function createFabricExtension(
     // between them does not matter.
     promptInterceptors: [tracing.promptInterceptor, guard.promptInterceptor],
     heartbeatExtras: tracing.heartbeatExtras,
-    // No `toolExtensions` yet (§9.1 designs `scratchPadExtension` here). No `stopping`: an
+    // So a caller's `prompt_agent` hands references to PI.
+    ...(scratchPadOn ? { metadata: { [READS_REFERENCES_KEY]: "true" } } : {}),
+    // No `toolExtensions` yet (§9.1 designs `scratchPadExtension` here).
+    // No `stopping`: an
     // edge record is published before the prompt it describes and counted
     // as it goes, so there is nothing to flush when the plugin stops.
 
-    async started({ service }) {
+    started({ service }) {
       if (ctx.settings.senderIdentity !== "signed" && !warnedIdentityOff) {
         warnedIdentityOff = true;
         log.warn(IDENTITY_OFF_WARNING);
@@ -106,11 +133,8 @@ export function createFabricExtension(
             ? " (propagate-only: lineage forwarded, no edge record published)"
             : `, edge records on ${edgeSubject}`),
       );
-      const scratchPad = await resolveScratchPad(ctx, env);
       if (scratchPad !== undefined) {
-        exportScratchPad(scratchPad, env);
         env[SP_VARS.creator] = service.subject.prompt;
-        scratchPadOn = true;
         log.info(
           `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +
             (scratchPad.dir !== undefined ? `, workspace ${scratchPad.dir}` : ", no workspace") +

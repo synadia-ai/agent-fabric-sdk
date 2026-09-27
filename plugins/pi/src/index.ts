@@ -16,7 +16,8 @@
 
 export {
   createFabricExtension,
-  createFabricExtension as default,
+  fabricExtension,
+  fabricExtension as default,
   EXTENSION_NAME,
   IDENTITY_OFF_WARNING,
 } from "./extension.js";
