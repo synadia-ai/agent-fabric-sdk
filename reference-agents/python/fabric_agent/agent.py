@@ -61,6 +61,7 @@ from synadia_ai.agents import (
 
 from .config import AgentConfig
 from .model import ChatMessage, EmptyReplyError, ModelClient, converse
+from .reply import delivered_reply
 from .tools import NO_TOOLS, offered_tools, tool_runner
 
 #: How many prompts one agent serves at once. The Python host serves one at a
@@ -285,26 +286,27 @@ async def start_agent(
         # the caller is granted read on it right before the reply is sent,
         # for a short while — and only a caller whose signature verified,
         # because a grant names a principal and an unsigned claim proves
-        # none. A caller without one gets the reply in words alone.
+        # none. A caller without one gets small replies or a bounded refusal.
         # ``grant_caller`` makes that decision and the grant, and notes the
         # reference as given.
-        reply = result.reply
+        granted_reference: str | None = None
         if scratchpad is not None and references is not None and trace is not None:
             try:
                 ref = await scratchpad.commit(result.reply, f"/replies/{trace.thread_id}.md", trace)
                 log(f"{tag} committed the reply as {ref[:40]}…")
                 if await references.grant_caller(ref, stream.sender):
                     log(f"{tag} granted {format_sender(stream.sender)} read on it")
-                    reply += f"\n\n{ref}"
+                    granted_reference = ref
                 else:
-                    log(f"{tag} caller not verified: reply sent without the reference")
-            except Exception as err:  # noqa: BLE001 — the reply still goes out
+                    log(f"{tag} caller not verified: no ScratchPad handoff granted")
+            except Exception as err:  # noqa: BLE001 — small replies can still go out
                 log(f"{tag} could not hand the reply over by reference: {err}")
+        reply, history_reply = delivered_reply(result.reply, granted_reference)
         await stream.send(reply)
 
         # The history keeps the exchange as words, not the tool traffic.
         history.append({"role": "user", "content": envelope.prompt})
-        history.append({"role": "assistant", "content": result.reply})
+        history.append({"role": "assistant", "content": history_reply})
         del history[: max(0, len(history) - cfg.agent.max_history_exchanges * 2)]
 
     service.on_prompt(on_prompt)

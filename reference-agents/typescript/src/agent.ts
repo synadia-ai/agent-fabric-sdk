@@ -50,6 +50,7 @@ import {
 } from "@synadia-ai/agents";
 import type { AgentConfig } from "./config.js";
 import { converse, createModelClient, EmptyReplyError, type ChatMessage } from "./model.js";
+import { deliveredReply } from "./reply.js";
 import { NO_TOOLS, offeredTools, toolRunner } from "./tools.js";
 
 export interface RunningAgent {
@@ -266,30 +267,31 @@ export async function startAgent(
     // the caller is granted read on it right before the reply is sent, for
     // a short while — and only a caller whose signature verified, because
     // a grant names a principal and an unsigned claim proves none. A
-    // caller without one gets the reply in words alone. `grantCaller`
+    // caller without one gets small replies or a bounded refusal. `grantCaller`
     // makes that decision and the grant, and notes the reference as given.
-    let reply = result.reply;
+    let grantedReference: string | undefined;
     if (scratchpad !== undefined && references !== undefined && trace !== undefined) {
       try {
         const ref = await scratchpad.commit(result.reply, `/replies/${trace.threadId}.md`, trace);
         log(`${tag} committed the reply as ${ref.slice(0, 40)}…`);
         if (await references.grantCaller(ref, response.sender)) {
           log(`${tag} granted ${formatSender(response.sender)} read on it`);
-          reply += `\n\n${ref}`;
+          grantedReference = ref;
         } else {
-          log(`${tag} caller not verified: reply sent without the reference`);
+          log(`${tag} caller not verified: no ScratchPad handoff granted`);
         }
       } catch (err) {
-        // The reply still goes out; only the handoff by reference is lost.
+        // Small replies can still go out. Large delivery requires the grant.
         log(`${tag} could not hand the reply over by reference: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    await response.send(reply);
+    const delivery = deliveredReply(result.reply, grantedReference);
+    await response.send(delivery.reply);
 
     // The history keeps the exchange as words, not the tool traffic.
     history.push(
       { role: "user", content: envelope.prompt },
-      { role: "assistant", content: result.reply },
+      { role: "assistant", content: delivery.history },
     );
     while (history.length > cfg.agent.maxHistoryExchanges * 2) history.splice(0, 2);
   }

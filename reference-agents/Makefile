@@ -17,7 +17,7 @@ SDK_DIR       := synadia-agents
 SDK_BRANCH    := sdk-release-rollout
 ANY_BRANCH    ?=
 
-.PHONY: setup agent-ts test-ts agent-py test-py test
+.PHONY: setup agent-ts test-ts agent-py test-py test test-reply-controls
 
 # The packages, built and installed. Safe to run twice.
 setup:
@@ -41,3 +41,8 @@ test-py:
 
 # Everything.
 test: test-ts test-py
+
+# The destination is explicit because the controls retain isolated source copies.
+test-reply-controls:
+	@test -n "$(REPLY_EVIDENCE)" || (echo 'Set REPLY_EVIDENCE to a new absolute evidence directory'; exit 2)
+	uv run --script test-fixtures/reply_controls.py --evidence "$(REPLY_EVIDENCE)"

@@ -1,0 +1,16 @@
+[
+  {"name":"small-granted","unit":"ordinary reply","repeat":1,"suffix":"","mode":"granted","bytes":14,"large":false},
+  {"name":"ascii-boundary","unit":"a","repeat":65536,"suffix":"","mode":"granted","bytes":65536,"large":false},
+  {"name":"ascii-over","unit":"a","repeat":65537,"suffix":"","mode":"granted","bytes":65537,"large":true},
+  {"name":"multibyte-boundary","unit":"é","repeat":32768,"suffix":"","mode":"granted","bytes":65536,"large":false},
+  {"name":"multibyte-over","unit":"é","repeat":32768,"suffix":"x","mode":"granted","bytes":65537,"large":true},
+  {"name":"beyond-broker-message","unit":"large-result-","repeat":180000,"suffix":"","mode":"granted","bytes":2340000,"large":true},
+  {"name":"large-unsigned","unit":"🦊","repeat":16385,"suffix":"","mode":"unsigned","bytes":65540,"large":true},
+  {"name":"large-publish-failure","unit":"a","repeat":65537,"suffix":"","mode":"publish-failure","bytes":65537,"large":true},
+  {"name":"large-grant-failure","unit":"a","repeat":65537,"suffix":"","mode":"grant-failure","bytes":65537,"large":true},
+  {"name":"large-without-scratchpad","unit":"a","repeat":65537,"suffix":"","mode":"absent","bytes":65537,"large":true},
+  {"name":"small-unsigned","unit":"ordinary reply","repeat":1,"suffix":"","mode":"unsigned","bytes":14,"large":false},
+  {"name":"small-publish-failure","unit":"ordinary reply","repeat":1,"suffix":"","mode":"publish-failure","bytes":14,"large":false},
+  {"name":"small-grant-failure","unit":"ordinary reply","repeat":1,"suffix":"","mode":"grant-failure","bytes":14,"large":false},
+  {"name":"small-without-scratchpad","unit":"ordinary reply","repeat":1,"suffix":"","mode":"absent","bytes":14,"large":false}
+]

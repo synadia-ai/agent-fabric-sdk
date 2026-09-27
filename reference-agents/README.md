@@ -239,6 +239,8 @@ Every agent runs its model loop differently, so the tools began as reference cod
 
 ## Where to read next
 
+- [Bounded replies](docs/bounded-replies.md): delivery above 65,536 UTF-8 bytes, required grants, and bounded result history in both agents.
+
 - [`docs/getting-started/typescript.md`](docs/getting-started/typescript.md) or [`python.md`](docs/getting-started/python.md): the walkthrough, the same agent grown in six steps, with what the console shows after each and why.
 - [`typescript/README.md`](typescript/README.md), [`python/README.md`](python/README.md): every file, the tests, and how the code reads.
 - This package's READMEs, [`../typescript/README.md`](../typescript/README.md) and [`../python/README.md`](../python/README.md), and the repository's [`../README.md`](../README.md): tracing, the ScratchPad extension, and ScratchPad from the environment.
