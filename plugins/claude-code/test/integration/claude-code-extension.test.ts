@@ -45,7 +45,7 @@ import {
   type Outcome,
   type ServedRequest,
 } from "@synadia-ai/agent-fabric";
-import createExtension, { EXTENSION_NAME } from "../../src/index.js";
+import { createFabricExtension, EXTENSION_NAME } from "../../src/index.js";
 import { extensionContext, recordingLogger } from "../support/fake-plugin.js";
 import {
   dec,
@@ -85,7 +85,7 @@ describe.skipIf(!bin)(
     const services: AgentService[] = [];
     const clients: Agents[] = [];
     const { logger, lines } = recordingLogger();
-    const ext = createExtension(extensionContext({ logger }), {});
+    const ext = createFabricExtension(extensionContext({ logger }), {});
 
     const wire: Array<{ what: "trace" | "CC" | "R"; msg: Msg }> = [];
     const toolResults: AgentToolResult[] = [];

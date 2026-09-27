@@ -284,6 +284,86 @@ describe("the flags from the environment", () => {
   });
 });
 
+// Claude Code's add-on cannot set the Bash tool's environment, so it writes
+// the variables to a file its SessionStart hook names in SP_ENV_FILE.
+describe("the variables from SP_ENV_FILE", () => {
+  function envFile(text: string): string {
+    const path = join(root, `sp-${Math.random().toString(36).slice(2)}.env`);
+    writeFileSync(path, text);
+    return path;
+  }
+
+  it("takes the connection, the workspace, the trace and the caller from the file", () => {
+    const path = envFile(
+      [
+        "SP_NATS_URL=nats://127.0.0.1:4333",
+        "SP_NATS_CREDS=/keys/cc it's.creds",
+        "SCRATCHPAD_DIR=/state/scratchpad",
+        "SCRATCHPAD_VOLUME=cc-vol",
+        `SP_THREAD_ID=${"a".repeat(32)}`,
+        `SP_ROOT_ID=${"b".repeat(32)}`,
+        "SP_CALLER_ACCOUNT=ACALLER",
+        "SP_CALLER_USER=UCALLER",
+      ].join("\n"),
+    );
+    const read = run(["read", "--ref", "x"], { SP_ENV_FILE: path });
+    expect(read.status).toBe(0);
+    expect(flag(read.args, "--creds")).toBe("/keys/cc it's.creds");
+    expect(flag(read.args, "--dir")).toBe("/state/scratchpad");
+    expect(flag(read.args, "--thread-id")).toBe("a".repeat(32));
+    expect(flag(run(["init"], { SP_ENV_FILE: path }).args, "--volume")).toBe("cc-vol");
+    const grant = run(["grant", "--ref", "sp-ref:abc", "--operation-id", "g1"], {
+      SP_ENV_FILE: path,
+    });
+    expect(flag(grant.args, "--grantee-user")).toBe("UCALLER");
+  });
+
+  it("is the truth when it exists: a served prompt's variable it does not name is unset", () => {
+    const path = envFile("SP_NATS_URL=nats://from-file:4222\nSP_NATS_CREDS=/keys/f.creds\n");
+    const r = run(["grant", "--ref", "sp-ref:abc", "--operation-id", "g1"], {
+      ...CONNECTION,
+      SP_ENV_FILE: path,
+      SP_THREAD_ID: "a".repeat(32),
+      SP_ROOT_ID: "b".repeat(32),
+      SP_CALLER_ACCOUNT: "ASTALE",
+      SP_CALLER_USER: "USTALE",
+    });
+    expect(r.status).toBe(2);
+    expect(r.error?.message).toContain("grant goes only to the agent whose prompt is being served");
+    const read = run(["read", "--ref", "x"], { ...CONNECTION, SP_ENV_FILE: path });
+    expect(flag(read.args, "--url")).toBe("nats://from-file:4222");
+    expect(read.args).not.toContain("--thread-id");
+    // What the file does not hold keeps its value from the environment.
+    expect(flag(read.args, "--dir")).toBe("/state/scratchpad");
+  });
+
+  it("reads only its own names, as values and never as commands", () => {
+    const marker = join(root, "ran");
+    const path = envFile(
+      [
+        "SP_NATS_URL=nats://127.0.0.1:4333",
+        `SP_NATS_CREDS=$(touch ${marker})`,
+        `PATH=/nowhere`,
+        `SCRATCHPAD_BIN=/elsewhere/sp`,
+        "not a line",
+      ].join("\n"),
+    );
+    const r = run(["read", "--ref", "x"], { SP_ENV_FILE: path });
+    expect(r.status).toBe(0);
+    expect(r.binary).toBe("sp-darwin-arm64");
+    expect(flag(r.args, "--creds")).toBe(`$(touch ${marker})`);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("falls back to the environment when the file does not exist", () => {
+    const r = run(["read", "--ref", "x"], { ...CONNECTION, SP_ENV_FILE: join(root, "absent.env") });
+    expect(flag(r.args, "--url")).toBe("nats://127.0.0.1:4333");
+    const bare = run(["read", "--ref", "x"], { SP_ENV_FILE: join(root, "absent.env") });
+    expect(bare.status).toBe(2);
+    expect(bare.error?.message).toContain("SP_NATS_URL and SP_NATS_CREDS are unset");
+  });
+});
+
 const machine = `${process.platform === "darwin" ? "darwin" : "linux"}-${process.arch === "arm64" ? "arm64" : "amd64"}`;
 const built = existsSync(join(SKILL, "bin", `sp-${machine}`));
 

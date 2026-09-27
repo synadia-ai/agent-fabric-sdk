@@ -1,0 +1,10 @@
+{
+  "name": "agent-fabric",
+  "version": "0.1.0",
+  "description": "The Synadia Agent Fabric add-on for the NATS channel plugin, as a Claude Code plugin of its own: ScratchPad's skill and the hook that hands scripts/sp its environment.",
+  "author": {
+    "name": "Synadia"
+  },
+  "repository": "https://github.com/synadia-ai/agent-fabric-sdk",
+  "license": "Apache-2.0"
+}
