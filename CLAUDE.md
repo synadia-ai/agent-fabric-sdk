@@ -27,6 +27,7 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   src/grant-request.ts            requestGrant, grantRequestEndpoint, the creator's rule
   src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
   src/scratchpad-cli.ts           spCliScratchPad(), scratchPadFromEnv(): the port's ready implementation over `sp`
+  src/scratchpad-native.ts        nativeScratchPad(), nativeScratchPadFromEnv(), scratchPadReader(): the native NATS client; protocol, codec, SQLite workspace and workflows in scratchpad-native/
   src/plugin-contract.ts          the harness plugins' extension contract, as types — TypeScript only
   src/loop-guard.ts               loopGuard(): the 409 guard every add-on returns — TypeScript only
   src/plugin-settings.ts          resolveEdgeSubject(): the add-ons' one setting — TypeScript only
@@ -103,8 +104,11 @@ reference-agents/    the two reference agents, the package's worked example — 
   package's own implementation of that port, `scratchpad-cli` /
   `scratchpad_cli`, is the one piece that drives `sp`, moved from the
   examples' agents at `1ed3c45` and moved to the sp v2 command line on
-  2026-09-27; a later one speaking NATS directly replaces it behind the
-  same `ScratchPadClient`. The variables it reads
+  2026-09-27. TypeScript's native client implements the same `ScratchPadClient`
+  and is the reference agent's default. Its writer requires Node 22.13+
+  and an explicit persistent `SCRATCHPAD_DIR`; see `docs/scratchpad-native.md`.
+  The native reader needs no workspace. Python retains the CLI adapter until
+  its native implementation lands. The variables the CLI adapter reads
   (`SCRATCHPAD_VOLUME`, `_BIN`, `_DIR`, `_GRANT_TTL_S`) are a contract.
 
 ## The protocol SDK during development
