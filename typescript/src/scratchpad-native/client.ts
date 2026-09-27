@@ -78,6 +78,7 @@ interface Publication {
   command: Command;
   path: string;
   ttl: number;
+  expiry_revision?: number;
 }
 interface Granted {
   request: GrantIssueRequest;
@@ -170,10 +171,11 @@ function validateState(value: unknown): asserts value is State {
     const p = s.pending as Pending;
     switch (p.kind) {
       case "publish":
-        record(p, ["kind", "command", "path", "ttl"]);
+        record(p, ["kind", "command", "path", "ttl"], ["expiry_revision"]);
         validateCommand(p.command);
         validatePath(p.path, 256);
         uint(p.ttl, MAX_GRANT_SECONDS, 1);
+        if (p.expiry_revision !== undefined) uint(p.expiry_revision, undefined, 1);
         check(
           p.command.creation_id === s.target.creation_id &&
             sameValue(p.command.writer, s.writer) &&
@@ -381,8 +383,20 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       refuse("fenced", "reset outcome needs an explicit resetWriter with the observed generation");
     await this.initialize();
     const pending = this.state.pending;
-    if (pending?.kind === "publish")
-      return { kind: "publish", ...(await this.resumePublish(pending)) };
+    if (pending?.kind === "publish") {
+      try {
+        return { kind: "publish", ...(await this.resumePublish(pending)) };
+      } catch (error) {
+        if (
+          error instanceof NativeScratchPadError &&
+          error.code === "expired" &&
+          !error.unknown &&
+          !this.state.pending
+        )
+          return { kind: "expired" };
+        throw error;
+      }
+    }
     if (pending) {
       await this.control(pending, false);
       return { kind: pending.kind };
@@ -561,17 +575,70 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       slot.number >= publication.command.number
     )
       refuse("fenced", "saved writer position has been fenced; inspect and reset explicitly");
-    await this.upload();
-    const receipt = await this.transport.publish({
-      target: this.target(),
-      command: publication.command,
-    });
+    if (publication.expiry_revision !== undefined) {
+      await this.fenceExpired(publication, view);
+      throw new NativeScratchPadError("expired", "saved publication expired without acceptance");
+    }
+    // An accepted command still returns its receipt after expiry. An expired
+    // refusal needs a durable revision fence before an earlier in-flight CAS
+    // can be ruled out; a clock check alone does not provide that fence.
+    if (publication.command.retention.until > now()) await this.upload();
+    let receipt: Receipt;
+    try {
+      receipt = await this.transport.publish({
+        target: this.target(),
+        command: publication.command,
+      });
+    } catch (error) {
+      if (error instanceof NativeScratchPadError && error.code === "expired" && !error.unknown) {
+        await this.fenceExpired(publication, view);
+      }
+      throw error;
+    }
     if (
       !sameValue(receipt.command, publication.command) ||
       !sameValue(receipt.principal, this.principal)
     )
       throw unknown(undefined, "publish receipt differs from the saved command");
     return this.accept(publication, receipt);
+  }
+
+  private async fenceExpired(publication: Publication, view: VolumeView): Promise<void> {
+    let revision = publication.expiry_revision;
+    if (revision === undefined) {
+      if (view.closed) refuse("closed", "another maintenance interval owns this closed volume");
+      revision = view.revision;
+      publication = { ...publication, expiry_revision: revision };
+      this.change(publication);
+    }
+    if (!(view.closed && view.revision === revision + 1)) {
+      if (view.revision !== revision) {
+        const pending = { ...publication };
+        delete pending.expiry_revision;
+        this.change(pending);
+        throw new NativeScratchPadError(
+          "conflict",
+          "expiry fence changed; recover the saved publication again",
+        );
+      }
+      view = await this.transport.closeVolume({ target: this.target(), revision });
+    }
+    const slot = view.writers[publication.command.writer.slot]!;
+    if (
+      !view.closed ||
+      view.revision !== revision + 1 ||
+      slot.generation !== publication.command.writer.generation ||
+      slot.number !== publication.command.number - 1
+    )
+      throw unknown(undefined, "expiry fence has not established publication absence");
+    // Closing advanced the same metadata record that publication CAS uses.
+    // Every older in-flight write is fenced; a new attempt fails on expiry.
+    const continuation: Control = {
+      kind: "apply",
+      request: { target: this.target(), revision: view.revision },
+    };
+    this.save({ ...this.state, pending: continuation }, true, true);
+    await this.control(continuation, true);
   }
 
   private accept(publication: Publication, receipt: Receipt): PublishResult {

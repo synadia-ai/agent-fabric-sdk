@@ -87,7 +87,7 @@ def validate_grant(value: Any) -> None:
     text(grant["root"], 43, 43)
 
 
-def validate_state(value: Any) -> None:  # noqa: PLR0915
+def validate_state(value: Any) -> None:  # noqa: PLR0912, PLR0915 -- one case per saved state
     state = record(
         value,
         ["version", "principal", "volume", "creator", "creation", "next", "grants"],
@@ -138,10 +138,12 @@ def validate_state(value: Any) -> None:  # noqa: PLR0915
     check(isinstance(pending, dict), "invalid pending operation")
     kind = pending.get("kind")
     if kind == "publish":
-        record(pending, ["kind", "command", "path", "ttl"])
+        record(pending, ["kind", "command", "path", "ttl"], ["expiry_revision"])
         validate_command(pending["command"])
         validate_path(pending["path"], 256)
         uint(pending["ttl"], MAX_GRANT_SECONDS, 1)
+        if "expiry_revision" in pending:
+            uint(pending["expiry_revision"], minimum=1)
         check(
             pending["command"]["creation_id"] == state["target"]["creation_id"]
             and pending["command"]["writer"] == state.get("writer")
@@ -306,7 +308,12 @@ class NativeScratchPad(ScratchPadReader):
         await self._initialize()
         pending = self._state.get("pending")
         if pending and pending["kind"] == "publish":
-            return {"kind": "publish", **await self._resume_publish(pending)}
+            try:
+                return {"kind": "publish", **await self._resume_publish(pending)}
+            except NativeScratchPadError as error:
+                if error.code == "expired" and not error.unknown and not self._state.get("pending"):
+                    return {"kind": "expired"}
+                raise
         if pending:
             await self._control(pending, fresh=False)
             return {"kind": pending["kind"]}
@@ -515,11 +522,58 @@ class NativeScratchPad(ScratchPadReader):
             or slot["number"] >= command["number"]
         ):
             refuse("fenced", "saved writer position has been fenced; inspect and reset explicitly")
-        await self._upload()
-        receipt = await self._transport.publish({"target": self._target(), "command": command})
+        if "expiry_revision" in publication:
+            await self._fence_expired(publication, view)
+            raise NativeScratchPadError("expired", "saved publication expired without acceptance")
+        # Receipt replay precedes expiry. An expired refusal still needs a
+        # durable revision fence against an earlier in-flight publication CAS.
+        if command["retention"]["until"] > now():
+            await self._upload()
+        try:
+            receipt = await self._transport.publish({"target": self._target(), "command": command})
+        except NativeScratchPadError as error:
+            if error.code == "expired" and not error.unknown:
+                await self._fence_expired(publication, view)
+            raise
         if receipt["command"] != command or receipt["principal"] != self._principal:
             raise unknown(None, "publish receipt differs from the saved command")
         return self._accept(publication, receipt)
+
+    async def _fence_expired(self, publication: dict[str, Any], view: dict[str, Any]) -> None:
+        revision = publication.get("expiry_revision")
+        if revision is None:
+            if view["closed"]:
+                refuse("closed", "another maintenance interval owns this closed volume")
+            revision = view["revision"]
+            publication = {**publication, "expiry_revision": revision}
+            self._change(publication)
+        if not (view["closed"] and view["revision"] == revision + 1):
+            if view["revision"] != revision:
+                pending = dict(publication)
+                del pending["expiry_revision"]
+                self._change(pending)
+                raise NativeScratchPadError(
+                    "conflict", "expiry fence changed; recover the saved publication again"
+                )
+            view = await self._transport.close_volume(
+                {"target": self._target(), "revision": revision}
+            )
+        slot = view["writers"][publication["command"]["writer"]["slot"]]
+        if (
+            not view["closed"]
+            or view["revision"] != revision + 1
+            or slot["generation"] != publication["command"]["writer"]["generation"]
+            or slot["number"] != publication["command"]["number"] - 1
+        ):
+            raise unknown(None, "expiry fence has not established publication absence")
+        # The close advanced publication's metadata record, fencing older CAS
+        # writes. Persist collection's continuation before discarding the intent.
+        continuation = {
+            "kind": "apply",
+            "request": {"target": self._target(), "revision": view["revision"]},
+        }
+        self._save({**self._state, "pending": continuation}, remote=True, clear_objects=True)
+        await self._control(continuation, fresh=True)
 
     def _accept(self, publication: dict[str, Any], receipt: dict[str, Any]) -> dict[str, Any]:
         reference = encode_reference(

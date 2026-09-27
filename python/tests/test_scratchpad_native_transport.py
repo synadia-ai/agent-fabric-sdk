@@ -135,20 +135,33 @@ async def test_any_request_failure_is_unknown(reason: str) -> None:
     assert len(nc.calls) == 1
 
 
-async def test_user_cancellation_after_send_preserves_unknown_outcome() -> None:
+@pytest.mark.parametrize("mutation", [False, True])
+@pytest.mark.parametrize("after_send", [False, True])
+async def test_user_cancellation_propagates_before_and_after_send(
+    mutation: bool, after_send: bool
+) -> None:
     nc = Connection()
+    flushing = asyncio.Event()
+
+    async def stalled_flush() -> None:
+        flushing.set()
+        await asyncio.Future()
 
     async def stalled() -> Msg:
         return await asyncio.Future()
 
-    nc.on_request = stalled
-    task = asyncio.create_task(client(nc).publish(publication()))
-    await nc.entered.wait()
+    if after_send:
+        nc.on_request = stalled
+    else:
+        nc.on_flush = stalled_flush
+    transport = client(nc)
+    task = asyncio.create_task(transport.publish(publication()) if mutation else transport.info())
+    await (nc.entered if after_send else flushing).wait()
     task.cancel()
-    with pytest.raises(NativeScratchPadError) as caught:
+    with pytest.raises(asyncio.CancelledError):
         await task
-    assert caught.value.unknown and isinstance(caught.value.__cause__, asyncio.CancelledError)
-    assert len(nc.calls) == 1
+    assert task.cancelled()
+    assert len(nc.calls) == int(after_send)
 
 
 async def test_bounded_reply_deadline_is_unknown() -> None:

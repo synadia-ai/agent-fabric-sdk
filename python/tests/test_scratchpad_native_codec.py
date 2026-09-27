@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+from array import array
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, cast
@@ -139,6 +140,26 @@ async def test_stream_boundaries_and_immutable_emission() -> None:
     assert [ref["length"] for ref in file["chunks"]] == [p.CHUNK_SIZE, p.CHUNK_SIZE, 19]
     assert file["digest"] == hashlib.sha256(raw).hexdigest()
     assert b"".join(emitted) == raw
+
+
+async def test_stream_counts_multibyte_memoryview_bytes() -> None:
+    values = array("I", range(p.CHUNK_SIZE // 4 + 1))
+    assert values.itemsize == 4
+    part = memoryview(values)
+    raw = part.tobytes()
+    emitted: list[bytes] = []
+    file = await c.chunk_stream([part], lambda _index, _obj, data: emitted.append(data))
+    assert [len(data) for data in emitted] == [p.CHUNK_SIZE, 4]
+    assert [ref["length"] for ref in file["chunks"]] == [p.CHUNK_SIZE, 4]
+    assert b"".join(emitted) == raw
+    assert file["size"] == len(raw)
+    assert file["digest"] == hashlib.sha256(raw).hexdigest()
+    assert c.decode_file_object(c.encode_file_object(file)) == file
+
+
+async def test_stream_rejects_noncontiguous_memoryview() -> None:
+    with pytest.raises(NativeScratchPadError, match="contiguous"):
+        await c.chunk_stream([memoryview(b"abcdef")[::2]], lambda *_: None)
 
 
 async def test_spool_error_propagates_without_prepared_file() -> None:

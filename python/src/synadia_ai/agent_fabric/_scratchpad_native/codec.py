@@ -51,6 +51,7 @@ class Directory(TypedDict):
 
 
 Reference = Wire
+StreamPart = bytes | bytearray | memoryview
 REFERENCE_VERSION = 2
 _MAX_NAME_BYTES = 255
 _MAX_TARGET_BYTES = 4096
@@ -101,7 +102,9 @@ def tree_node_id(data: bytes) -> str:
     return _hash("scratchpad:v1:tree", data)
 
 
-async def _parts(source: AsyncIterable[bytes] | Iterable[bytes]) -> AsyncIterator[bytes]:
+async def _parts(
+    source: AsyncIterable[StreamPart] | Iterable[StreamPart],
+) -> AsyncIterator[StreamPart]:
     if isinstance(source, AsyncIterable):
         async for part in source:
             yield part
@@ -111,7 +114,7 @@ async def _parts(source: AsyncIterable[bytes] | Iterable[bytes]) -> AsyncIterato
 
 
 async def chunk_stream(
-    source: AsyncIterable[bytes] | Iterable[bytes],
+    source: AsyncIterable[StreamPart] | Iterable[StreamPart],
     emit: Callable[[int, Wire, bytes], Awaitable[None] | None],
 ) -> FileObject:
     """Emit immutable fixed-size chunks; retain only bounded chunk metadata."""
@@ -134,10 +137,15 @@ async def chunk_stream(
 
     async for part in _parts(source):
         p.check(isinstance(part, bytes | bytearray | memoryview), "stream must yield bytes")
+        try:
+            view = memoryview(part).cast("B")
+        except (TypeError, ValueError) as cause:
+            raise invalid("stream parts must expose contiguous bytes", cause) from cause
         offset = 0
-        while offset < len(part):
-            length = min(CHUNK_SIZE - len(buffer), len(part) - offset)
-            buffer.extend(part[offset : offset + length])
+        while offset < len(view):
+            length = min(CHUNK_SIZE - len(buffer), len(view) - offset)
+            p.check(length > 0, "chunk stream must make positive progress")
+            buffer.extend(view[offset : offset + length])
             offset += length
             if len(buffer) == CHUNK_SIZE:
                 await flush()

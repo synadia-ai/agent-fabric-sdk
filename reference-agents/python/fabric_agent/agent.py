@@ -123,16 +123,13 @@ async def start_agent(
     # Where this agent takes prompts: ``agents.prompt.<kind>.<owner>.<name>``.
     address = AgentSubject.new(cfg.agent.kind, cfg.agent.owner, cfg.agent.name).prompt
 
-    # (4) ScratchPad, as the environment configures it: the fabric package
-    # reads ``SCRATCHPAD_VOLUME`` and the rest, and drives the ``sp`` command
-    # line until a Python ScratchPad client exists. ``sp`` connects as this
-    # agent does. Unset, there is none: the agent still does (1) to (3) and is
-    # a participant, just one that pastes. Every reference it makes names this
-    # agent as its creator.
+    # (4) ScratchPad borrows this authenticated connection. An unset volume
+    # disables it; a configured volume requires a private persistent workspace.
+    # Every reference this agent creates names its prompt address as creator.
     native_scratchpad = (
         await native_scratchpad_from_env(env, creator=address, nc=nc) if scratchpad is None else None
     )
-    scratchpad = scratchpad or native_scratchpad
+    scratchpad = native_scratchpad if scratchpad is None else scratchpad
 
     # Tracing, from the fabric package: three hooks the SDK takes. The
     # service's two adopt or mint each prompt's thread, run the handler inside

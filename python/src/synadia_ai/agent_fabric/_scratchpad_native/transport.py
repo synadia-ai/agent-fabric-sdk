@@ -177,20 +177,19 @@ class ScratchPadTransport:
             self._ready(len(body) + header_bytes)
             remaining = deadline - asyncio.get_running_loop().time()
             p.check(remaining > 0, "deadline ended before transmission")
-        except (Exception, asyncio.CancelledError) as cause:
+        except Exception as cause:
             raise NativeScratchPadError(
                 "unavailable", "request not transmitted", local=True, cause=cause
             ) from cause
         try:
             # No await separates the readiness check from invoking request.
-            # Once invoked, even cancellation or NoResponders is ambiguous.
+            # The workflow keeps its durable intent if cancellation propagates.
+            # Other request failures, including NoResponders, are ambiguous.
             reply = await asyncio.wait_for(
                 self.nc.request(p.SUBJECT_PREFIX + verb, body, timeout=remaining, headers=headers),
                 remaining,
             )
-        except (Exception, asyncio.CancelledError) as cause:
-            if isinstance(cause, asyncio.CancelledError) and not mutation:
-                raise
+        except Exception as cause:
             raise NativeScratchPadError(
                 "unknown" if mutation else "unavailable",
                 "request returned no trustworthy reply",

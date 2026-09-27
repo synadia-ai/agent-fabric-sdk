@@ -125,10 +125,19 @@ Recovery compares the full stored receipt before reading local payloads.
 It otherwise uploads the saved bytes and repeats the exact command once.
 Repeated `operationId` values reuse the saved payload and do not consume a replacement input stream.
 Changed content needs a new operation ID. The local retry window stores the last publication only.
+An expired intent leaves that window after recovery settles it; use a fresh operation ID for new work.
 After a workspace write failure, close and reopen the client before recovery.
+If an unaccepted publication passes its retention deadline, recovery sends the saved command to
+establish the service's definite `expired` refusal. It saves the observed revision and closes
+that exact revision, which fences any older in-flight publication write. It then saves the
+collection continuation, clears the expired intent and spool, and reopens through collection.
+Recovery reports `{ kind: "expired" }`; the next commit can proceed with the same writer.
+An accepted publication still recovers its exact receipt after expiry. The local clock alone never clears an intent.
 
 NATS JavaScript can buffer requests during reconnect. The client uses a bounded flush before each request and does not add retries.
 After transmission, loss, cancellation, or malformed replies leave mutations unknown.
+Python task cancellation propagates as `asyncio.CancelledError` and preserves the saved mutation
+for explicit recovery. It is not converted into an ordinary exception that a handler might ignore.
 A later definite refusal cannot establish that an earlier unknown grant or maintenance request had no effect.
 The saved control request remains until acceptance or an applicable fence establishes the outcome.
 Python uses nats-py's public connection and message APIs. Those APIs collapse repeated header names
@@ -180,7 +189,7 @@ cd ../python
 uv sync --python 3.12 --frozen
 SCRATCHPAD_CORE_ROOT=/path/to/private/scratchpad \
 SCRATCHPAD_TYPESCRIPT_PACKAGE=/path/to/agent-fabric-sdk/typescript \
-  uv run --no-sync pytest -s tests/test_scratchpad_native.py
+  uv run --no-sync pytest -s tests/test_scratchpad_native.py tests/test_scratchpad_native_expiry.py
 ```
 
 The core checkout is a test-only dependency. Shipped clients and their callers do not need it.
