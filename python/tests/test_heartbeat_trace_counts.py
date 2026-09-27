@@ -28,7 +28,19 @@ from tests.support import start_host
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATSClient
 
-REQUIRED = {"agent", "owner", "session", "instance_id", "ts", "interval_s"}
+# The §8.3 fields the host publishes, with the prompt endpoint's declaration
+# the SDK adds since synadia-agents #217 (``protocol_version``, ``endpoints``):
+# nothing else.
+REQUIRED = {
+    "agent",
+    "owner",
+    "session",
+    "instance_id",
+    "ts",
+    "interval_s",
+    "protocol_version",
+    "endpoints",
+}
 
 
 async def _first_heartbeat_and_status(
