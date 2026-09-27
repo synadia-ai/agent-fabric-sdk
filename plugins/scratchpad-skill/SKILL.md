@@ -10,6 +10,14 @@ Run the sp command line only as this skill's `scripts/sp`, by its absolute
 path: the directory of this file, then `scripts/sp`. In the examples below,
 `scripts/sp` stands for that path.
 
+Run each `scripts/sp` command on its own: its absolute path written out in
+full, no shell variable for it, no `cd`, `;` or `&&` around it, and its
+output not piped into another command. Content may come in on standard
+input (`printf '%s\n' "$TEXT" | scripts/sp publish-file --source - …`).
+Decode `data_base64` in a command of its own:
+`echo "$DATA_BASE64" | base64 -d`. A harness that asks before running a
+shell command can then allow `scripts/sp` by its path, and does not ask.
+
 `scripts/sp` adds what the examples in ScratchPad's own skill pass by hand:
 the NATS server, this agent's credentials, its workspace, its volume on
 `init`, the trace of the prompt you are serving, your address as the

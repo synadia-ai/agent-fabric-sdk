@@ -885,7 +885,8 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
    its git status to the model with every call (F24 item 10); outside one
    it offers the skills of every directory above its working directory,
    the user's own included, which `--disable-slash-commands` removes (F25
-   item 7). The examples' `run.sh` keeps the home under the user's state
+   item 7), and with them the Skill tool, so not with ScratchPad (§9.13).
+   The examples' `run.sh` keeps the home under the user's state
    directory and refuses one inside a git working tree. And a terminal:
    `claude -p` registers on the bus and serves no prompt (F24 item 7);
    interactive, the development-channels warning answered once, the
@@ -902,6 +903,19 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
    for a tool, stands as a root of its own on the session id with no
    caller (F25 item 6); the pair is the turn, and the reader infers
    nothing beyond it.
+9. ScratchPad (§9), when Claude Code's model is to use it: `npm run
+   build:sp` in the add-on, then the add-on loaded as a plugin too, a
+   second `--plugin-dir <add-on>`; `Skill(agent-fabric:scratchpad)` beside
+   the plugin's tools in `permissions.allow`; `permissions: { "mode":
+   "query" }` in the channel's `config.json`, so any question reaches the
+   caller; and a volume reserved for Claude Code's identity, in the
+   extension entry (`"options": { "scratchpad": { "volume": "…" } }`) or
+   `SCRATCHPAD_VOLUME`. The connection comes from the channel's NATS
+   context, the workspace defaults to `$NATS_STATE_DIR/scratchpad`; keep
+   it across restarts (`plugins/claude-code/README.md`, "ScratchPad"). The
+   add-on's line `ScratchPad volume …, workspace …, for the skill's
+   scripts/sp through …` confirms it at start. Measured end to end on
+   2026-09-27 (§9.13).
 
 ## 7. Stated honestly
 
@@ -982,7 +996,7 @@ informed when Mario says (B6).
 
 ## 9. ScratchPad in the harnesses
 
-**Status:** design; PI (§9.11) and OpenClaw (§9.12) built and measured, references in and out; Claude Code not built · **Date:** 2026-09-27
+**Status:** design; PI (§9.11), OpenClaw (§9.12) and Claude Code (§9.13) built and measured, references in and out · **Date:** 2026-09-27
 
 Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
@@ -1002,8 +1016,8 @@ Every answer carries how it is known: **measured** (something was run on
 this machine) or **read** (docs or code, with the place). The versions read
 and run: PI 0.85.1, OpenClaw 2026.9.4, Claude Code 2.1.282 (the test
 install) and 2.1.283 (the `claude` on `PATH`), the public plugins at
-`synadia-agents` `sdk-release-rollout` `e8355c3`, the sp command line at
-ScratchPad `79f8927`. Harness paths are relative to the harness's installed
+`synadia-agents` `sdk-release-rollout` `e8355c3` (`3b9a20d` for Claude
+Code's run, §9.13), the sp command line at ScratchPad `79f8927`. Harness paths are relative to the harness's installed
 package.
 
 ### 9.1 The design
@@ -1056,7 +1070,12 @@ The rules come from the command line itself:
 in `prompt_agent` (or in its reply) and the agent tools grant; and no
 `allowed-tools`. ScratchPad's skill has `allowed-tools: Bash(sp *)`, which
 in Claude Code would pre-approve the calls; without it every call follows
-the operator's rules, allowed by them or asked of the caller.
+the operator's rules, allowed by them or asked of the caller. Claude
+Code's copy carries one after all, matching `scripts/sp` by its absolute
+path: it restricts nothing, and lets `scripts/sp` run without a question
+(§9.13). And the skill asks for each `scripts/sp` command on its own, since
+a harness that allows it by its path asks for a command that wraps it
+(§9.13).
 
 **The variables.** The names are the package's existing contract for
 `scratchPadFromEnv` (`typescript/src/scratchpad-cli.ts`, `SCRATCHPAD_VOLUME`,
@@ -1103,7 +1122,7 @@ runtime? What is the smallest step otherwise?
 | --- | --- | --- | --- |
 | PI | **Not from our module.** An extension can add skills at runtime by answering `resources_discover` with `{ skillPaths }`, but our module is handed only its context, never PI's extension API, and the public plugin does not forward that event. PI loads skills from `~/.pi/agent/skills/`, `~/.agents/skills/`, a trusted project's `.pi/skills/`, a package's `pi.skills`, the `skills` setting, and `--skill <path>`. A package's `pi.skills` loads only when the package directory is given to `-e`, not a file in it, and the demo gives a file. **Smallest step:** one flag, `--skill <add-on>/skill/scratchpad`, which also loads under `--no-skills`, or the same path in the `skills` setting | `docs/skills.md` "Locations"; `docs/extensions.md` "resources_discover"; `dist/core/resource-loader.js:230-246, 277, 312-332`; the plugin's `extensions/extensions.ts:66-75`, `nats-channel.ts:828-970` | read; the directory-versus-file rule measured through PI's `DefaultResourceLoader` with a fake package |
 | OpenClaw | **Not through an API.** The plugin API has no skill registration, and our module gets no API. A plugin manifest may list `skills`, but a path whose real path leaves the plugin root is refused, and a ScratchPad skill in the public plugin would break the one-way rule anyway. Our module could copy the directory into `<stateDir>/skills` (the managed directory, which is watched). That was rejected: it writes into the harness's home unasked and outlives the add-on. **Smallest step:** one config entry, `skills.load.extraDirs: ["<add-on>/skill"]`. Where an agent has a skill allowlist, the skill must also be named there: the demo sets `agents.defaults.skills: []`, which hides every skill | `docs/tools/skills.md` (locations, 39-48; plugin skills, 242-258; gating, 206-233, 461-520; watching, 703-745); `dist/plugin-skills-*.mjs:180-212`; the plugin's `src/extensions.ts:61-86` | read |
-| Claude Code | **Not from our module.** The MCP server cannot register a skill. The documented runtime route is a `SessionStart` hook that writes into a skills directory and returns `reloadSkills: true`, and hooks belong to a plugin. The public plugin could carry the skill in its `skills/`, but that would break the one-way rule. **Smallest step:** the add-on package is also a Claude Code plugin in its own right (`.claude-plugin/plugin.json`, `skills/scratchpad/`), loaded with a second `--plugin-dir <add-on>` or with `CLAUDE_CODE_PLUGIN_DIRS` (2.1.280 and later). Its paths stay inside its own root, as Claude Code requires. The skill's name is then `<plugin>:scratchpad` | skills docs, "Choose where skills load"; hooks docs, "SessionStart decision control"; plugins reference, "Path rules / Containment"; env-vars docs, `CLAUDE_CODE_PLUGIN_DIRS` | read |
+| Claude Code | **Not from our module.** The MCP server cannot register a skill. The documented runtime route is a `SessionStart` hook that writes into a skills directory and returns `reloadSkills: true`, and hooks belong to a plugin. The public plugin could carry the skill in its `skills/`, but that would break the one-way rule. **Smallest step:** the add-on package is also a Claude Code plugin in its own right (`.claude-plugin/plugin.json`, `skills/scratchpad/`), loaded with a second `--plugin-dir <add-on>` or with `CLAUDE_CODE_PLUGIN_DIRS` (2.1.280 and later). Its paths stay inside its own root, as Claude Code requires. The skill's name is then `<plugin>:scratchpad` | skills docs, "Choose where skills load"; hooks docs, "SessionStart decision control"; plugins reference, "Path rules / Containment"; env-vars docs, `CLAUDE_CODE_PLUGIN_DIRS` | read; **built and measured** (§9.13): the skill loads as `agent-fabric:scratchpad` |
 
 ### 9.3 Paths: how the model finds `scripts/sp`
 
@@ -1122,7 +1141,7 @@ enough.
 | --- | --- | --- | --- |
 | PI | **Yes.** The bash tool builds the child's environment on every call from `process.env` (plus PI's `PI_*` keys and its bin dir on `PATH`). There is no scrubbing and no spawn hook on the built-in tool. A variable our module sets at load reaches `scripts/sp`, and so does a later change | `dist/utils/shell.js:115-125`; `dist/core/tools/bash.js:50-53, 119-140`; `dist/core/agent-session.js:2191-2193` | **measured**: PI's bash tool run from a script with a variable set at load and changed later |
 | OpenClaw | **Yes, on the gateway host.** The exec child's environment is built per call from `process.env`, passed through a blocklist filter, plus `OPENCLAW_SHELL=exec`. The sandbox is off by default, so exec runs on the gateway. In a sandbox, `process.env` would not pass | `dist/bash-tools-*.mjs:2996, 3029-3052`; `docs/tools/exec.md:46, 73, 82` | read; the filter measured: it keeps `SCRATCHPAD_*` and `NATS_URL` (`NATS_CREDS` was not tried by name; the filter is a blocklist) and drops `NODE_OPTIONS` ; **measured** end to end on 2026-09-27: the served prompt's pair reached `scripts/sp` through exec (§9.12) |
-| Claude Code | **Not from our module.** It runs in the MCP server, a child of Claude Code and a sibling of the Bash tool's processes, so its `process.env` reaches neither. The Bash tool inherits Claude Code's launch environment and the settings' `env`. A `SessionStart` hook can append exports to `CLAUDE_ENV_FILE`, and they persist for later Bash commands. `CLAUDE_PLUGIN_ROOT` is not in the Bash tool's environment. So the operator sets the four variables in the launch environment or in `settings.json` `env`, or the add-on's own plugin ships a `SessionStart` hook that resolves them the way the module does (§9.1) and writes them to `CLAUDE_ENV_FILE` | env-vars docs (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`); settings reference, `env`; hooks docs, "Persist environment variables"; plugins reference, "Where each variable resolves" | read (the sibling processes: OS semantics) |
+| Claude Code | **Not from our module.** It runs in the MCP server, a child of Claude Code and a sibling of the Bash tool's processes, so its `process.env` reaches neither. The Bash tool inherits Claude Code's launch environment and the settings' `env`. A `SessionStart` hook can append exports to `CLAUDE_ENV_FILE`, and they persist for later Bash commands. `CLAUDE_PLUGIN_ROOT` is not in the Bash tool's environment. So the operator sets the four variables in the launch environment or in `settings.json` `env`, or the add-on's own plugin ships a `SessionStart` hook that resolves them the way the module does (§9.1) and writes them to `CLAUDE_ENV_FILE` | env-vars docs (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`); settings reference, `env`; hooks docs, "Persist environment variables"; plugins reference, "Where each variable resolves" | read (the sibling processes: OS semantics); **built** (§9.13): the module writes the variables to a file, and the add-on's `SessionStart` hook names it in `CLAUDE_ENV_FILE`; measured on 2.1.283 |
 
 ### 9.5 The shell tool and permission questions
 
@@ -1139,7 +1158,7 @@ answered with `answer_agent` (`agents/pi/README.md:175`,
 | --- | --- | --- | --- | --- |
 | PI | `bash`, a built-in, on by default; the demo runs `--no-builtin-tools`, so the operator turns it on (`--tools` naming `bash`, or no `--no-builtin-tools`) | **Never.** "No permission popups": PI has no permission system, and its tools run with the permissions of the user who started it; a confirmation flow is left to extensions (`README.md:503`, `docs/usage.md:309`, `docs/security.md:33`, `docs/extensions.md` "Permission gates") | **Nothing to relay.** The plugin emits no `query`: "PI doesn't initiate permission prompts or clarifications over this channel" (`agents/pi/README.md:308`); no ask or permission code in `agents/pi/extensions/` | read |
 | OpenClaw | `exec` (and `read`, for the skills list), named in `tools.allow`; the demo allows only the three agent tools | **Only when configured to.** Gateway exec defaults to `tools.exec.mode: "full"`, no prompts; `ask` and `auto` ask a human on an allowlist miss. A prompt that finds no approval surface, or times out, resolves by `askFallback`, default `deny` (`docs/tools/exec.md:107` and "Modes"; `docs/tools/exec-approvals.md:240-245`) | **No.** The plugin has no approval handling and emits no `query` (no ask, permission or approval code in `agents/openclaw/src/`). OpenClaw can forward approval prompts to a plugin channel as ordinary outbound text, answered with `/approve <id>` (`docs/tools/exec-approvals-advanced.md:232-262, 306-314`); whether that reaches a NATS caller mid-turn was not measured, and it would be text, not a protocol question | read |
-| Claude Code | `Bash`, on by default; the demo denies `Bash` and `Skill` outright, which removes both from the model's context, so the operator takes them out of `deny` | **Yes**, for any tool call no rule allows, in the default permission mode (permissions docs, "Manage permissions") | **Yes, in query mode.** With `permissions: { "mode": "query" }` in the plugin's config (`/nats-channel:configure permissions query`), the plugin takes Claude Code's `permission_request` notification (it declares `claude/channel/permission`, `server.ts:469`) and asks the caller of the last active served prompt with a `query`: the tool, its description, the input preview and "Reply 'yes' to allow or 'no' to deny." An answer of `yes`/`allow` or `no`/`deny` (or JSON with `behavior`) decides; no answer in 2 minutes, or no active served prompt, denies (`server.ts:75, 235-245, 593-634`; `agents/claude-code/README.md` "Permissions"). In the default `terminal` mode the dialog waits in the terminal, and the demo sets no mode, so a session with no human waits | read |
+| Claude Code | `Bash`, on by default; the demo denies `Bash` and `Skill` outright, which removes both from the model's context, so the operator takes them out of `deny` | **Yes**, for any tool call no rule allows, in the default permission mode (permissions docs, "Manage permissions") | **Yes, in query mode.** With `permissions: { "mode": "query" }` in the plugin's config (`/nats-channel:configure permissions query`), the plugin takes Claude Code's `permission_request` notification (it declares `claude/channel/permission`, `server.ts:469`) and asks the caller of the last active served prompt with a `query`: the tool, its description, the input preview and "Reply 'yes' to allow or 'no' to deny." An answer of `yes`/`allow` or `no`/`deny` (or JSON with `behavior`) decides; no answer in 2 minutes, or no active served prompt, denies (`server.ts:75, 235-245, 593-634`; `agents/claude-code/README.md` "Permissions"). In the default `terminal` mode the dialog waits in the terminal, and the demo sets no mode, so a session with no human waits | read; **measured** (§9.13): four questions reached the caller as `query` and its `yes` let each call run |
 
 So in PI, and in OpenClaw's default mode, the model runs `scripts/sp`
 without a question. In Claude Code every `scripts/sp` call becomes a
@@ -1178,7 +1197,7 @@ per served prompt, so they cannot be set once at start.
 | --- | --- | --- | --- |
 | PI | **Yes, with a caveat.** The add-on sets the two variables in `process.env` at `promptAccepted` (inside the request's scope, from `activeTrace()`) and deletes them at `promptEnded`. The bash tool reads `process.env` on every call. The variables are process-wide, which is sound only because the plugin serves one prompt at a time; local typing during a remote turn gets the served ids (§7, "PI's turn boundaries"). No tool-call id | `dist/core/tools/bash.js:119-140`; the plugin's prompt queue | **measured** (the per-call read) |
 | OpenClaw | **Yes through the public plugin; roughly without it.** OpenClaw's `resolve_exec_env` plugin hook adds variables to every exec call, and only the public plugin holds the API. The fallback is the PI approach, `process.env` set around `aroundDispatch`. It is read per call, but it is process-wide and depends on one turn at a time (§3.1) | `docs/plugins/hooks/reference.md:146`; `dist/bash-tools-*.mjs:2920-2948, 2999-3003` | read |
-| Claude Code | **Not from our module.** Its environment does not reach the Bash tool (§9.4). The only per-call route is a `PreToolUse` hook on `Bash` that rewrites the command (`updatedInput`) and returns `allow`, since the rewritten command must still pass the rules. It would read the served ids from a file the module writes. That hook would live in the add-on's own plugin, and it is not designed further here. The public plugin's `PreToolUse` hook matches only the agent tools and prints nothing | hooks docs, "PreToolUse decision control"; the plugin's `hooks/hooks.json`, `hooks/session-event.ts:35-47` | read |
+| Claude Code | **Not from our module's environment** (§9.4), **but through a file.** A `PreToolUse` hook on `Bash` could rewrite the command (`updatedInput`) and return `allow`, but the rewritten command must still pass the rules. **Built instead** (§9.13): the module writes the served prompt's ids and caller to a file at its arrival and clears them at its end, the add-on's `SessionStart` hook names the file in `SP_ENV_FILE`, and `scripts/sp` reads it on every call. Per turn, as PI's and OpenClaw's; no tool-call id | hooks docs, "PreToolUse decision control", "Persist environment variables" | read; **measured** (§9.13): the receipt carried the served prompt's pair |
 
 ### 9.8 Packaging the sp command line
 
@@ -1217,7 +1236,7 @@ keep `<stateDir>/scratchpad` on persistent storage; and use
 | --- | --- | --- |
 | PI | one flag, `--skill <add-on>/skill/scratchpad` (or the `skills` setting); the `bash` tool on (the demo's `--no-builtin-tools` off, or `--tools` naming `bash`). Nothing else: the connection comes from the plugin's context and the environment reaches bash | built (2026-09-27): the add-on's variables and the per-call ids (`plugins/pi`, §9.11) |
 | OpenClaw | three config changes: `skills.load.extraDirs`; the skill named in the agent's skill allowlist (the demo's `[]`); `exec` and `read` in `tools.allow`; and the volume in the extension entry's options | built (2026-09-27): the add-on's variables and the per-prompt ones (`plugins/openclaw`, §9.12) |
-| Claude Code | one flag, `--plugin-dir <add-on>` (or `CLAUDE_CODE_PLUGIN_DIRS`); `Bash` and `Skill` out of the settings' `deny`; `permissions: { "mode": "query" }` in the plugin's config, so questions reach the caller; the four variables in the launch environment or `settings.json` `env`, unless the add-on's plugin writes them from a `SessionStart` hook | the plugin manifest in the add-on package, optionally that hook |
+| Claude Code | one flag, `--plugin-dir <add-on>` (or `CLAUDE_CODE_PLUGIN_DIRS`); `Skill(agent-fabric:scratchpad)` in the settings' `allow`; `Bash` and `Skill` out of the settings' `deny`, and no `--disable-slash-commands`; `permissions: { "mode": "query" }` in the plugin's config, so questions reach the caller; the volume in the extension entry's options. No variables: the add-on's hook hands them on | built (2026-09-27): the plugin manifest, the skill with its `allowed-tools`, the `SessionStart` hook and the file (`plugins/claude-code`, §9.13) |
 | Public plugin, all three | — | the `metadata` field of §9.1, one neutral change per plugin |
 
 ### 9.10 Recommendation: PI first, then OpenClaw, then Claude Code
@@ -1402,6 +1421,128 @@ and on the reader. What OpenClaw's model did, from its session:
 
 OpenClaw's volume afterwards: grant 8 to the caller, grant 9 to the reader,
 both on the published file. The run took 68 s.
+
+### 9.13 Claude Code, built and measured
+
+Built in `plugins/claude-code` on 2026-09-27. The add-on package is also a
+Claude Code plugin, `agent-fabric` (`.claude-plugin/plugin.json`), which is
+how the skill loads (§9.2): `skills/scratchpad`, installed by `npm run
+build:sp` from `plugins/scratchpad-skill`, and one hook. The factory, the
+module's default export, is asynchronous now, as PI's and OpenClaw's: it
+resolves ScratchPad first, and with a volume declares
+`scratchpad_refs_ok` through `metadata` and returns the ScratchPad
+extension in `toolExtensions`.
+
+**The environment: a hook of the add-on's, not a settings step.** Two
+things reach Claude Code's Bash tool (§9.4): the settings' `env`, and a
+hook. The settings step would have the operator copy four values the
+add-on already resolves, and it is fixed per install: the served prompt's
+trace and caller change every turn and cannot go there. The hook asks
+nothing more of the operator than the skill does, since the package is
+already a plugin for the skill, and a plugin carries hooks. So:
+
+- the module writes the variables to `<state dir>/agent-fabric/<CLAUDE_PID>.env`,
+  `NAME=value` lines, whole through a rename on every change: the
+  connection, the workspace, the volume and the creator at start, the
+  served prompt's trace and verified caller at `promptAccepted`, cleared at
+  `promptEnded` (a second prompt in the same turn holds them until it ends,
+  then the first again), the file removed at `stopping`;
+- the hook, at `SessionStart`, appends `export SP_ENV_FILE='<that path>'` to
+  `CLAUDE_ENV_FILE`, the state directory by the plugin's own rule
+  (`NATS_STATE_DIR`, else `~/.claude/channels/nats`);
+- `scripts/sp` reads the file on every call: its nine names and no others,
+  each value assigned as it is, never run. When the file exists it is the
+  truth, so a served prompt's variable it does not name is unset.
+
+So the trace and the caller reach every `scripts/sp` call of the turn with
+no step of the operator's. Per turn, like PI's and OpenClaw's: no
+tool-call id. The other routes: a `PreToolUse` hook that rewrites the
+command changes the command a permission rule must match (§9.7); a
+`FileChanged` hook re-exporting after each write would hang on the
+watcher's timing; `CLAUDE_ENV_FILE` is offered to `SessionStart`, `Setup`,
+`CwdChanged` and `FileChanged` hooks only (hooks docs, "Persist
+environment variables"). Measured on 2.1.283 before it was built: a
+`SessionStart` hook's export in `CLAUDE_ENV_FILE` reaches later Bash
+commands, and `CLAUDE_PID`, which the plugin's MCP server and its hooks
+already key their files by, is in the Bash tool's environment too.
+
+**The skill's `allowed-tools`.** Claude Code's copy carries
+`allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/sp *)`, which `install.sh
+--allowed-tools` adds to the front matter; the shared skill has none.
+`Bash(scripts/sp *)`, the form of ScratchPad's own line, does not match:
+the model runs `scripts/sp` by its absolute path, and with that rule the
+call was asked. With `${CLAUDE_SKILL_DIR}`, which Claude Code substitutes in
+a skill's Bash rules, it ran without a question. All measured on 2.1.283,
+interactive; under `claude -p` no skill's grant applied, not even
+`allowed-tools: Bash`, while the same rule given as `--allowedTools` did,
+and the channel is interactive only anyway (§6). Two more things measured:
+Claude Code asks before it loads a skill that carries `allowed-tools` (a
+skill without one loads unasked), so the operator allows
+`Skill(agent-fabric:scratchpad)`, a rule that also matches the model's bare
+`scratchpad`; and the grant holds for the turn that loaded the skill,
+cleared with the next message (skills docs, "Pre-approve tools for a
+skill").
+
+**Commands of their own.** The first run asked the caller four questions,
+each relayed as a `query` and answered `yes`: the skill, and three commands
+that wrapped `scripts/sp` (`SP=<path>; $SP describe` after a base64 decode,
+`SP=<path>; $SP init && printf … | $SP publish-file …`, and `scripts/sp
+read … | python3 -c …`). A rule matches each part of a compound command,
+and a variable for the path matches nothing. So the shared skill now asks
+for each `scripts/sp` command on its own, its path written out, its output
+piped nowhere, content in on standard input, and `data_base64` decoded in a
+command of its own, `echo … | base64 -d`, which Claude Code runs unasked
+(measured). With that and the skill allowed, the run below asked nothing.
+
+**The run, measured on this machine on 2026-09-27.** The local ScratchPad of
+§9.11, provisioned afresh with a Claude Code user and volume beside the
+caller's, PI's, the reader's and OpenClaw's. Claude Code 2.1.283,
+interactive in `tmux`, in a home of its own outside any git repository, the
+public plugin at `sdk-release-rollout` `3b9a20d` with this add-on as its
+extension (the channel's `config.json`, `options.scratchpad.volume`) and as
+a second `--plugin-dir`; the channel's `permissions.mode` `query`; in
+`settings.json` the plugin's tools and `Skill(agent-fabric:scratchpad)`
+allowed, and `defaultMode: "default"`, since the account's default was
+auto mode, whose classifier would decide in place of a question. Claude
+Code's own default model, on Anthropic directly with an Anthropic API key:
+the run measures ScratchPad, not the join of the model calls (§3.4). The
+reader was the TypeScript reference agent, ScratchPad on. The caller
+published `The secret word is quince-32704.`, granted Claude Code's user
+read, and prompted it with the task of §9.12. Discovery showed
+`scratchpad_refs_ok=true` on Claude Code, from the plugin's real
+registration, and on the reader. What Claude Code's model did, from its
+transcript:
+
+1. the Skill tool, `scratchpad`, unasked; `scripts/sp read --ref …` by its
+   absolute path, unasked: the caller's 33 bytes; `echo … | base64 -d`;
+2. `printf '%s\n' "40723-ecniuq" | scripts/sp publish-file --source - …`,
+   refused (`run init`), `scripts/sp init`, then `publish-file` again,
+   whose result carried `granted_to_caller` (grant 8) and the served
+   prompt's pair in the receipt (`"trace":{"thread_id":…,"root_id":…}`):
+   the file reached the Bash tool;
+3. `prompt_agent` to the reader with an instruction and the reference; the
+   extension granted the reader read (grant 9), the reader read the 13
+   bytes with its own credentials, and answered `40723-ecniuq`;
+4. `reply` with the word, the reader's answer and the reference, which the
+   caller read with its own credentials: `40723-ecniuq`.
+
+No permission question reached the caller. The run took 63 s. Claude
+Code's volume afterwards: grant 8 to the caller, grant 9 to the reader,
+both on the published file. After the turn the file held the five
+start-time variables only, and at `/exit` the server removed it.
+
+What the other runs showed. In the first, the reader read Claude Code's
+file (its log: 13 characters), but its model answered that it could not,
+and offered its own reply file; the hand-on had worked, the reading had
+not. Two runs between it and the one above were the launcher's fault: it
+made the home anew and lost the workspace, the volume's journal, so `init`
+was refused with `exists`; then it carried a workspace of the previous
+stack's keys into a fresh one, refused as another principal's. Both times
+the model named the cause and ran no `reset`. The operator's rule stands:
+keep the workspace. And measured on the way: `--disable-slash-commands`,
+the remedy §6 gives for the skills of the directories above the working
+directory, removes the Skill tool itself, so it and ScratchPad exclude each
+other; a home of the instance's own already keeps the user's skills out.
 
 ## 10. Appendix: the text for the public repo
 

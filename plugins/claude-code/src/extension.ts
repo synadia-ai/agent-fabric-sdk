@@ -32,6 +32,15 @@
 // snapshot taken after the interceptors ran) before `aroundToolCall`, so
 // the binding is a no-op rebind the add-on makes anyway. The `409` loop
 // guard is the fabric package's two interceptors, after tracing's.
+//
+// ScratchPad (§9.13): when a volume is configured, the add-on keeps the
+// variables the package's skill (`skills/scratchpad`, loaded with the
+// package as a Claude Code plugin) reads through `scripts/sp` in a file the
+// package's SessionStart hook names to the Bash tool: the connection, the
+// workspace and the volume at start, the served prompt's trace and caller
+// from its arrival to its end (`scratchpad.ts`). It registers Claude Code as
+// reading references, and hands the references Claude Code's model puts
+// into `prompt_agent` to the fabric package's ScratchPad extension.
 
 import {
   activeTrace,
@@ -47,8 +56,20 @@ import {
   type ServedRequest,
   type ServedTurn,
   type TraceScope,
+  READS_REFERENCES_KEY,
 } from "@synadia-ai/agent-fabric";
 import { NatsAgentError } from "@synadia-ai/agents";
+import {
+  exportScratchPad,
+  resolveScratchPad,
+  ScratchPadHandOn,
+  ServedPromptEnv,
+  SP_VARS,
+  SpEnvFile,
+  spEnvFilePath,
+  spPort,
+  type ScratchPadSettings,
+} from "./scratchpad.js";
 
 /** The extension's name, as the plugin's status output lists it. */
 export const EXTENSION_NAME = "agent-fabric";
@@ -82,6 +103,7 @@ export function isClaudeSessionId(value: unknown): value is string {
 
 /** One served prompt, from `promptAccepted` to `promptEnded`. */
 interface Served {
+  readonly request: ServedRequest;
   /** The scope tracing bound around the prompt's handler. */
   readonly scope: TraceScope;
   /** The session the pair names; absent when none was known. */
@@ -110,15 +132,29 @@ function stopWaitFrom(options: Readonly<Record<string, unknown>>): number {
 
 /**
  * The factory: the module's default export. Called once by the plugin's
- * MCP server, before it connects, with what it knows then. Throws
- * `NatsAgentError` for an edge subject that can never be published to, or
- * a `stopWaitMs` option that is not a duration.
+ * MCP server, before it connects, with what it knows then. Resolves
+ * ScratchPad's settings (which may read the plugin's NATS context) and
+ * builds the extension with them. Throws `NatsAgentError` for an edge
+ * subject that can never be published to, or a `stopWaitMs` option that
+ * is not a duration.
  *
- * `env` is where the variable is read from; a test passes its own.
+ * `env` is where the variables are read from; a test passes its own.
+ */
+export async function fabricExtension(
+  ctx: AgentExtensionContext,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<AgentExtension> {
+  return createFabricExtension(ctx, env, await resolveScratchPad(ctx, env));
+}
+
+/**
+ * The extension, built synchronously from settings already resolved:
+ * without `scratchPad`, tracing, the `served` pair and the guard alone.
  */
 export function createFabricExtension(
   ctx: AgentExtensionContext,
   env: NodeJS.ProcessEnv = process.env,
+  scratchPad?: ScratchPadSettings,
 ): AgentExtension {
   const edgeSubject = resolveEdgeSubject(ctx.options, env);
   const stopWaitMs = stopWaitFrom(ctx.options);
@@ -145,19 +181,61 @@ export function createFabricExtension(
 
   let warnedIdentityOff = false;
 
+  // ScratchPad's variables, in the file the package's hook names to the
+  // Bash tool. Without the plugin's state directory there is no file to
+  // name, and the skill's scripts/sp finds no configuration.
+  let spEnv: SpEnvFile | undefined;
+  if (scratchPad !== undefined) {
+    if (ctx.settings.stateDir !== undefined) {
+      spEnv = new SpEnvFile(spEnvFilePath(ctx.settings.stateDir, env));
+    } else {
+      log.warn(
+        `${EXTENSION_NAME}: the plugin names no state directory, so the skill's ` +
+          "scripts/sp gets no ScratchPad settings",
+      );
+    }
+  }
+  const writeSpEnv = (): void => {
+    if (spEnv === undefined) return;
+    try {
+      spEnv.write();
+    } catch (err) {
+      log.warn(`${EXTENSION_NAME}: ScratchPad's settings for scripts/sp: ${String(err)}`);
+    }
+  };
+  if (scratchPad !== undefined && spEnv !== undefined) {
+    exportScratchPad(scratchPad, spEnv.vars);
+    writeSpEnv();
+  }
+  const promptEnv = spEnv !== undefined ? new ServedPromptEnv(spEnv.vars) : undefined;
+  const handOn = scratchPad !== undefined ? new ScratchPadHandOn() : undefined;
+
   return {
     name: EXTENSION_NAME,
     // The service: tracing first, so the guard runs inside the scope tracing
     // bound and a malformed pair is refused with 400 before the guard
     // looks; the plugin appends its own (the tools' scope) after these.
-    requestInterceptors: [tracing.requestInterceptor, guard.requestInterceptor],
+    // The ScratchPad extension's, last, remembers the references each
+    // served prompt brings, which Claude Code may hand on.
+    requestInterceptors: [
+      tracing.requestInterceptor,
+      guard.requestInterceptor,
+      ...(handOn !== undefined ? [handOn.requestInterceptor] : []),
+    ],
     // The client Claude Code's agent tools prompt through: the edge and the
     // pair, then the waiting mark. Both read the ambient scope, so the
     // order between them does not matter.
     promptInterceptors: [tracing.promptInterceptor, guard.promptInterceptor],
     heartbeatExtras: tracing.heartbeatExtras,
-    // No `toolExtensions`: a harness reads no ScratchPad reference in the
-    // MVP (level D, Phase III; `docs/plugins.md` §3.1).
+    ...(handOn !== undefined
+      ? {
+          // References in Claude Code's `prompt_agent`: granted to a
+          // receiver that reads them, removed with a note for any other.
+          toolExtensions: [handOn],
+          // So a caller's `prompt_agent` hands references to Claude Code.
+          metadata: { [READS_REFERENCES_KEY]: "true" },
+        }
+      : {}),
 
     started({ agents, service }) {
       if (ctx.settings.senderIdentity !== "signed" && !warnedIdentityOff) {
@@ -173,6 +251,24 @@ export function createFabricExtension(
             ? " (propagate-only: lineage forwarded, no edge or served record published)"
             : `, edge and served records on ${edgeSubject}`),
       );
+      if (scratchPad !== undefined && handOn !== undefined) {
+        if (spEnv !== undefined) {
+          spEnv.vars[SP_VARS.creator] = service.subject.prompt;
+          writeSpEnv();
+        }
+        const port = spPort(scratchPad, service.subject.prompt, env);
+        if (port !== undefined) handOn.start({ scratchPad: port, agents });
+        else
+          log.warn(
+            `${EXTENSION_NAME}: no sp for this platform (set SCRATCHPAD_BIN); ` +
+              "references in prompt_agent are not handed on",
+          );
+        log.info(
+          `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +
+            (scratchPad.dir !== undefined ? `, workspace ${scratchPad.dir}` : ", no workspace") +
+            (spEnv !== undefined ? `, for the skill's scripts/sp through ${spEnv.path}` : ""),
+        );
+      }
     },
 
     async stopping() {
@@ -187,6 +283,8 @@ export function createFabricExtension(
         served.delete(id);
         entry.turn?.settle("error");
       }
+      // No served prompt any more, and no server to serve one.
+      spEnv?.remove();
       await publisher?.flush();
     },
 
@@ -198,6 +296,12 @@ export function createFabricExtension(
       promptAccepted(request) {
         // In the handler's async context, inside the scope tracing bound.
         const scope = activeTrace();
+        // From here to its end this prompt is the one Claude Code works on,
+        // and the one `scripts/sp` works for.
+        if (promptEnv !== undefined) {
+          promptEnv.enter(request, scope);
+          writeSpEnv();
+        }
         if (scope === undefined) return;
         const named = request.sessionId ?? currentSession;
         const sessionId = isClaudeSessionId(named) ? named : undefined;
@@ -211,13 +315,21 @@ export function createFabricExtension(
           turn = publisher?.beginTurn(scope, SERVED_HARNESS);
           turn?.bind(sessionId);
         }
-        served.set(request.id, { scope, sessionId, turn });
+        served.set(request.id, { request, scope, sessionId, turn });
       },
 
       promptEnded(request, outcome: Outcome, atMs) {
         const entry = served.get(request.id);
-        if (entry === undefined) return;
         served.delete(request.id);
+        if (promptEnv !== undefined) {
+          // Claude Code may hold a second prompt in the same turn: the
+          // variables go back to the latest one still open.
+          promptEnv.leave(request);
+          const open = [...served.values()].at(-1);
+          if (open !== undefined) promptEnv.enter(open.request, open.scope);
+          writeSpEnv();
+        }
+        if (entry === undefined) return;
         const { turn, sessionId } = entry;
         if (turn === undefined || sessionId === undefined) return;
         if (outcome !== "ok") {

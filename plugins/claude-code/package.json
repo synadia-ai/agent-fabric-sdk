@@ -17,6 +17,9 @@
   },
   "files": [
     "dist",
+    ".claude-plugin",
+    "hooks",
+    "skills",
     "README.md",
     "LICENSE"
   ],
@@ -26,6 +29,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "build:sp": "sh ../scratchpad-skill/install.sh --dest skills/scratchpad --allowed-tools 'Bash(${CLAUDE_SKILL_DIR}/scripts/sp *)'",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -36,6 +40,7 @@
     "test:integration": "vitest run test/integration",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "prepack": "npm run build:sp",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

@@ -13,7 +13,8 @@ import {
   loopGuardDescription,
   traceRecordCounts,
 } from "@synadia-ai/agent-fabric";
-import createExtension, {
+import defaultExport, {
+  fabricExtension,
   createFabricExtension,
   DEFAULT_STOP_WAIT_MS,
   EXTENSION_NAME,
@@ -41,7 +42,7 @@ const SESSION = "0b5e7c0e-3f0a-4c55-9d0e-8b2f6a1d4c21";
 const OTHER_SESSION = "6f1d2e3c-4b5a-4968-8776-a5b4c3d2e1f0";
 const NO_ENV: NodeJS.ProcessEnv = {};
 
-type Extension = ReturnType<typeof createExtension>;
+type Extension = ReturnType<typeof createFabricExtension>;
 
 /** A started extension over a fake client, with what it logged and published. */
 async function started(
@@ -53,7 +54,7 @@ async function started(
   lines: ReturnType<typeof recordingLogger>["lines"];
 }> {
   const { logger, lines } = recordingLogger();
-  const ext = createExtension(extensionContext({ ...overrides, logger }), env);
+  const ext = createFabricExtension(extensionContext({ ...overrides, logger }), env);
   const { agents, published } = fakeClient(overrides.senderIdentity !== "off");
   await ext.started!({ agents, service: fakeService() });
   return { ext, published, lines };
@@ -68,11 +69,11 @@ afterEach(() => {
 
 describe("the factory", () => {
   it("is the default export, and the named one", () => {
-    expect(createExtension).toBe(createFabricExtension);
+    expect(defaultExport).toBe(fabricExtension);
   });
 
   it("returns the extension of the contract: tracing's hooks, the guard, no tool extensions", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     expect(ext.name).toBe(EXTENSION_NAME);
     expect(ext.requestInterceptors).toHaveLength(2);
     expect(ext.promptInterceptors).toHaveLength(2);
@@ -90,7 +91,7 @@ describe("the factory", () => {
   });
 
   it("reports the process-wide record counts on the heartbeat", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const counts = traceRecordCounts();
     expect(ext.heartbeatExtras!()).toEqual({
       records_published: counts.published,
@@ -100,12 +101,12 @@ describe("the factory", () => {
 
   it("refuses an edge subject that can never be published to, and a stop wait that is no duration", () => {
     expect(() =>
-      createExtension(extensionContext({ options: { edgeSubject: "TRACE.>" } }), NO_ENV),
+      createFabricExtension(extensionContext({ options: { edgeSubject: "TRACE.>" } }), NO_ENV),
     ).toThrow(NatsAgentError);
     for (const stopWaitMs of [-1, "120000", Number.NaN])
-      expect(() => createExtension(extensionContext({ options: { stopWaitMs } }), NO_ENV)).toThrow(
-        NatsAgentError,
-      );
+      expect(() =>
+        createFabricExtension(extensionContext({ options: { stopWaitMs } }), NO_ENV),
+      ).toThrow(NatsAgentError);
   });
 
   it("logs the definitive address at start, and no warning with identity on", async () => {
@@ -382,7 +383,7 @@ describe("a tool call", () => {
   });
 
   it("leaves a call outside any request alone, and calls run once with its own value", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const own = Promise.resolve("done");
     let calls = 0;
     const returned = ext.events!.aroundToolCall!(undefined, "prompt_agent", () => {

@@ -9,9 +9,12 @@ plugin's service and on the client its agent tools prompt through, binds
 each served prompt to the Claude Code session it was delivered to with the
 signed `served` pair, its `end` at the turn's `Stop` so the closing model
 call falls inside the window, and puts the `409` loop guard in front of the
-channel's handler. Without it the plugin is the plain plugin. The contract
-it fills is the plugin's `agents/EXTENSIONS.md`; the spec is
-[`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1 and §3.4.
+channel's handler. With a ScratchPad volume configured it also gives
+Claude Code's model ScratchPad, through a skill this package carries as a
+Claude Code plugin of its own (see "ScratchPad"). Without it the plugin is
+the plain plugin. The contract it fills is the plugin's
+`agents/EXTENSIONS.md`; the spec is
+[`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1, §3.4 and §9.13.
 
 ## What it does
 
@@ -193,7 +196,8 @@ follows is the recipe it implements.
    to the model with every call (F24 item 10). Outside one it offers the
    model the skills in the `.claude/skills` of every directory above its
    working directory, the user's own included; `--disable-slash-commands`
-   removes them (F25 item 7).
+   removes them (F25 item 7), and with them the Skill tool, so not with
+   ScratchPad.
 9. **A terminal, or a pseudo-terminal.** Interactive only: `claude -p`
    registers on the bus and turns no prompt into a turn (F24 item 7).
    Answer the development-channels warning once and the channel is on
@@ -248,14 +252,129 @@ the reader infers nothing beyond it: a limit, not a bug.
   offers goes to the model with every call: a repository's `CLAUDE.md` and
   git status from inside one, the skills of the directories above it from
   outside one (F24 item 10, F25 item 7). The home's place decides it.
+- **ScratchPad's grant is per turn.** Claude Code applies a skill's
+  `allowed-tools` in the turn that loaded the skill, and clears it with the
+  next message. A later prompt whose turn runs `scripts/sp` without loading
+  the skill again sends the caller a question for each call. The model
+  loaded it in every measured turn; Claude Code gives no rule that lasts
+  the session short of the operator's own `allow`.
+- **ScratchPad without the hook.** With hooks off, the Bash tool gets no
+  `SP_ENV_FILE`, and `scripts/sp` refuses to run unconfigured, unless the
+  operator sets the variables in the environment `claude` starts in, which
+  gives the connection but no served prompt's trace or caller.
+
+## ScratchPad
+
+The package is also a Claude Code plugin, `agent-fabric`
+(`.claude-plugin/plugin.json`), with two pieces: ScratchPad's skill, the
+one every add-on ships, in `skills/scratchpad/` (`SKILL.md`, `scripts/sp`,
+and `bin/` with the sp command line for darwin and linux on arm64 and
+amd64, installed from `../scratchpad-skill` by `npm run build:sp`), and a
+`SessionStart` hook. Claude Code loads the skill as
+`agent-fabric:scratchpad`; the model runs `scripts/sp` through its Bash
+tool. Nothing restricts Bash or any other tool.
+
+**The operator's steps.** Besides the steps above:
+
+1. The package loaded as a plugin too, a second `--plugin-dir`:
+
+   ```sh
+   claude --plugin-dir <synadia-agents>/agents/claude-code --plugin-dir <add-on> \
+     --dangerously-load-development-channels plugin:nats-channel@inline
+   ```
+
+2. Permission questions to the caller, and the skill allowed, in the
+   channel's `config.json` and Claude Code's `settings.json`:
+
+   ```json
+   { "permissions": { "mode": "query" } }
+   ```
+
+   ```json
+   {
+     "permissions": {
+       "allow": ["mcp__plugin_nats-channel_nats", "Skill(agent-fabric:scratchpad)"]
+     }
+   }
+   ```
+
+3. A volume reserved for Claude Code's identity by the ScratchPad operator,
+   in the extension's entry in the channel's `config.json`, or as
+   `SCRATCHPAD_VOLUME` in the environment `claude` starts in:
+
+   ```json
+   "extensions": [{ "module": "<add-on>", "options": { "scratchpad": { "volume": "CcVol" } } }]
+   ```
+
+Keep `Bash` and `Skill` out of the settings' `deny`, and do not start
+Claude Code with `--disable-slash-commands`, which removes the Skill tool.
+
+**Permission questions.** The skill's copy here has one line ScratchPad's
+own skill has and the shared one does not:
+`allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/sp *)`. It restricts
+nothing; it lets the model run `scripts/sp` by its absolute path without a
+question, in the turn that loaded the skill. Claude Code asks before it
+loads a skill that carries such a line, and `Skill(agent-fabric:scratchpad)`
+in the settings' `allow` answers that once for all. Every other command
+follows the operator's rules: with `permissions.mode: "query"` the plugin
+sends each question to the caller of the served prompt, who answers yes
+or no. The skill tells the model to run `scripts/sp` as a command of its
+own, since a command that wraps it (a shell variable for its path, a pipe
+out of it, `;` or `&&`) is a different command, and asks.
+
+**Where the settings come from.** The factory resolves each from the
+entry's `options.scratchpad` (`volume`, `dir`, `url`, `creds`), else the
+variable (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, `NATS_URL`, `NATS_CREDS`),
+else, for the URL and the credentials file, the plugin's NATS context. The
+workspace defaults to `scratchpad/` in the channel's state directory
+(`$NATS_STATE_DIR/scratchpad`), created if missing; keep it across
+restarts, since it holds the volume's journal. Without a volume ScratchPad
+is off.
+
+**How `scripts/sp` gets them.** The add-on runs in the plugin's MCP server,
+a sibling of the Bash tool's processes, so it cannot set their
+environment. It writes the variables to
+`$NATS_STATE_DIR/agent-fabric/<CLAUDE_PID>.env` (mode 600, rewritten whole
+on every change, removed when the server stops), and the package's
+`SessionStart` hook names that file to the Bash tool as `SP_ENV_FILE`,
+through `CLAUDE_ENV_FILE`. `scripts/sp` reads it on every call:
+
+| Variable                              | Written                                        | `scripts/sp` adds                                                          |
+| ------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------- |
+| `SP_NATS_URL`, `SP_NATS_CREDS`        | at start                                       | `--url`, `--creds`, every call                                             |
+| `SCRATCHPAD_DIR`                      | at start                                       | `--dir`, every call                                                        |
+| `SCRATCHPAD_VOLUME`                   | at start                                       | `--volume`, on `init` only                                                 |
+| `SP_CREATOR`                          | at start: Claude Code's prompt address         | `--creator`, on `publish-file`                                             |
+| `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its arrival to its end | `--thread-id`, `--root-id`, every call                                     |
+| `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file` |
+
+A `publish-file` during a served prompt with a verified caller also grants
+that caller read on what it published; a `grant` goes to that caller and no
+other. When a second prompt arrives in the same turn, the file names it
+until it ends, then the first again.
+
+**References in and out.** With ScratchPad on, the add-on registers Claude
+Code as reading references (`scratchpad_refs_ok: "true"` through the
+extension's `metadata`), and the references its model puts into
+`prompt_agent` go through the fabric package's ScratchPad extension, as an
+SDK-built agent's do: granted to a receiver that reads references, removed
+with a note for any other.
+
+**Measured** on Claude Code 2.1.283 on 2026-09-27 (`docs/plugins.md`
+§9.13): given a reference, the model read it through the skill, published
+its own file, which the caller read, and handed that file to another agent
+through `prompt_agent`, which read it; no permission question reached the
+caller.
 
 ## Public API
 
-|                                                                                                       |                                                                                                  |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `default`, `createFabricExtension(ctx, env?)`                                                         | the factory of the contract; `env` is where the variable is read from, `process.env` by default  |
-| `EXTENSION_NAME`, `IDENTITY_OFF_WARNING`, `NO_SESSION_LINE`, `SERVED_HARNESS`, `DEFAULT_STOP_WAIT_MS` | the constants                                                                                    |
-| `isClaudeSessionId(v)`                                                                                | the session-id rule the pair is published under, the pre-split plugin's (`fbd16ab`), header-safe |
+|                                                                                                                                     |                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`, `fabricExtension(ctx, env?)`                                                                                             | the factory of the contract: resolves ScratchPad, then builds the extension; `env` is where the variables are read, `process.env` by default              |
+| `createFabricExtension(ctx, env?, scratchPad?)`                                                                                     | the same, synchronous, from settings already resolved                                                                                                     |
+| `SCRATCHPAD_OPTION`, `SP_VARS`, `SP_ENV_FILE_VAR`, `ScratchPadHandOn`, `SpEnvFile`, `spEnvFilePath(stateDir, env)`, `spBinary(env)` | ScratchPad's option key, the variables `scripts/sp` reads, the file they go to and the variable that names it, the tool extension, the packaged sp's path |
+| `EXTENSION_NAME`, `IDENTITY_OFF_WARNING`, `NO_SESSION_LINE`, `SERVED_HARNESS`, `DEFAULT_STOP_WAIT_MS`                               | the constants                                                                                                                                             |
+| `isClaudeSessionId(v)`                                                                                                              | the session-id rule the pair is published under, the pre-split plugin's (`fbd16ab`), header-safe                                                          |
 
 The contract's types, the setting's precedence (`resolveEdgeSubject`) and
 the loop guard (`loopGuard`) are `@synadia-ai/agent-fabric`'s, shared by
@@ -274,11 +393,18 @@ call re-entered through the handler's snapshot); integration, the factory's
 hooks on a real `AgentService` and `Agents` over a local `nats-server` in
 operator mode, the pair and the edges on the wire validated against
 `test-fixtures/schemas/served.json` and `edge.json`, signed, one id three
-ways, `end` at the stop.
+ways, `end` at the stop; ScratchPad's file, the hook and the plugin's
+manifest (unit), and the references handed on (integration).
+
+`npm run build:sp` installs the skill from `../scratchpad-skill` into
+`skills/scratchpad`, with the `allowed-tools` line, building the sp
+binaries first (Go on `PATH`, a ScratchPad checkout next to this
+repository); `npm pack` runs it too. `skills/` is gitignored.
 
 ```sh
 (cd ../../typescript && npm install && npm run build)
 npm install
+npm run build:sp
 npm run typecheck && npm run lint && npm run format:check
 npm test
 npm run build
