@@ -40,7 +40,7 @@ import nats
 import pytest
 from synadia_ai.agent_fabric import READS_REFERENCES_KEY, Grantee, TraceIds, fabric_tracing, request_grant
 from synadia_ai.agent_service import AgentService, PromptStream, ServiceIdentity
-from synadia_ai.agents import Agents, DiscoverFilter, Envelope, Identity, ResponseChunk, signer_from_seed
+from synadia_ai.agents import Agents, DiscoverFilter, Envelope, Identity, ProtocolError, ResponseChunk, signer_from_seed
 
 from fabric_agent.agent import start_agent
 from fabric_agent.config import AgentConfig, AgentIdentityConfig, ModelConfig, NatsConfig
@@ -261,6 +261,37 @@ async def test_the_agent_against_a_fake_model_behind_a_fake_proxy(tmp_path: Path
             }
             # One child thread, named after the call that started it.
             assert [e["tool_call_id"] for e in edges if e["tool_call_id"] is not None] == ["call_fake_1"]
+
+            # An empty answer while that call waits is not the reply: the model is
+            # told what waits and asked again, and its answer_agent goes through.
+            fake.requests.clear(); answers.clear()
+            assert words(await prompt(f"hush delegate to {asker.subject.prompt}: read it")) == "they said: asked, and was told: yes"
+            assert answers == ["yes"]
+            # prompt_agent, the empty answer, the word about the waiting call, answer_agent, the reply.
+            assert len(fake.requests) == 4
+            told = fake.requests[2].body["messages"][-1]
+            assert told["role"] == "user"
+            assert f'to {asker.subject.prompt} waits for an answer to "may I read the file?"' in told["content"]
+            assert "answer it with answer_agent" in told["content"]
+
+            # A model that keeps answering with nothing fails the prompt, saying why.
+            fake.requests.clear(); pad.commits.clear()
+            with pytest.raises(ProtocolError) as failed:
+                await prompt(f"mute delegate to {asker.subject.prompt}: read it")
+            assert "service error 500" in str(failed.value)
+            assert "the model returned an empty reply 3 times while 1 call it started was still open" in str(failed.value)
+            assert len(fake.requests) == 4
+            assert pad.commits == []
+
+            # Nothing open, and the model answers with nothing twice: the prompt fails, saying it gave no reply.
+            fake.requests.clear(); pad.commits.clear()
+            with pytest.raises(ProtocolError) as failed:
+                await prompt("blank say something")
+            assert "service error 500" in str(failed.value)
+            assert "the model returned no reply: its answer was empty 2 times" in str(failed.value)
+            assert len(fake.requests) == 2
+            assert fake.requests[1].body["messages"][-1]["content"] == "Your last answer was empty. Answer the prompt you are serving in words."
+            assert pad.commits == []
 
             # The reply committed, the verified caller granted read on it, and only then the reference appended.
             edges.clear(); pad.commits.clear(); pad.grants.clear()

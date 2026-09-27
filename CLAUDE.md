@@ -57,7 +57,7 @@ plugins/             the fabric add-ons for the harness plugins, one package per
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
   typescript/        the TypeScript agent: src/agent.ts (the four behaviours), its caller, its echo; vitest
   python/            the Python agent: fabric_agent/agent.py, the same; pytest, with the interop of the two
-  docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F28)
+  docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
   Makefile, scripts/setup.sh   `make setup` (the SDK checked and built, this package built, both agents installed), `make test`
 ```
 

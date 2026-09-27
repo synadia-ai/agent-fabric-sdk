@@ -5,8 +5,11 @@ moves: on a ``tool`` message that carries a question it asks for
 ``answer_agent``, answering "yes"; on any other ``tool`` message it answers
 with the tool's result; on a user message containing ``delegate to <address>``
 it asks for ``prompt_agent`` to that address, with ``ping`` or with the text
-after ``: ``; otherwise it answers plainly. The same server can serve two
-agents at once, so the interop test uses one for both.
+after ``: ``; otherwise it answers plainly. A prompt that starts ``hush``
+makes it answer the question with nothing once, then with ``answer_agent``
+when told the call waits; ``mute``, with nothing every time; ``blank``,
+with nothing to a plain prompt. The same server
+can serve two agents at once, so the interop test uses one for both.
 """
 
 from __future__ import annotations
@@ -19,6 +22,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 _DELEGATE = re.compile(r"delegate to ([^\s:]+)(?:: (.*))?")
+_SILENT = re.compile(r"(hush|mute|blank) ")
+_TOLD = "Your last answer was empty"
 
 
 @dataclass
@@ -52,8 +57,52 @@ class FakeModel:
                 last = body["messages"][-1]
                 content = last.get("content") or ""
                 tools_offered = bool(body.get("tools"))
+                # The prompt being served: the last user message that is not the loop's own word.
+                served = next(
+                    (
+                        m.get("content") or ""
+                        for m in reversed(body["messages"])
+                        if m["role"] == "user" and not (m.get("content") or "").startswith(_TOLD)
+                    ),
+                    "",
+                )
+                silent = m.group(1) if (m := _SILENT.match(served)) else None
                 message: dict[str, Any]
-                if last["role"] == "tool" and (result := json.loads(content)).get("state") == "input_required":
+                if last["role"] == "user" and content.startswith(_TOLD):
+                    # Told that a call waits: "hush" answers it now, "mute" stays silent.
+                    waiting = next(
+                        (
+                            r
+                            for msg in reversed(body["messages"])
+                            if msg["role"] == "tool" and (r := json.loads(msg["content"])).get("state") == "input_required"
+                        ),
+                        None,
+                    )
+                    if silent == "hush" and waiting is not None:
+                        message = {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_fake_3",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "answer_agent",
+                                        "arguments": json.dumps({"call_id": waiting["call_id"], "answer": "yes"}),
+                                    },
+                                }
+                            ],
+                        }
+                    else:
+                        message = {"role": "assistant", "content": None}
+                elif (
+                    last["role"] == "tool"
+                    and silent is not None
+                    and json.loads(content).get("state") == "input_required"
+                ):
+                    # The model that ends its turn with nothing while a call waits.
+                    message = {"role": "assistant", "content": None}
+                elif last["role"] == "tool" and (result := json.loads(content)).get("state") == "input_required":
                     message = {
                         "role": "assistant",
                         "content": "",
@@ -88,6 +137,8 @@ class FakeModel:
                             }
                         ],
                     }
+                elif silent == "blank":
+                    message = {"role": "assistant", "content": None}
                 else:
                     message = {"role": "assistant", "content": f"plain answer to: {content}"}
                 reply = json.dumps(

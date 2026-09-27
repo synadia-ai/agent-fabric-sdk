@@ -144,7 +144,45 @@ export interface ConverseOptions {
    * Default 8.
    */
   readonly maxToolRounds?: number;
+  /**
+   * How many times the model is asked again when it answers with nothing
+   * while calls it started are still open. One more empty answer fails the
+   * turn ({@link EmptyReplyError}). Default 2. With no call open the model
+   * is asked again once, at most this many times.
+   */
+  readonly maxEmptyReplies?: number;
   readonly log?: (line: string) => void;
+}
+
+/** A call the model started that has not ended, as the tools last reported it. */
+export interface OpenCall {
+  readonly callId: string;
+  readonly state: "running" | "input_required";
+  /** Whom the call went to, when the model's `prompt_agent` said. */
+  readonly address?: string;
+  /** What the prompted agent asked, while the call is `input_required`. */
+  readonly question?: string;
+}
+
+/**
+ * The model answered with nothing, again, after it was asked for a reply:
+ * the turn has no reply, and, when calls it started are still open, it is
+ * not done either. The agent fails the prompt with this message rather than
+ * answer it with nothing.
+ */
+export class EmptyReplyError extends Error {
+  override readonly name = "EmptyReplyError";
+  constructor(
+    readonly emptyReplies: number,
+    readonly openCalls: readonly OpenCall[],
+  ) {
+    super(
+      openCalls.length > 0
+        ? `the model returned an empty reply ${times(emptyReplies)} while ${describeOpen(openCalls)}; ` +
+            "no reply was produced"
+        : `the model returned no reply: its answer was empty ${times(emptyReplies)}`,
+    );
+  }
 }
 
 export interface ConverseResult {
@@ -159,12 +197,27 @@ export interface ConverseResult {
  * `tool` message, and the model is called again with the results in front
  * of it. On the last permitted round the model gets no tools, so it has to
  * answer.
+ *
+ * An empty answer is not a reply while a call the model started is still
+ * open, waiting on a question it has to answer or still running: the turn
+ * is not done. The empty answer is dropped, the model is told which calls
+ * wait and on what, and asked again, at most `maxEmptyReplies` times; then
+ * the turn fails with {@link EmptyReplyError}. Which calls are open comes
+ * from the tools' own results: each carries the call's `call_id` and
+ * `state`, and a question while it is `input_required`.
+ *
+ * An empty answer with nothing open is no reply either: the model is asked
+ * once more for one, and a second empty answer fails the turn with
+ * {@link EmptyReplyError}. A turn never ends `ok` with nothing.
  */
 export async function converse(options: ConverseOptions): Promise<ConverseResult> {
   const maxToolRounds = options.maxToolRounds ?? 8;
+  const maxEmptyReplies = options.maxEmptyReplies ?? 2;
   const log = options.log ?? (() => {});
   let modelCalls = 0;
   let toolCalls = 0;
+  let emptyReplies = 0;
+  const open = new Map<string, OpenCall>();
   for (let round = 0; ; round += 1) {
     const toolsOffered = round < maxToolRounds ? options.tools.definitions : [];
     const { message, usage } = await options.model.complete(
@@ -179,12 +232,115 @@ export async function converse(options: ConverseOptions): Promise<ConverseResult
       `model call ${modelCalls}: ${calls.length} tool call(s), ` +
         `${usage?.prompt_tokens ?? "?"} in / ${usage?.completion_tokens ?? "?"} out tokens`,
     );
-    if (calls.length === 0) return { reply: message.content ?? "", modelCalls, toolCalls };
+    if (calls.length === 0) {
+      const reply = message.content ?? "";
+      if (reply.trim() !== "") return { reply, modelCalls, toolCalls };
+      emptyReplies += 1;
+      const waiting = [...open.values()];
+      // With calls open the model has work left; with none, one more chance.
+      const bound = waiting.length > 0 ? maxEmptyReplies : Math.min(1, maxEmptyReplies);
+      if (emptyReplies > bound) throw new EmptyReplyError(emptyReplies, waiting);
+      log(
+        waiting.length > 0
+          ? `  empty reply while ${describeOpen(waiting)}: asking again (${emptyReplies} of ${bound})`
+          : `  empty reply: asking again for one (${emptyReplies} of ${bound})`,
+      );
+      // The empty answer is no turn of the conversation: out of the history,
+      // and a word to the model in its place.
+      options.messages.pop();
+      options.messages.push({ role: "user", content: waiting.length > 0 ? stillOpen(waiting) : NO_REPLY });
+      continue;
+    }
     for (const call of calls) {
       log(`  ${call.function.name}(${call.function.arguments.slice(0, 120)}) [${call.id}]`);
       const content = await options.tools.call(call.function.name, call.function.arguments, call.id);
       toolCalls += 1;
       options.messages.push({ role: "tool", tool_call_id: call.id, content });
+      track(open, call.function.name, call.function.arguments, content);
     }
   }
+}
+
+/**
+ * Note what a tool result says about the calls it names: a call `running`
+ * or `input_required` is open, any other state has ended. A result that
+ * names no call (discovery, an error) changes nothing; `list_agent_calls`
+ * names every call of the prompt being served.
+ */
+function track(open: Map<string, OpenCall>, tool: string, args: string, content: string): void {
+  let result: unknown;
+  try {
+    result = JSON.parse(content);
+  } catch {
+    return;
+  }
+  if (typeof result !== "object" || result === null) return;
+  const r = result as Record<string, unknown>;
+  const address = tool === "prompt_agent" ? addressOf(args) : undefined;
+  const entries = Array.isArray(r["calls"]) ? (r["calls"] as unknown[]) : [r];
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const e = entry as Record<string, unknown>;
+    const callId = e["call_id"];
+    const state = e["state"];
+    if (typeof callId !== "string" || typeof state !== "string") continue;
+    if (state !== "running" && state !== "input_required") {
+      open.delete(callId);
+      continue;
+    }
+    const known = open.get(callId);
+    const to = typeof e["address"] === "string" ? e["address"] : (address ?? known?.address);
+    // A question stands until the call leaves `input_required`.
+    const asked = typeof e["question"] === "string" ? e["question"] : known?.question;
+    const question = state === "input_required" ? asked : undefined;
+    open.set(callId, {
+      callId,
+      state,
+      ...(to !== undefined ? { address: to } : {}),
+      ...(question !== undefined ? { question } : {}),
+    });
+  }
+}
+
+function addressOf(args: string): string | undefined {
+  try {
+    const parsed = JSON.parse(args) as Record<string, unknown>;
+    return typeof parsed["address"] === "string" ? parsed["address"] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function times(n: number): string {
+  return n === 1 ? "once" : `${n} times`;
+}
+
+function describeCall(call: OpenCall): string {
+  const to = call.address !== undefined ? ` to ${call.address}` : "";
+  return call.state === "input_required"
+    ? `${call.callId}${to} waits for an answer${call.question !== undefined ? ` to "${call.question}"` : ""}`
+    : `${call.callId}${to} is still running`;
+}
+
+function describeOpen(calls: readonly OpenCall[]): string {
+  const counted = calls.length === 1 ? "1 call it started was still open" : `${calls.length} calls it started were still open`;
+  return `${counted} (${calls.map(describeCall).join("; ")})`;
+}
+
+/** What the model is told in place of an empty answer with nothing open. */
+const NO_REPLY = "Your last answer was empty. Answer the prompt you are serving in words.";
+
+/** What the model is told in place of its empty answer while calls are open. */
+function stillOpen(calls: readonly OpenCall[]): string {
+  const lines = calls.map((call) =>
+    call.state === "input_required"
+      ? `- ${describeCall(call)}: answer it with answer_agent.`
+      : `- ${describeCall(call)}: collect its result before you answer.`,
+  );
+  return (
+    "Your last answer was empty, but the prompt you are serving is not done: " +
+    (calls.length === 1 ? "a call you started is still open.\n" : "calls you started are still open.\n") +
+    lines.join("\n") +
+    "\nDeal with them, then answer the prompt in words."
+  );
 }
