@@ -106,7 +106,9 @@ start. There is no `tracing` setting: the add-on's presence is the switch.
 
 The package carries ScratchPad's skill, adapted for an agent on the fabric,
 in `skill/scratchpad/`: `SKILL.md`, `scripts/sp`, and `bin/` with the sp
-command line for darwin and linux on arm64 and amd64. The model runs
+command line for darwin and linux on arm64 and amd64. It is the one skill
+every add-on ships, kept in `../scratchpad-skill` and installed here by
+`npm run build:sp`. The model runs
 `scripts/sp` through PI's bash tool; the harness's tools stay as the
 operator configured them, and PI asks no permission for any command.
 
@@ -145,16 +147,22 @@ bash tool passes them to every command (measured on PI 0.85.1):
 
 | Variable                              | Set                                                           | `scripts/sp` adds                                                              |
 | ------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `NATS_URL`, `NATS_CREDS`              | at start                                                      | `--url`, `--creds`, every call                                                 |
+| `SP_NATS_URL`, `SP_NATS_CREDS`        | at start                                                      | `--url`, `--creds`, every call                                                 |
 | `SCRATCHPAD_DIR`                      | at start                                                      | `--dir`, every call                                                            |
 | `SCRATCHPAD_VOLUME`                   | at start                                                      | `--volume`, on `init` only: a read refuses a volume other than the reference's |
 | `SP_CREATOR`                          | at start: PI's prompt address                                 | `--creator`, on `publish-file`                                                 |
 | `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its hand-over to PI's loop to its end | `--thread-id`, `--root-id`, every call                                         |
-| `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                               | `--grantee-account`, `--grantee-user`, on `grant`                              |
+| `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                               | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file`     |
 
-The model passes none of these flags; `scripts/sp` refuses them, and
-refuses a `grant` when no served prompt has a verified caller, so PI grants
-read on what it publishes to the agent that prompted it and to no other.
+The connection has names of its own, not `NATS_URL` and `NATS_CREDS`, which
+a plugin may read as its own connection. The model passes none of these
+flags; `scripts/sp` refuses them, and refuses a `grant` when no served
+prompt has a verified caller, so PI grants read on what it publishes to the
+agent that prompted it and to no other. A `publish-file` during a served
+prompt with a verified caller also makes that grant, as an SDK-built agent
+grants the caller its reply: the result carries `granted_to_caller`, or
+`caller_grant_error`. Models skip a separate grant step often enough that
+the publication makes it (`docs/plugins.md` §9.12).
 On a platform sp is not built for, `scripts/sp` says so, in sp's own error
 shape with exit 2. `SCRATCHPAD_BIN` names another sp binary.
 
@@ -215,12 +223,14 @@ installs with `npm ci`. The tests: unit, a fake of the plugin driving the events
 `AgentService` and `Agents` over a local `nats-server` in operator mode,
 the edges on the wire validated against `test-fixtures/schemas/edge.json`.
 
-The sp binaries are built from ScratchPad's repository, a checkout next to
-this one (`SCRATCHPAD_SRC` names another), at the commit pinned in
-`scripts/build-sp.sh`, with Go on `PATH`: `npm run build:sp`, which `npm
-pack` runs too (`prepack`). They are gitignored. `test/unit/scripts-sp.test.ts`
-drives `scripts/sp` with fake binaries and a fake `uname`, and runs the real
-binary for this machine when it is built.
+`npm run build:sp` installs the skill from `../scratchpad-skill` into
+`skill/scratchpad`, building the sp binaries first from ScratchPad's
+repository, a checkout next to this one (`SCRATCHPAD_SRC` names another),
+at the commit pinned in `../scratchpad-skill/build-sp.sh`, with Go on
+`PATH`; `npm pack` runs it too (`prepack`). `skill/` is gitignored.
+`test/unit/scripts-sp.test.ts` drives the shared `scripts/sp` with fake
+binaries and a fake `uname`, and runs the real binary for this machine
+through the installed copy when it is built.
 
 ```sh
 (cd ../../typescript && npm install && npm run build)

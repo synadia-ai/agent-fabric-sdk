@@ -423,9 +423,9 @@ entry's `options.edgeSubject` or the variable `SYNADIA_FABRIC_EDGE_SUBJECT`,
 validated by the fabric package (`assertValidTraceOptions`). The add-on's
 presence is the switch; there is no `tracing` setting (§4).
 
-**ScratchPad.** Built for PI (§9.11), whose add-on returns
-`scratchPadExtension` in `toolExtensions` and declares that PI reads
-references; OpenClaw's and Claude Code's return none yet. Level B applies to the harnesses too, the model using ScratchPad's
+**ScratchPad.** Built for PI (§9.11) and OpenClaw (§9.12), whose add-ons
+return `scratchPadExtension` in `toolExtensions` and declare that their
+harness reads references; Claude Code's returns none yet. Level B applies to the harnesses too, the model using ScratchPad's
 skill and the sp command line through the harness's shell tool, with the
 add-on returning `scratchPadExtension`; §9 is the design.
 
@@ -685,7 +685,7 @@ session, a pseudo-terminal when scripted (§6 step 7).
 | The `409` loop guard | nothing | returns its request and prompt interceptors | `RequestRejectedError` | `loopGuard()`, `loop-guard.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23), and the scope it reads |
 | The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, read by the add-on alone | nothing | `resolveEdgeSubject()` gives every add-on the precedence (`plugin-settings.ts`, TypeScript only); validates it |
 | `senderIdentity: signed` | the plugin's setting, as today | required for any record; warns once without it | identity | warns once when a record is due |
-| ScratchPad references | the neutral `metadata` field (#218) | PI: the skill, `scripts/sp`, the registration key, `scratchPadExtension` (§9.11); OpenClaw, Claude Code: designed (§9) | the tools' extension hooks | `scratchPadExtension`, `spCliScratchPad` |
+| ScratchPad references | the neutral `metadata` field (#218) | PI (§9.11), OpenClaw (§9.12): the one skill of `plugins/scratchpad-skill`, the registration key, `scratchPadExtension`; Claude Code: designed (§9) | the tools' extension hooks | `scratchPadExtension`, `spCliScratchPad` |
 | The proxy's half: the SDK pair, the harness pairs, the `traceparent` flaw | — | — | — | the proxy (`agent-fabric-model-proxy`), M3-31 |
 
 ## 5. Packaging and loading
@@ -814,6 +814,18 @@ own, unbound.
    `OPENCLAW_HOME`, `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH` in a
    directory of its own (`run.sh`). The `gateway starting` line names the
    loaded extensions.
+8. ScratchPad (§9), when OpenClaw's model is to use it: `npm run build:sp`
+   in the add-on, then three entries in `openclaw.json`:
+   `skills.load.extraDirs: ["<add-on>/skill"]`; `"scratchpad"` in the
+   agent's skill allowlist where it has one (`agents.defaults.skills`, an
+   empty one hides every skill); `exec` and `read` in `tools.allow` beside
+   the agent tools. And a volume reserved for OpenClaw's identity, in the
+   account's extension entry (`"options": { "scratchpad": { "volume": "…" } }`)
+   or `SCRATCHPAD_VOLUME`; the connection is the account's `url` and
+   `credentials`, the workspace `$OPENCLAW_STATE_DIR/scratchpad`
+   (`plugins/openclaw/README.md`, "ScratchPad"). The add-on's line
+   `ScratchPad volume …, workspace …` confirms it at start. Measured end to
+   end on 2026-09-27 (§9.12).
 
 **Claude Code**, from `agent-fabric-live` `harnesses/claude-code/` (the
 examples' until 2026-09-26), measured on Claude Code 2.1.281 in the examples'
@@ -931,10 +943,11 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
   change that checks a class by `instanceof` alone would break it silently.
 - **The `409` guard over-refuses** a sibling prompt of the same tree that
   arrives while the harness waits in it (§3.1).
-- **ScratchPad references reach PI only.** A reference in a prompt to
-  OpenClaw or Claude Code is removed by the caller's `prompt_agent` before
-  sending (`reference-agents/README.md`, "The agent tools"), until their
-  add-ons register that they read them; PI's does (§9.11).
+- **ScratchPad references reach PI and OpenClaw only.** A reference in a
+  prompt to Claude Code is removed by the caller's `prompt_agent` before
+  sending (`reference-agents/README.md`, "The agent tools"), until its
+  add-on registers that it reads them; PI's and OpenClaw's do (§9.11,
+  §9.12).
 - **`traceparent` from any client files as OpenClaw** until M3-31 (§3.3).
 - **What is measured, and where.** Every add-on, against real turns on
   the test rig: PI in the examples' F19 and OpenClaw in F20 (2026-09-23),
@@ -969,7 +982,7 @@ informed when Mario says (B6).
 
 ## 9. ScratchPad in the harnesses
 
-**Status:** design; PI built and measured, references in and out (§9.11); OpenClaw and Claude Code not built · **Date:** 2026-09-27
+**Status:** design; PI (§9.11) and OpenClaw (§9.12) built and measured, references in and out; Claude Code not built · **Date:** 2026-09-27
 
 Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
@@ -1011,14 +1024,17 @@ skill/scratchpad/
 `uname -m`, adds the connection, and replaces itself with the binary, so
 exit codes 0–3 and the JSON on stdout and stderr pass through unchanged:
 
-- `--url "$NATS_URL" --creds "$NATS_CREDS" --dir "$SCRATCHPAD_DIR"` on every
-  call;
+- `--url "$SP_NATS_URL" --creds "$SP_NATS_CREDS" --dir "$SCRATCHPAD_DIR"`
+  on every call (the connection under names of its own, since a plugin may
+  read `NATS_URL` and `NATS_CREDS` as its own; OpenClaw's does, §9.12);
 - `--volume "$SCRATCHPAD_VOLUME"` on `init` only;
 - `--thread-id "$SP_THREAD_ID" --root-id "$SP_ROOT_ID"` when both are set
   (§9.7);
 - `--creator "$SP_CREATOR"`, the agent's prompt address, on `publish-file`;
 - `--grantee-account "$SP_CALLER_ACCOUNT" --grantee-user "$SP_CALLER_USER"`
-  on `grant`: the verified caller of the prompt being served;
+  on `grant`: the verified caller of the prompt being served; and the same
+  grant after a successful `publish-file` while such a prompt is served,
+  as an SDK-built agent grants the caller its reply (§9.12);
 - it refuses, with exit 2 and sp's own error shape, a call that passes any
   of those flags itself, and a `grant` when no served prompt has a verified
   caller.
@@ -1105,7 +1121,7 @@ enough.
 | Harness | Answer | Source | How known |
 | --- | --- | --- | --- |
 | PI | **Yes.** The bash tool builds the child's environment on every call from `process.env` (plus PI's `PI_*` keys and its bin dir on `PATH`). There is no scrubbing and no spawn hook on the built-in tool. A variable our module sets at load reaches `scripts/sp`, and so does a later change | `dist/utils/shell.js:115-125`; `dist/core/tools/bash.js:50-53, 119-140`; `dist/core/agent-session.js:2191-2193` | **measured**: PI's bash tool run from a script with a variable set at load and changed later |
-| OpenClaw | **Yes, on the gateway host.** The exec child's environment is built per call from `process.env`, passed through a blocklist filter, plus `OPENCLAW_SHELL=exec`. The sandbox is off by default, so exec runs on the gateway. In a sandbox, `process.env` would not pass | `dist/bash-tools-*.mjs:2996, 3029-3052`; `docs/tools/exec.md:46, 73, 82` | read; the filter measured: it keeps `SCRATCHPAD_*` and `NATS_URL` (`NATS_CREDS` was not tried by name; the filter is a blocklist) and drops `NODE_OPTIONS` |
+| OpenClaw | **Yes, on the gateway host.** The exec child's environment is built per call from `process.env`, passed through a blocklist filter, plus `OPENCLAW_SHELL=exec`. The sandbox is off by default, so exec runs on the gateway. In a sandbox, `process.env` would not pass | `dist/bash-tools-*.mjs:2996, 3029-3052`; `docs/tools/exec.md:46, 73, 82` | read; the filter measured: it keeps `SCRATCHPAD_*` and `NATS_URL` (`NATS_CREDS` was not tried by name; the filter is a blocklist) and drops `NODE_OPTIONS` ; **measured** end to end on 2026-09-27: the served prompt's pair reached `scripts/sp` through exec (§9.12) |
 | Claude Code | **Not from our module.** It runs in the MCP server, a child of Claude Code and a sibling of the Bash tool's processes, so its `process.env` reaches neither. The Bash tool inherits Claude Code's launch environment and the settings' `env`. A `SessionStart` hook can append exports to `CLAUDE_ENV_FILE`, and they persist for later Bash commands. `CLAUDE_PLUGIN_ROOT` is not in the Bash tool's environment. So the operator sets the four variables in the launch environment or in `settings.json` `env`, or the add-on's own plugin ships a `SessionStart` hook that resolves them the way the module does (§9.1) and writes them to `CLAUDE_ENV_FILE` | env-vars docs (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`); settings reference, `env`; hooks docs, "Persist environment variables"; plugins reference, "Where each variable resolves" | read (the sibling processes: OS semantics) |
 
 ### 9.5 The shell tool and permission questions
@@ -1200,7 +1216,7 @@ keep `<stateDir>/scratchpad` on persistent storage; and use
 | Harness | Steps | Built by us |
 | --- | --- | --- |
 | PI | one flag, `--skill <add-on>/skill/scratchpad` (or the `skills` setting); the `bash` tool on (the demo's `--no-builtin-tools` off, or `--tools` naming `bash`). Nothing else: the connection comes from the plugin's context and the environment reaches bash | built (2026-09-27): the add-on's variables and the per-call ids (`plugins/pi`, §9.11) |
-| OpenClaw | three config changes: `skills.load.extraDirs`; the skill named in the agent's skill allowlist (the demo's `[]`); `exec` and `read` in `tools.allow` | the add-on's variables |
+| OpenClaw | three config changes: `skills.load.extraDirs`; the skill named in the agent's skill allowlist (the demo's `[]`); `exec` and `read` in `tools.allow`; and the volume in the extension entry's options | built (2026-09-27): the add-on's variables and the per-prompt ones (`plugins/openclaw`, §9.12) |
 | Claude Code | one flag, `--plugin-dir <add-on>` (or `CLAUDE_CODE_PLUGIN_DIRS`); `Bash` and `Skill` out of the settings' `deny`; `permissions: { "mode": "query" }` in the plugin's config, so questions reach the caller; the four variables in the launch environment or `settings.json` `env`, unless the add-on's plugin writes them from a `SessionStart` hook | the plugin manifest in the add-on package, optionally that hook |
 | Public plugin, all three | — | the `metadata` field of §9.1, one neutral change per plugin |
 
@@ -1245,10 +1261,13 @@ model cannot reach them.
 
 ### 9.11 PI, built and measured
 
-Built in `plugins/pi` on 2026-09-27: the skill (`skill/scratchpad/SKILL.md`,
-ScratchPad's skill at `79f8927` adapted to `scripts/sp`), the wrapper
-(`skill/scratchpad/scripts/sp`), the builds (`scripts/build-sp.sh`, at pack
-time, gitignored) and the add-on's variables (`src/scratchpad.ts`); then,
+Built in `plugins/pi` on 2026-09-27: the skill (`SKILL.md`, ScratchPad's
+skill at `79f8927` adapted to `scripts/sp`), the wrapper (`scripts/sp`),
+the builds (`build-sp.sh`, at pack time, gitignored), all three now in
+`plugins/scratchpad-skill` and installed into each add-on's
+`skill/scratchpad` by its `npm run build:sp` (§9.12), and the add-on's
+variables (`src/scratchpad.ts`, whose shared part is now the fabric
+package's `plugin-scratchpad.ts`); then,
 once the public plugin had the `metadata` field, the registration key and
 `scratchPadExtension` in `toolExtensions`. Two things the extension needed
 from the add-on: it is built in `started()`, when the plugin's client
@@ -1308,6 +1327,81 @@ extension made in `prompt_agent`. The reader's reply carried a reference
 of its own, which PI's model read back with `scripts/sp read`. So the
 skill now says that a reference for another agent goes into `prompt_agent`
 unchanged, with no grant of the model's own.
+
+### 9.12 OpenClaw, built and measured
+
+Built in `plugins/openclaw` on 2026-09-27, with two changes to what PI's
+build had.
+
+**One skill for every add-on.** `SKILL.md`, `scripts/sp` and the sp build
+moved out of `plugins/pi` into `plugins/scratchpad-skill`, with an
+`install.sh` each add-on's `npm run build:sp` (and `prepack`) runs: it
+builds sp once into the shared `bin/` and copies the skill and the binaries
+into the add-on's `skill/scratchpad`, which the add-on packages. PI's
+operator step, `--skill <add-on>/skill/scratchpad`, is unchanged. The code
+both add-ons need moved into the fabric package, TypeScript only like the
+rest of the plugins' contract (`typescript/src/plugin-scratchpad.ts`): the
+settings' resolution, the start-time and per-prompt variables, the packaged
+sp's path and port (given the add-on's skill directory), and
+`ScratchPadHandOn`. For OpenClaw the resolution also takes the connection
+from the plugin's own configuration, the account's `url` and `credentials`.
+
+**The add-on.** As PI's: the default export resolves ScratchPad first; with
+a volume the add-on sets the variables before the plugin connects,
+declares `scratchpad_refs_ok` through `metadata`, and returns the
+ScratchPad extension in `toolExtensions`. The per-prompt variables are set
+around the dispatch (`aroundDispatch`) and cleared at `promptEnded`; the
+plugin dispatches one turn at a time (§3.1).
+
+**Two changes to the wrapper, from what the runs showed.**
+
+- *The connection's names.* OpenClaw's plugin reads `NATS_URL` and
+  `NATS_CREDS` in the gateway's environment as overrides of the account's
+  connection: the first run logged `env override NATS_URL (account=default):
+  matches config`, harmless only because the add-on had set the account's
+  own values. `scripts/sp` now reads `SP_NATS_URL` and `SP_NATS_CREDS`, and
+  the add-on never sets the others; the final run logged no override.
+- *The caller's grant.* In the first two OpenClaw runs the model published
+  its file, handed it to the reader through `prompt_agent` (granted there
+  by the extension), and never ran `scripts/sp grant` for the caller, so
+  the caller's read was refused (`denied`), although the skill says to
+  grant before replying and the model had read it in the same turn. A
+  separate step the model has to remember is a step it skips. So a `publish-file` during a served prompt
+  with a verified caller now also grants that caller read, first-hand, as
+  an SDK-built agent grants the caller its reply; the result carries
+  `granted_to_caller` or `caller_grant_error`. The grant rule is unchanged:
+  the only grantee is the served prompt's caller.
+
+**The run, measured on this machine on 2026-09-27.** The local ScratchPad of
+§9.11 with four tenant users and volumes: the caller, OpenClaw, the reader
+(the TypeScript reference agent, ScratchPad on) and one unused. OpenClaw
+2026.9.4 on Node 24, the public plugin loaded from `sdk-release-rollout`
+`364b791` (its `index.ts`), this add-on named in the account's extension
+entry with `options.scratchpad.volume`, the three config entries of §6 step
+8, the model `claude-sonnet-5` through Anthropic's OpenAI-compatible
+endpoint. The caller published `The secret word is saffron-489.`, granted
+OpenClaw's user read, and prompted OpenClaw with the reference: find the
+word, publish a file of its own with the word backwards and let the caller
+read it, hand that file to the reader through `prompt_agent` without the
+word, and report. Discovery showed `scratchpad_refs_ok=true` on OpenClaw
+and on the reader. What OpenClaw's model did, from its session:
+
+1. `read` of the skill's `SKILL.md`, then `exec` of `scripts/sp read`, the
+   caller's 32 bytes;
+2. `scripts/sp publish-file`, refused (`run init`), `scripts/sp init`, then
+   `publish-file` again, whose result carried
+   `granted_to_caller` (grant 8) and the served prompt's pair in the
+   receipt (`"trace":{"thread_id":…,"root_id":…}`): the per-prompt
+   variables reached OpenClaw's exec tool;
+3. `discover_agents` for the reader, then `prompt_agent` with the reference
+   alone; the extension granted the reader read (grant 9), and the reader's
+   reply carried the file's content;
+4. the reply named the word and the reader's answer, and ended with the
+   reference, which the caller read with its own credentials:
+   `984-norffas`.
+
+OpenClaw's volume afterwards: grant 8 to the caller, grant 9 to the reader,
+both on the published file. The run took 68 s.
 
 ## 10. Appendix: the text for the public repo
 
