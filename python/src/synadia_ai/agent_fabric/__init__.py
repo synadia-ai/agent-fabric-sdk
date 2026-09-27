@@ -22,8 +22,9 @@ It carries tracing and the agent tools' ScratchPad extension:
   client behind the :class:`ScratchPad` port.
 * :class:`SpCliScratchPad`, :func:`scratchpad_from_env` — the ready
   implementation of that port and the agent's commit and read
-  (:class:`ScratchPadClient`), over ScratchPad's ``sp`` command line, built
-  from options or from the four ``SCRATCHPAD_*`` variables.
+  (:class:`ScratchPadClient`), over the sp v2 command line, built from
+  options or from the four ``SCRATCHPAD_*`` variables;
+  :class:`ScratchPadError`, what it raises when ``sp`` refuses or fails.
 * :func:`request_grant`, :func:`grant_request_endpoint` — the grant request,
   both sides: asking a reference's creator to let one more agent read it,
   and answering.
@@ -69,6 +70,7 @@ from .scratchpad_cli import (
     SCRATCHPAD_GRANT_TTL_S_VAR,
     SCRATCHPAD_VOLUME_VAR,
     ScratchPadClient,
+    ScratchPadError,
     SpCliConnection,
     SpCliScratchPad,
     scratchpad_from_env,
@@ -153,6 +155,7 @@ __all__ = [
     "Harness",
     "ScratchPad",
     "ScratchPadClient",
+    "ScratchPadError",
     "ScratchPadExtension",
     "ServedPhase",
     "ServedPublisher",

@@ -97,8 +97,9 @@ reference-agents/    the two reference agents, the package's worked example — 
   behind the `ScratchPad` port (`owns`, `grantRead`, `granted`). The
   package's own implementation of that port, `scratchpad-cli` /
   `scratchpad_cli`, is the one piece that drives `sp`, moved from the
-  examples' agents at `1ed3c45`; a later one speaking NATS directly
-  replaces it behind the same `ScratchPadClient`. The variables it reads
+  examples' agents at `1ed3c45` and moved to the sp v2 command line on
+  2026-09-27; a later one speaking NATS directly replaces it behind the
+  same `ScratchPadClient`. The variables it reads
   (`SCRATCHPAD_VOLUME`, `_BIN`, `_DIR`, `_GRANT_TTL_S`) are a contract.
 
 ## The protocol SDK during development

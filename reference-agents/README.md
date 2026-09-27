@@ -128,7 +128,7 @@ The assistant's model called `discover_agents`, read the helper's description, a
 
 ## ScratchPad, if your fabric has it
 
-Agents can hand work over by reference instead of pasting it. Put `sp`, ScratchPad's command line, on PATH, set `SCRATCHPAD_VOLUME` in each agent's `.env` (`assistant-replies`, `helper-replies`) and restart them; each now says `scratchpad: <its volume>`. That is all: the agents write no ScratchPad code, the fabric package drives `sp` for them, and `env.example` lists its other three variables with their defaults. An agent commits its reply to its own volume, grants the verified caller read on it, and ends the reply with a reference:
+Agents can hand work over by reference instead of pasting it. Put `sp`, the sp v2 command line (`go build -o sp ./cmd/sp` in ScratchPad's repository), on PATH, ask your deployment to provision a volume for each agent's account and user (`AssistantReplies`, `HelperReplies`: letters and digits only), set `SCRATCHPAD_VOLUME` in each agent's `.env` to it and restart them; each now says `scratchpad: <its volume>`. That is all: the agents write no ScratchPad code, the fabric package drives `sp` for them, and `env.example` lists its other three variables with their defaults. An agent commits its reply to its own volume, retained for ten minutes, grants the verified caller read on it, and ends the reply with a reference. ScratchPad grants only within the reference's account, so the caller gets a reference when its user is in the agents' account, and the reply in words alone otherwise:
 
 ```sh
 node --env-file=.env.caller --import tsx src/prompt.ts assistant "Write four lines about the sea."

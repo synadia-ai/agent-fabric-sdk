@@ -39,22 +39,25 @@ const references = scratchPad && scratchPadExtension({ scratchPad, agents });
 //                 const text = await scratchPad.read(ref, trace);
 ```
 
-| Variable                 | Default                                        |                                                                        |
-| ------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------- |
-| `SCRATCHPAD_VOLUME`      | unset: ScratchPad off                          | the volume the agent commits to, by name; created on first commit      |
-| `SCRATCHPAD_BIN`         | `sp` on PATH                                   | the `sp` binary                                                        |
-| `SCRATCHPAD_DIR`         | `scratchpad-<volume>` under the temp directory | a private directory for the CLI's saved replies, used by its real path |
-| `SCRATCHPAD_GRANT_TTL_S` | `600`                                          | how long a read grant lasts, in seconds                                |
+| Variable                 | Default                                        |                                                                                                                                          |
+| ------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `SCRATCHPAD_VOLUME`      | unset: ScratchPad off                          | the volume the agent commits to, by name: letters and digits only, provisioned for the agent's account and user; created on first commit |
+| `SCRATCHPAD_BIN`         | `sp` on PATH                                   | the `sp` binary                                                                                                                          |
+| `SCRATCHPAD_DIR`         | `scratchpad-<volume>` under the temp directory | a private directory for the CLI's workspace, used by its real path; keep it across restarts                                              |
+| `SCRATCHPAD_GRANT_TTL_S` | `600`                                          | how long a read grant lasts, in seconds; at most ten minutes, and never past the reference                                               |
 
-`sp` connects as the agent does: `NATS_CONTEXT`, or `NATS_CREDS` with
-`NATS_URL` (or pass `{ nats }`, the SDK's `NatsConnectionSource`). The same
+`sp` connects as the agent does, with `NATS_CREDS` and `NATS_URL` (or pass
+`{ nats }`, the SDK's `NatsConnectionSource`); it reads no NATS context, so a
+`NATS_CONTEXT` without `NATS_CREDS` is refused. The same
 from code: `spCliScratchPad({ volume, nats, bin?, dir?, grantTtlS?, creator? })`,
 both returning a `ScratchPadClient` — the `ScratchPad` port plus
 `commit(text, path, trace)` and `read(reference, trace)`.
 
-Today the implementation drives ScratchPad's command line, `sp`, which must
-be on the machine (built from ScratchPad's repository) and connects with the
-agent's own credentials; ScratchPad must be reachable in the tenant's
+Today the implementation drives the sp v2 command line, `sp`, which must
+be on the machine (`go build -o sp ./cmd/sp` in ScratchPad's repository) and
+connects with the agent's own credentials. Each commit publishes the reply
+retained for ten minutes, and its reference is valid as long; a grant goes
+only to an agent in the reference's own account, as `sp` refuses any other; ScratchPad must be reachable in the tenant's
 account, and it is not on NGS yet. `ScratchPadClient` is the interface a later implementation speaking
 NATS directly will satisfy, once a TypeScript ScratchPad client exists;
 nothing above it changes then.

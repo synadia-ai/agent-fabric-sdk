@@ -27,9 +27,10 @@
 //   - {@link spCliScratchPad}, {@link scratchPadFromEnv} — the ready
 //                             implementation of that port and the agent's
 //                             commit and read ({@link ScratchPadClient}),
-//                             over ScratchPad's `sp` command line, built from
+//                             over the sp v2 command line, built from
 //                             options or from the four `SCRATCHPAD_*`
-//                             variables.
+//                             variables; {@link ScratchPadError}, what it
+//                             throws when `sp` refuses or fails.
 //   - {@link requestGrant}, {@link grantRequestEndpoint} — the grant request,
 //                             both sides: asking a reference's creator to let
 //                             one more agent read it, and answering.
@@ -133,6 +134,7 @@ export {
   SCRATCHPAD_DIR_VAR,
   SCRATCHPAD_GRANT_TTL_S_VAR,
   SCRATCHPAD_VOLUME_VAR,
+  ScratchPadError,
   scratchPadFromEnv,
   spCliScratchPad,
   type ScratchPadClient,

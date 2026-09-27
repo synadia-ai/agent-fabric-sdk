@@ -237,12 +237,12 @@ scratchpad = scratchpad_from_env(env, creator=address, nats=cfg.nats)
 references = scratch_pad_extension(scratch_pad=scratchpad, agents=client) if scratchpad is not None else None
 ```
 
-The first builds the agent's ScratchPad from the environment, and gives nothing while `SCRATCHPAD_VOLUME` is unset, which is why the agent has run without one so far. The second puts the fabric's rules for references on the agent tools. Today the package drives ScratchPad through its command line, `sp`, built from ScratchPad's repository; the intended shape is the SDK talking to ScratchPad over NATS, which waits for ScratchPad's TypeScript and Python clients. `sp` connects with the agent's own credentials file; an nkey seed alone is not a form it takes. It refuses to save under a path with a symlink in it, and on macOS both `/tmp` and `$TMPDIR` are symlinks, so the package resolves `SCRATCHPAD_DIR` to its real path and the default works.
+The first builds the agent's ScratchPad from the environment, and gives nothing while `SCRATCHPAD_VOLUME` is unset, which is why the agent has run without one so far. The second puts the fabric's rules for references on the agent tools. Today the package drives ScratchPad through its command line, `sp`, built from ScratchPad's repository; the intended shape is the SDK talking to ScratchPad over NATS, which waits for ScratchPad's TypeScript and Python clients. `sp` connects with the agent's own credentials file; it reads no NATS context, and an nkey seed alone is not a form it takes. It keeps a small workspace in `SCRATCHPAD_DIR`: keep that directory private and across restarts, since it records the volume and any command still to finish. It refuses to save under a path with a symlink in it, and on macOS both `/tmp` and `$TMPDIR` are symlinks, so the package resolves `SCRATCHPAD_DIR` to its real path and the default works.
 
-Add two lines to `.env`, and the same to `.env.helper` with `helper-replies`:
+Ask your deployment operator to provision `AssistantReplies` for the assistant's account and user, and `HelperReplies` for the helper's; a volume name is letters and digits only. Add two lines to `.env`, and the same to `.env.helper` with `HelperReplies`:
 
 ```sh
-SCRATCHPAD_VOLUME=assistant-replies
+SCRATCHPAD_VOLUME=AssistantReplies
 SCRATCHPAD_BIN=/path/to/sp
 ```
 
