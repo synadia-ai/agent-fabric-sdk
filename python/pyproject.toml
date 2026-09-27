@@ -26,6 +26,7 @@ dependencies = [
     "synadia-ai-agents>=0.8",
     # … and the request interceptors and heartbeat extras (host).
     "synadia-ai-agent-service>=0.5",
+    "nats-py>=2.16",
 ]
 
 [project.urls]
@@ -60,9 +61,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/synadia_ai"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"THIRD_PARTY_NOTICES" = "synadia_ai/agent_fabric/THIRD_PARTY_NOTICES"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "/LICENSE",
+    "/THIRD_PARTY_NOTICES",
     "/README.md",
     "/pyproject.toml",
     "/src",

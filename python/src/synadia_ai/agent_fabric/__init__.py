@@ -20,11 +20,13 @@ It carries tracing and the agent tools' ScratchPad extension:
 * :func:`scratch_pad_extension` — the fabric's rules for ScratchPad
   references on ``AgentTools``' three extension hooks, over the agent's own
   client behind the :class:`ScratchPad` port.
-* :class:`SpCliScratchPad`, :func:`scratchpad_from_env` — the ready
-  implementation of that port and the agent's commit and read
-  (:class:`ScratchPadClient`), over the sp v2 command line, built from
-  options or from the four ``SCRATCHPAD_*`` variables;
-  :class:`ScratchPadError`, what it raises when ``sp`` refuses or fails.
+* :func:`native_scratchpad`, :func:`native_scratchpad_from_env` — the native
+  implementation of that port, binary artifact access, and durable recovery
+  on the agent's existing NATS connection. Native operations need Python 3.12+.
+  :func:`scratchpad_reader` opens a reader without a writer workspace.
+* :class:`SpCliScratchPad`, :func:`scratchpad_from_env` — the optional
+  implementation over the sp v2 command line. :class:`ScratchPadError`
+  reports CLI failures; :class:`NativeScratchPadError` reports native failures.
 * :func:`request_grant`, :func:`grant_request_endpoint` — the grant request,
   both sides: asking a reference's creator to let one more agent read it,
   and answering.
@@ -80,6 +82,15 @@ from .scratchpad_extension import (
     ScratchPadExtension,
     scratch_pad_extension,
 )
+from .scratchpad_native import (
+    DEFAULT_READ_LIMIT_BYTES,
+    NativeScratchPad,
+    NativeScratchPadError,
+    ScratchPadReader,
+    native_scratchpad,
+    native_scratchpad_from_env,
+    scratchpad_reader,
+)
 from .served import (
     HARNESS_THREAD_ID_MAX,
     SERVED_RECORD_VERSION,
@@ -128,6 +139,7 @@ __all__ = [
     "DEFAULT_EDGE_SUBJECT",
     "DEFAULT_GRANT_REQUEST_TIMEOUT_S",
     "DEFAULT_GRANT_TTL_S",
+    "DEFAULT_READ_LIMIT_BYTES",
     "DEFAULT_SP_BIN",
     "EDGE_RECORD_VERSION",
     "GRANT_REQUEST_ENDPOINT",
@@ -153,10 +165,13 @@ __all__ = [
     "GrantRequest",
     "Grantee",
     "Harness",
+    "NativeScratchPad",
+    "NativeScratchPadError",
     "ScratchPad",
     "ScratchPadClient",
     "ScratchPadError",
     "ScratchPadExtension",
+    "ScratchPadReader",
     "ServedPhase",
     "ServedPublisher",
     "ServedStatus",
@@ -184,6 +199,8 @@ __all__ = [
     "grant_subject",
     "grantee_from_identity",
     "is_thread_id",
+    "native_scratchpad",
+    "native_scratchpad_from_env",
     "random_thread_id",
     "reads_references",
     "reference_creator",
@@ -191,6 +208,7 @@ __all__ = [
     "request_grant",
     "scratch_pad_extension",
     "scratchpad_from_env",
+    "scratchpad_reader",
     "served_publisher",
     "trace_headers",
     "trace_record_counts",

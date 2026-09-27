@@ -7,8 +7,9 @@ The service, identities, agent protocol, and Fabric reference policy remain the 
 Implement TypeScript first and Python second against the same conformance cases.
 
 The TypeScript implementation lives below `typescript/src/scratchpad-native/`.
-The public entry is `typescript/src/scratchpad-native.ts` and the package exports it through its ordinary index.
-It implements the existing `ScratchPadClient` interface and adds binary artifact methods and explicit recovery.
+The Python implementation lives below `python/src/synadia_ai/agent_fabric/_scratchpad_native/`.
+Both packages export their native factories, readers, and errors through the ordinary package index.
+They implement the existing `ScratchPadClient` interface and add binary artifact methods and explicit recovery.
 The connection belongs to the caller; the client neither replaces credentials nor closes that connection.
 
 ### Protocol and codec boundary
@@ -42,6 +43,13 @@ The initial higher-level interface includes `commit`, `read`, `owns`, `grantRead
 It also exposes byte/stream publication, verified byte/stream reads, `recover`, and `close`.
 The writer requires Node 22.13 or later and an explicit private directory on a persistent local filesystem.
 It uses Node's built-in SQLite API. Other package features keep their existing runtime requirement.
+Python native operations require Python 3.12 or later and use the standard-library `sqlite3` module.
+Python 3.11 can still import and use the other Fabric features.
+Both codecs use Unicode 15 normalization: Python excludes characters unassigned in Unicode 15 before it normalizes each assigned span.
+This keeps paths stable when a newer Python runtime supplies newer Unicode tables.
+Reproduce the checked-in range table with
+`node scripts/generate-scratchpad-unicode15.mjs typescript/node_modules/@unicode/unicode-15.0.0 --check`
+from the repository root. The package includes the data's license notice.
 
 ### Use from an SDK agent
 
@@ -68,7 +76,31 @@ Pass `pad` to `scratchPadExtension` and `grantRequestEndpoint` through their exi
 `commit(text, path, trace)` returns a reference; `read(reference, trace)` returns verified UTF-8 text.
 `nativeScratchPadFromEnv(env, { nc, creator })` uses `SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, and `SCRATCHPAD_GRANT_TTL_S`.
 An unset volume disables ScratchPad. A configured volume requires a persistent directory; there is no temporary-directory default.
-The TypeScript reference agent uses this factory. `SCRATCHPAD_BIN` belongs to the separate CLI adapter.
+Both reference agents use the native factory. `SCRATCHPAD_BIN` belongs to the separate CLI adapter.
+
+The Python interface uses snake_case names and returns dictionaries for publications and recovery results:
+
+```python
+from synadia_ai.agent_fabric import Grantee, native_scratchpad, scratchpad_reader
+
+pad = await native_scratchpad(
+    nc=nc, volume="Writer", creator="agents.prompt.writer.demo.main",
+    dir="/var/lib/my-agent/scratchpad",
+)
+try:
+    await pad.recover()
+    published = await pad.publish_bytes(b"result", "/result.txt", operation_id="task-123-result")
+    await pad.grant_read(published["reference"], Grantee(account=reader_account, user=reader_user))
+    reader = await scratchpad_reader(nc=reader_connection)
+    data = await reader.read_bytes(published["reference"])
+finally:
+    await pad.close()
+```
+
+`await native_scratchpad_from_env(env, nc=nc, creator=address)` reads the same three variables.
+Use a writer on one event loop. Its mutations are serialized; the workspace lock excludes other processes.
+Pass immutable `bytes` to `publish_bytes`, or an iterable/async iterable of bytes to `publish_stream`.
+Python's `read_stream(reference, limit_bytes=...)` is an async iterator.
 
 ### Persistence and recovery
 
@@ -93,12 +125,25 @@ Recovery compares the full stored receipt before reading local payloads.
 It otherwise uploads the saved bytes and repeats the exact command once.
 Repeated `operationId` values reuse the saved payload and do not consume a replacement input stream.
 Changed content needs a new operation ID. The local retry window stores the last publication only.
+An expired intent leaves that window after recovery settles it; use a fresh operation ID for new work.
 After a workspace write failure, close and reopen the client before recovery.
+If an unaccepted publication passes its retention deadline, recovery sends the saved command to
+establish the service's definite `expired` refusal. It saves the observed revision and closes
+that exact revision, which fences any older in-flight publication write. It then saves the
+collection continuation, clears the expired intent and spool, and reopens through collection.
+Recovery reports `{ kind: "expired" }`; the next commit can proceed with the same writer.
+An accepted publication still recovers its exact receipt after expiry. The local clock alone never clears an intent.
 
 NATS JavaScript can buffer requests during reconnect. The client uses a bounded flush before each request and does not add retries.
 After transmission, loss, cancellation, or malformed replies leave mutations unknown.
+Python task cancellation propagates as `asyncio.CancelledError` and preserves the saved mutation
+for explicit recovery. It is not converted into an ordinary exception that a handler might ignore.
 A later definite refusal cannot establish that an earlier unknown grant or maintenance request had no effect.
 The saved control request remains until acceptance or an applicable fence establishes the outcome.
+Python uses nats-py's public connection and message APIs. Those APIs collapse repeated header names
+and replace malformed header text before this client receives it. The client validates the parsed
+headers and strict body JSON; it cannot prove the original raw header bytes or multiplicity.
+That upstream limitation is recorded for friendly-user qualification, without a private parser hook.
 
 ### Bounds and friendly-user test scope
 
@@ -120,7 +165,9 @@ The first milestone qualifies the local Node runtime and actual service workflow
 Synchronous SQLite flush latency, other operating systems, synchronized clocks, the full disconnect matrix, and sustained workload sizing remain friendly-test risks.
 No Windows or network-filesystem qualification is implied.
 Full directory sync/hydrate remains the `sp` client path.
-Track delivery and review findings in [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19).
+Track TypeScript delivery in [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19),
+Python delivery in [SDK issue #23](https://github.com/synadia-ai/agent-fabric-sdk/issues/23),
+and qualification risks in [SDK issue #22](https://github.com/synadia-ai/agent-fabric-sdk/issues/22).
 
 ### Conformance
 
@@ -137,8 +184,19 @@ Run the real-service suite explicitly; the ordinary unit suite does not qualify 
 cd typescript
 npm run build
 SCRATCHPAD_CORE_ROOT=/path/to/private/scratchpad npm run test:native
+
+cd ../python
+uv sync --python 3.12 --frozen
+SCRATCHPAD_CORE_ROOT=/path/to/private/scratchpad \
+SCRATCHPAD_TYPESCRIPT_PACKAGE=/path/to/agent-fabric-sdk/typescript \
+  uv run --no-sync pytest -s tests/test_scratchpad_native.py tests/test_scratchpad_native_expiry.py
 ```
 
 The core checkout is a test-only dependency. Shipped clients and their callers do not need it.
 The launcher creates temporary test credentials, uses the real broker identity imports, and records actual dropped receipts.
 The process-restart test runs the built package with no executables on PATH, kills its writer after an unknown result, and compares the recovered receipt and bytes.
+The Python suite also exchanges exact bytes and digests with the built TypeScript package:
+more than one MiB from Python to TypeScript, and 4097 bytes in the reverse direction
+within the fixture's smaller spare volume.
+Agent reference-policy tests use an explicit CLI adapter and fake `sp` to check policy in isolation.
+Those tests do not qualify ScratchPad storage, identity imports, or native recovery.

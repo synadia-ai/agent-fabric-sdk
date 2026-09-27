@@ -134,7 +134,7 @@ authenticated NATS connection, without a shell or `sp`. Its durable writer
 requires Node 22.13+ and a persistent private directory. See the
 [native client contract](docs/scratchpad-native.md) for setup, recovery, and bounds.
 The CLI adapters, `spCliScratchPad` / `SpCliScratchPad`, remain available;
-the Python reference agent uses that path until its native client is added.
+both reference agents use their native client. Python native operations require Python 3.12+.
 The extension itself runs on either implementation through the same port.
 
 **The grant request.** An agent may read another agent's reference but not
@@ -188,12 +188,12 @@ svc.onPrompt(async (envelope, response) => {
 from synadia_ai.agents import Agents, AgentSubject, AgentTools, Identity
 from synadia_ai.agent_service import AgentService, ServiceIdentity
 from synadia_ai.agent_fabric import (READS_REFERENCES_KEY, fabric_tracing,
-    grant_request_endpoint, scratch_pad_extension, scratchpad_from_env)
+    grant_request_endpoint, scratch_pad_extension, native_scratchpad_from_env)
 
 address = AgentSubject.new("triage", "acme", "main").prompt
 tracing = fabric_tracing()
 agents = Agents(nc=nc, identity=Identity(signer=signer), interceptors=[tracing.prompt_interceptor])
-scratch_pad = scratchpad_from_env(creator=address)  # or your own port
+scratch_pad = await native_scratchpad_from_env(nc=nc, creator=address)  # or your own port
 references = scratch_pad_extension(scratch_pad=scratch_pad, agents=agents)
 tools = AgentTools(agents, self_address=address, extensions=[references])
 svc = AgentService(nc=nc, agent="triage", owner="acme", session_name="main",

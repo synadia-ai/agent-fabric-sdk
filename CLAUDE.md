@@ -107,8 +107,11 @@ reference-agents/    the two reference agents, the package's worked example — 
   2026-09-27. TypeScript's native client implements the same `ScratchPadClient`
   and is the reference agent's default. Its writer requires Node 22.13+
   and an explicit persistent `SCRATCHPAD_DIR`; see `docs/scratchpad-native.md`.
-  The native reader needs no workspace. Python retains the CLI adapter until
-  its native implementation lands. The variables the CLI adapter reads
+  Python's native client implements the same port and is its reference agent's
+  default; native operations require Python 3.12+. Native readers need no workspace.
+  Both languages keep the optional CLI adapter. Tests with a fake `sp` inject
+  that adapter explicitly; the real-service suites qualify native recovery.
+  The variables the CLI adapter reads
   (`SCRATCHPAD_VOLUME`, `_BIN`, `_DIR`, `_GRANT_TTL_S`) are a contract.
 
 ## The protocol SDK during development

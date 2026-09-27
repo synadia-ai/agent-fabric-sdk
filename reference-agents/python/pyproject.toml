@@ -2,7 +2,7 @@
 name = "agent-fabric-example-py"
 version = "0.1.0"
 description = "The Python reference agent of the Synadia Agent Fabric."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
   "synadia-ai-agents",
   "synadia-ai-agent-service",

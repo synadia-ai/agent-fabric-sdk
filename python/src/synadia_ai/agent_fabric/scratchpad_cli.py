@@ -4,8 +4,8 @@ Mirrors ``typescript/src/scratchpad-cli.ts``.
 
 ScratchPad is the fabric's store for what agents produce: durable,
 permissioned volumes, every commit, grant and read written to the agent's
-timeline. There is no ScratchPad client for Python yet, so this drives the sp
-v2 command line from the ScratchPad repository (``go build -o sp ./cmd/sp``).
+timeline. This optional adapter drives the sp v2 command line.
+For direct NATS access, use :func:`native_scratchpad` from this package.
 The binary must be on the machine; it connects with the agent's own
 credentials. Five operations are all an agent needs:
 
@@ -23,8 +23,7 @@ credentials. Five operations are all an agent needs:
 
 The last three are the :class:`ScratchPad` port the extension and the grant
 request run on; the first two are the agent's own. Together they are
-:class:`ScratchPadClient`, which a later implementation speaking NATS directly
-will satisfy as well, once a Python ScratchPad client exists.
+:class:`ScratchPadClient`, which the native implementation also satisfies.
 
 Every call carries the served prompt's thread and root ids, so the commit,
 the grant and the read show up on the thread in the console next to the
