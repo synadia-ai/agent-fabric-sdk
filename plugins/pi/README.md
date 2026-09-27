@@ -209,8 +209,8 @@ package re-exports them, the contract's `PluginHarness` as `Harness`.
 Built like the fabric package (tsup, ESM and CJS, vitest, eslint,
 prettier). It links `@synadia-ai/agent-fabric` at `file:../../typescript`,
 built first, and the two protocol SDK packages by the same `file:` links
-the fabric package uses; no lockfile is committed while the links point
-outside the repo. The tests: unit, a fake of the plugin driving the events
+the fabric package uses; its `package-lock.json` is committed, and a clean clone
+installs with `npm ci`. The tests: unit, a fake of the plugin driving the events
 (`test/support/fake-plugin.ts`); integration, the factory's hooks on a real
 `AgentService` and `Agents` over a local `nats-server` in operator mode,
 the edges on the wire validated against `test-fixtures/schemas/edge.json`.

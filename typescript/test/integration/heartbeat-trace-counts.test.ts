@@ -14,8 +14,18 @@ import { findNatsServerBinary, NatsServerProcess } from "../harness/nats-server.
 import { dec } from "../support/fixtures.js";
 
 const bin = await findNatsServerBinary();
-// The §8.3 fields a service with no `session` publishes: nothing else.
-const REQUIRED = ["agent", "owner", "instance_id", "ts", "interval_s"];
+// The §8.3 fields a service with no `session` publishes, with the prompt
+// endpoint's declaration the SDK adds since synadia-agents #217
+// (`protocol_version`, `endpoints`): nothing else.
+const REQUIRED = [
+  "agent",
+  "owner",
+  "instance_id",
+  "ts",
+  "interval_s",
+  "protocol_version",
+  "endpoints",
+];
 
 /**
  * A host that runs the fabric's heartbeat extras reports how many trace
