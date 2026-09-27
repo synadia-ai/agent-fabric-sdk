@@ -50,9 +50,9 @@ refuse() {
 }
 
 # The command: the first argument that is not a flag or a flag's value, as
-# sp itself finds it. Every sp flag but --apply takes a value. On the way,
-# the operation id and the expiry, for the caller's grant after a
-# publication, and the reference, for the record of a grant.
+# sp itself finds it. Every sp flag but --apply and --help takes a value.
+# On the way, the operation id and the expiry, for the caller's grant after
+# a publication, and the reference, for the record of a grant.
 command=
 operation=
 ttl=600
@@ -70,7 +70,7 @@ for arg in "$@"; do
   fi
   case $arg in
     --) break ;;
-    -apply | --apply) ;;
+    -apply | --apply | -help | --help | -h) ;;
     -*=*)
       name=${arg%%=*}
       case ${name#-} in

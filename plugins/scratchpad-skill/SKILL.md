@@ -5,7 +5,7 @@ description: Read ScratchPad references (sp-ref:…) handed to you, and publish,
 
 # ScratchPad
 
-Adapted from ScratchPad's skill at `79f8927` for an agent on the fabric.
+Adapted from ScratchPad's skill at `a28bb49` for an agent on the fabric.
 Run the sp command line only as this skill's `scripts/sp`, by its absolute
 path: the directory of this file, then `scripts/sp`. In the examples below,
 `scripts/sp` stands for that path.
@@ -50,8 +50,10 @@ scripts/sp hydrate --ref "$REFERENCE" --destination "$DESTINATION"
 ```
 
 Read returns verified bytes as `data_base64` and their count as `bytes`; decode `data_base64` to get the content.
+Read accepts files up to 16 MiB; use hydration for larger files and directory trees.
 Hydrate requires a destination that does not exist.
-It verifies content identities before installing files.
+It verifies content identities before completing files, and reports the files, directories, symbolic links and bytes it installed.
+Failure can leave a partial destination; preserve that path for inspection.
 An expired reference or refused grant does not authorize another identity or path.
 
 ## Initialize and inspect
@@ -70,6 +72,7 @@ Initialization cannot silently reset that writer.
 
 `SOURCE` names the local file, or `-` for standard input; `ARTIFACT_PATH` is its canonical absolute artifact path, such as `/replies/1.txt`.
 Use a new `OPERATION_ID` for each intended publication.
+A rerun with the same operation identifier returns that publication's saved result; it never reads the source again, so changed content needs a new identifier.
 
 ```sh
 scripts/sp publish-file --source "$SOURCE" --path "$ARTIFACT_PATH" --operation-id "$OPERATION_ID" --ttl-seconds 600
@@ -111,6 +114,9 @@ scripts/sp sync --source "$SOURCE_DIRECTORY" --operation-id "$OPERATION_ID"
 
 Sync publishes the whole directory as the next root.
 Paths absent from that directory are absent from the new root.
+Preparation copies canonical content into a private disk spool in the workspace before upload.
+It preserves executable file modes and literal symbolic links without following links.
+There are no implicit Git exclusions; choose the source tree explicitly.
 Another writer's publication can produce an explicit conflict; the command does not merge automatically.
 
 ## Resolve a failed command
@@ -126,7 +132,10 @@ Another writer's publication can produce an explicit conflict; the command does 
 scripts/sp recover
 ```
 
-Recovery repeats the exact saved command or control request.
+Recovery first reconciles an exact accepted receipt.
+If publication remains necessary, recovery uploads the saved spool and submits the same command.
+It never rereads a changed source file or standard input.
+An `epoch_changed` response requires preparation against the current collection epoch; rerun recovery after maintenance ends.
 Do not change its operation identifier, base, root, or requested retention while the outcome remains unresolved.
 A definite conflict can leave the publication pending.
 Inspect an explicit reset plan before abandoning that intent.
@@ -140,6 +149,19 @@ Reset fences the previous writer generation.
 It does not release retention from an earlier unknown publication.
 An unresolved grant can block further control operations until acceptance, a positive observation, or expiry settles it.
 
+A publication refused before its command was prepared, such as a `capacity` refusal for want of a free retention slot, leaves its spool, and so does a publication abandoned by reset.
+Further publications and recovery refuse with `pending` until it is removed.
+Inspect the spool before attempting removal:
+
+```sh
+scripts/sp spool-inspect
+scripts/sp spool-remove
+scripts/sp spool-remove --apply
+```
+
+Removal is a dry run without `--apply` and refuses unresolved publication intent.
+A new publication reclaims a completed previous spool only after its exact receipt is saved.
+
 ## Reclaim expired content
 
 ```sh
@@ -148,13 +170,16 @@ scripts/sp maintain --apply
 ```
 
 The first command reports the proposed maintenance.
-The second releases unprotected expired pins, closes the volume, verifies live content, collects unreachable objects, and reopens it.
+The second releases unprotected expired pins, closes the volume, traces retained dependencies, collects unreachable objects, and reopens it.
+Maintenance does not scrub retained file payloads.
 If interrupted, recover the saved request or repeat maintenance against the durable closed state.
 Capacity refusal requires maintenance or an explicit operator decision; it never permits eviction of retained content.
 
 ## Capacity
 
-The development profile permits at most 8 MiB of allocated content and 64 objects per volume.
+Deployment scopes select explicit encoded-byte and object quotas.
+The small development profile permits 8 MiB and 64 objects per volume.
 Objects include chunks, file metadata, and directories.
 Retained results and unfinished uploads consume the same allowance.
-The directory builder refuses symbolic links and has no implicit Git exclusions.
+Replacing unique content needs room for both versions until old retention is released and collection completes.
+Local spools also need enough private disk space for the prepared artifact.

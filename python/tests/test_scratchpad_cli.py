@@ -35,9 +35,11 @@ from synadia_ai.agent_fabric import (
     reference_creator,
 )
 from synadia_ai.agent_fabric.scratchpad_cli import (
+    SpoolView,
     _Connection,
     decode_describe,
     decode_reference,
+    decode_spool,
 )
 
 FAKE_SP = Path(__file__).resolve().parent / "harness" / "fake_sp.py"
@@ -447,10 +449,88 @@ async def test_a_full_scratchpad_is_cleaned_up_and_the_same_commit_tried_once_mo
     reference = await sp.commit("after cleanup", "/replies/t13.md", TRACE)
     calls = rig.calls()
     # A free retention slot, and the content allowance full: cleanup can help.
-    assert [c for c, _ in calls] == ["publish-file", "describe", "maintain", "publish-file"]
-    assert calls[2][1]["apply"] is True
-    assert calls[3][1]["operation-id"] == calls[0][1]["operation-id"]
+    assert [c for c, _ in calls] == [
+        "publish-file",
+        "spool-remove",
+        "describe",
+        "maintain",
+        "publish-file",
+    ]
+    assert calls[1][1]["apply"] is True
+    assert calls[3][1]["apply"] is True
+    assert calls[4][1]["operation-id"] == calls[0][1]["operation-id"]
     assert await sp.read(reference, TRACE) == "after cleanup"
+
+
+async def test_the_refused_commits_spool_is_removed_even_when_cleanup_cannot_help(
+    rig: Rig,
+) -> None:
+    sp = rig.make()
+    refs = await rig.fill(sp)
+    rig.clear()
+    with pytest.raises(ScratchPadError) as caught:
+        await sp.commit("one too many", "/replies/full8.md", TRACE)
+    assert (caught.value.code, caught.value.unknown) == ("capacity", False)
+    assert not rig.fake_state().get("spool")
+    rig.expire(4)
+    rig.clear()
+    # So the next commit publishes.
+    reference = await sp.commit("after expiry", "/replies/full9.md", TRACE)
+    assert rig.commands() == [
+        "publish-file",
+        "spool-remove",
+        "describe",
+        "maintain",
+        "publish-file",
+    ]
+    assert await sp.read(reference, TRACE) == "after expiry"
+    assert await sp.read(refs[5], TRACE) == "reply 5"
+
+
+async def test_a_spool_the_cli_keeps_stops_the_retry_and_is_recovered_before_the_next_mutation(
+    rig: Rig,
+) -> None:
+    sp = rig.make()
+    await rig.fill(sp)
+    rig.expire(2)
+    rig.inject(
+        {"spool-remove": [{"reply": {"phase": "ready", "removable": False, "applied": False}}]}
+    )
+    rig.clear()
+    with pytest.raises(ScratchPadError, match="spool is protected") as caught:
+        await sp.commit("one too many", "/replies/full8.md", TRACE)
+    assert (caught.value.code, caught.value.unknown) == ("capacity", False)
+    assert rig.commands() == ["publish-file", "spool-remove"]
+    assert rig.fake_state()["closed"] is False
+    rig.clear()
+    await sp.commit("next", "/replies/full9.md", TRACE)
+    assert rig.commands()[0] == "recover"
+
+
+def test_the_spool_state_is_decoded_only_in_the_clis_exact_shape() -> None:
+    none = {"present": False, "files": 0, "bytes": 0, "removable": False, "applied": False}
+    some = {
+        "present": True,
+        "phase": "preparing",
+        "files": 6,
+        "bytes": 753,
+        "removable": True,
+        "applied": True,
+    }
+    assert decode_spool(none) == SpoolView(False, False, False)
+    assert decode_spool(some) == SpoolView(True, True, True)
+    for bad in (
+        {**none, "phase": "ready"},
+        {k: v for k, v in some.items() if k != "phase"},
+        {**some, "phase": ""},
+        {**none, "extra": 1},
+        {**none, "files": -1},
+        {**some, "applied": "yes"},
+        {k: v for k, v in none.items() if k != "present"},
+        None,
+    ):
+        with pytest.raises(ScratchPadError, match="sp spool-remove"):
+            decode_spool(bad)
 
 
 async def test_no_live_handoff_is_evicted_and_nothing_is_closed_when_every_retention_slot_is_live(
@@ -466,7 +546,7 @@ async def test_no_live_handoff_is_evicted_and_nothing_is_closed_when_every_reten
     for i, ref in enumerate(refs):
         assert await reader.read(ref, TRACE) == f"reply {i}"
     # The describe decided it: no maintenance, and every earlier handoff read.
-    assert rig.commands() == ["publish-file", "describe", *["read"] * 8]
+    assert rig.commands() == ["publish-file", "spool-remove", "describe", *["read"] * 8]
     assert rig.fake_state()["closed"] is False
 
 
@@ -478,7 +558,13 @@ async def test_an_expired_pin_that_can_be_released_is_collected_and_the_retry_ta
     rig.expire(3)
     rig.clear()
     reference = await sp.commit("after release", "/replies/full8.md", TRACE)
-    assert rig.commands() == ["publish-file", "describe", "maintain", "publish-file"]
+    assert rig.commands() == [
+        "publish-file",
+        "spool-remove",
+        "describe",
+        "maintain",
+        "publish-file",
+    ]
     assert decode_reference(reference)["retention"]["slot"] == 3
     assert await sp.read(reference, TRACE) == "after release"
     assert await sp.read(refs[4], TRACE) == "reply 4"
@@ -496,7 +582,7 @@ async def test_an_expired_pin_a_live_grant_names_counts_as_live_and_nothing_is_c
     with pytest.raises(ScratchPadError) as caught:
         await sp.commit("one too many", "/replies/full8.md", TRACE)
     assert (caught.value.code, caught.value.unknown) == ("capacity", False)
-    assert rig.commands() == ["publish-file", "describe"]
+    assert rig.commands() == ["publish-file", "spool-remove", "describe"]
 
 
 async def test_a_volume_someone_else_closed_is_never_reopened(rig: Rig) -> None:
@@ -507,7 +593,7 @@ async def test_a_volume_someone_else_closed_is_never_reopened(rig: Rig) -> None:
     rig.clear()
     with pytest.raises(ScratchPadError, match="no cleanup of this agent's is saved"):
         await sp.commit("while closed", "/replies/full8.md", TRACE)
-    assert rig.commands() == ["publish-file", "describe"]
+    assert rig.commands() == ["publish-file", "spool-remove", "describe"]
     assert rig.fake_state()["closed"] is True
 
 
@@ -587,7 +673,7 @@ async def test_nothing_is_closed_when_the_describe_reply_is_out_of_shape(rig: Ri
     with pytest.raises(ScratchPadError) as caught:
         await sp.commit("x", "/replies/full8.md", TRACE)
     assert (caught.value.code, caught.value.unknown) == ("capacity", False)
-    assert rig.commands() == ["publish-file", "describe"]
+    assert rig.commands() == ["publish-file", "spool-remove", "describe"]
 
 
 def test_the_describe_view_is_decoded_only_in_the_clis_exact_shape() -> None:

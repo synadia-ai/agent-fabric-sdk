@@ -35,7 +35,7 @@ import {
   type ScratchPadClient,
   type SpCliScratchPadOptions,
 } from "../../src/index.js";
-import { decodeDescribe, decodeReference } from "../../src/scratchpad-cli.js";
+import { decodeDescribe, decodeReference, decodeSpool } from "../../src/scratchpad-cli.js";
 
 const FAKE_SP = fileURLToPath(new URL("../harness/fake-sp.mjs", import.meta.url));
 const TRACE = { threadId: "1".repeat(32), rootId: "2".repeat(32) };
@@ -132,6 +132,7 @@ describe("the ScratchPad wrapper over the sp command line", () => {
     control: { kind: string } | null;
     retention: { generation: number; pin: { root: string; until: number } | null }[];
     last: { reference: string };
+    spool?: { phase: string };
   }
   const stateFile = (): string => join(dir, "state.json");
   const store = async (): Promise<{ volumes: Record<string, FakeState> }> =>
@@ -427,13 +428,80 @@ describe("the ScratchPad wrapper over the sp command line", () => {
     // A free retention slot, and the content allowance full: cleanup can help.
     expect(seen.map((c) => c.command)).toEqual([
       "publish-file",
+      "spool-remove",
       "describe",
       "maintain",
       "publish-file",
     ]);
-    expect(seen[2]!.flags["apply"]).toBe(true);
-    expect(seen[3]!.flags["operation-id"]).toBe(seen[0]!.flags["operation-id"]);
+    expect(seen[1]!.flags["apply"]).toBe(true);
+    expect(seen[3]!.flags["apply"]).toBe(true);
+    expect(seen[4]!.flags["operation-id"]).toBe(seen[0]!.flags["operation-id"]);
     expect(await pad.read(reference, TRACE)).toBe("after cleanup");
+  });
+
+  it("removes the refused commit's spool even when cleanup cannot help, so the next commit publishes", async () => {
+    const refs = await fill();
+    await clear();
+    await expect(pad.commit("one too many", "/replies/full8.md", TRACE)).rejects.toMatchObject({
+      code: "capacity",
+      unknown: false,
+    });
+    expect((await state()).spool).toBeUndefined();
+    await expire(4);
+    await clear();
+    const reference = await pad.commit("after expiry", "/replies/full9.md", TRACE);
+    expect((await calls()).map((c) => c.command)).toEqual([
+      "publish-file",
+      "spool-remove",
+      "describe",
+      "maintain",
+      "publish-file",
+    ]);
+    expect(await pad.read(reference, TRACE)).toBe("after expiry");
+    expect(await pad.read(refs[5]!, TRACE)).toBe("reply 5");
+  });
+
+  it("stops at a spool the CLI keeps: the refused command is pending, and recovered before the next mutation", async () => {
+    await fill();
+    await expire(2);
+    await inject({
+      "spool-remove": [{ reply: { phase: "ready", removable: false, applied: false } }],
+    });
+    await clear();
+    const failed = pad.commit("one too many", "/replies/full8.md", TRACE);
+    await expect(failed).rejects.toMatchObject({ code: "capacity", unknown: false });
+    await expect(failed).rejects.toThrow(/spool is protected/);
+    expect((await calls()).map((c) => c.command)).toEqual(["publish-file", "spool-remove"]);
+    expect((await state()).closed).toBe(false);
+    await clear();
+    await pad.commit("next", "/replies/full9.md", TRACE);
+    expect((await calls()).map((c) => c.command)[0]).toBe("recover");
+  });
+
+  it("decodes the spool state only in the CLI's exact shape", () => {
+    const none = { present: false, files: 0, bytes: 0, removable: false, applied: false };
+    const some = {
+      present: true,
+      phase: "preparing",
+      files: 6,
+      bytes: 753,
+      removable: true,
+      applied: true,
+    };
+    expect(decodeSpool(none)).toEqual({ present: false, removable: false, applied: false });
+    expect(decodeSpool(some)).toEqual({ present: true, removable: true, applied: true });
+    for (const bad of [
+      { ...none, phase: "ready" },
+      { ...some, phase: undefined },
+      { ...some, phase: "" },
+      { ...none, extra: 1 },
+      { ...none, files: -1 },
+      { ...some, applied: "yes" },
+      { files: 0, bytes: 0, removable: false, applied: false },
+      null,
+    ]) {
+      expect(() => decodeSpool(bad)).toThrow(ScratchPadError);
+    }
   });
 
   it("evicts no live handoff and closes nothing: with every retention slot live the commit fails, and the others still read", async () => {
@@ -447,6 +515,7 @@ describe("the ScratchPad wrapper over the sp command line", () => {
     // The describe decided it: no maintenance, and every earlier handoff read.
     expect((await calls()).map((c) => c.command)).toEqual([
       "publish-file",
+      "spool-remove",
       "describe",
       ...Array<string>(8).fill("read"),
     ]);
@@ -460,6 +529,7 @@ describe("the ScratchPad wrapper over the sp command line", () => {
     const reference = await pad.commit("after release", "/replies/full8.md", TRACE);
     expect((await calls()).map((c) => c.command)).toEqual([
       "publish-file",
+      "spool-remove",
       "describe",
       "maintain",
       "publish-file",
@@ -479,7 +549,11 @@ describe("the ScratchPad wrapper over the sp command line", () => {
       code: "capacity",
       unknown: false,
     });
-    expect((await calls()).map((c) => c.command)).toEqual(["publish-file", "describe"]);
+    expect((await calls()).map((c) => c.command)).toEqual([
+      "publish-file",
+      "spool-remove",
+      "describe",
+    ]);
   });
 
   it("never reopens a volume someone else closed", async () => {
@@ -492,7 +566,11 @@ describe("the ScratchPad wrapper over the sp command line", () => {
     await expect(pad.commit("while closed", "/replies/full8.md", TRACE)).rejects.toThrow(
       /no cleanup of this agent's is saved/,
     );
-    expect((await calls()).map((c) => c.command)).toEqual(["publish-file", "describe"]);
+    expect((await calls()).map((c) => c.command)).toEqual([
+      "publish-file",
+      "spool-remove",
+      "describe",
+    ]);
     expect((await state()).closed).toBe(true);
   });
 
@@ -563,7 +641,11 @@ describe("the ScratchPad wrapper over the sp command line", () => {
       code: "capacity",
       unknown: false,
     });
-    expect((await calls()).map((c) => c.command)).toEqual(["publish-file", "describe"]);
+    expect((await calls()).map((c) => c.command)).toEqual([
+      "publish-file",
+      "spool-remove",
+      "describe",
+    ]);
   });
 
   it("decodes the describe view only in the CLI's exact shape", () => {

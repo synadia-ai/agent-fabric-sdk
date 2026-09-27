@@ -189,9 +189,33 @@ describe("the flags from the environment", () => {
 
   it("adds the volume to init, and only to init", () => {
     expect(flag(run(["init", "--operation-id", "c1"]).args, "--volume")).toBe("pi-vol");
-    for (const command of ["describe", "hydrate", "sync", "recover", "reset", "maintain"]) {
+    for (const command of [
+      "describe",
+      "hydrate",
+      "sync",
+      "recover",
+      "reset",
+      "maintain",
+      "spool-inspect",
+      "spool-remove",
+    ]) {
       expect(run([command]).args).not.toContain("--volume");
     }
+  });
+
+  it("adds the connection and the workspace to the spool commands, and passes --apply on", () => {
+    const r = run(["spool-remove", "--apply"]);
+    expect(r.status).toBe(0);
+    expect(r.args).toEqual([
+      "--dir",
+      "/state/scratchpad",
+      "--url",
+      "nats://127.0.0.1:4333",
+      "--creds",
+      "/keys/pi.creds",
+      "spool-remove",
+      "--apply",
+    ]);
   });
 
   it("refuses init without a volume", () => {
@@ -251,6 +275,7 @@ describe("the flags from the environment", () => {
     expect(r.args).not.toContain("--volume");
     expect(flag(r.args, "--creator")).toBe("me");
     expect(run(["--apply", "init"]).args).toContain("--volume");
+    expect(run(["--help", "init"]).args).toContain("--volume");
   });
 
   it("refuses to run unconfigured", () => {
