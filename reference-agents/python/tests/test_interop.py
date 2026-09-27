@@ -30,9 +30,10 @@ from typing import Any
 
 import nats
 import pytest
-from synadia_ai.agent_fabric import fabric_tracing, find_references
+from synadia_ai.agent_fabric import fabric_tracing, find_references, scratchpad_from_env
 from synadia_ai.agents import (
     Agents,
+    AgentSubject,
     DiscoverFilter,
     Identity,
     ResponseChunk,
@@ -219,7 +220,7 @@ async def test_a_reference_the_typescript_agent_committed_is_read_by_the_python_
         }
         ts_log = open(tmp_path / "ts.log", "wb")  # noqa: SIM115 — closed with the process
         ts_proc = subprocess.Popen(
-            [node, "--import", "tsx", "src/main.ts"], cwd=TS_DIR, env=ts_env, stdout=ts_log, stderr=subprocess.STDOUT
+            [node, "--import", "tsx", "test/harness/cli-scratchpad-agent.ts"], cwd=TS_DIR, env=ts_env, stdout=ts_log, stderr=subprocess.STDOUT
         )
         for _ in range(100):
             if ts_ready_file.exists() or ts_proc.poll() is not None:
@@ -243,7 +244,15 @@ async def test_a_reference_the_typescript_agent_committed_is_read_by_the_python_
                 reply_timeout_s=10.0,
             ),
             log=lambda _line: None,
-            env={"SCRATCHPAD_VOLUME": "PyReplies", "SCRATCHPAD_BIN": str(FAKE_SP), "SCRATCHPAD_DIR": str(tmp_path / "sp-py")},
+            env={},
+            scratchpad=scratchpad_from_env(
+                {
+                    "SCRATCHPAD_VOLUME": "PyReplies", "SCRATCHPAD_BIN": str(FAKE_SP),
+                    "SCRATCHPAD_DIR": str(tmp_path / "sp-py"),
+                    "NATS_URL": server.url, "NATS_CREDS": str(IDENTITY / "carol.creds"),
+                },
+                creator=AgentSubject.new("py-agent", "test", "main").prompt,
+            ),
         )
 
         nc_caller = await nats.connect(server.url, user_credentials=str(IDENTITY / "dave.creds"))
