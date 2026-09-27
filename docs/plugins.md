@@ -423,8 +423,8 @@ entry's `options.edgeSubject` or the variable `SYNADIA_FABRIC_EDGE_SUBJECT`,
 validated by the fabric package (`assertValidTraceOptions`). The add-on's
 presence is the switch; there is no `tracing` setting (§4).
 
-**ScratchPad.** Not built yet: the add-ons return no `toolExtensions`
-today. Level B applies to the harnesses too, the model using ScratchPad's
+**ScratchPad.** Built for PI (§9.11); the add-ons return no
+`toolExtensions` today. Level B applies to the harnesses too, the model using ScratchPad's
 skill and the sp command line through the harness's shell tool, with the
 add-on returning `scratchPadExtension`; §9 is the design.
 
@@ -776,6 +776,15 @@ own, unbound.
    with `PI_CODING_AGENT_DIR` and `HOME` in a directory of its own
    (`run.sh`; `piagent.go`). The connected line names the loaded
    extensions.
+7. ScratchPad (§9), when PI's model is to use it: `--skill
+   <add-on>/skill/scratchpad`, and the bash tool on in place of
+   `--no-builtin-tools`: `--tools bash,discover_agents,prompt_agent,answer_agent`.
+   A volume reserved for PI's identity, named in the extension entry's
+   `options.scratchpad.volume` or `SCRATCHPAD_VOLUME`; the connection comes
+   from the plugin's NATS context, the workspace defaults to
+   `~/.pi/agent/scratchpad` (`plugins/pi/README.md`, "ScratchPad"). The
+   add-on's line `ScratchPad volume …, workspace …` confirms it at start.
+   Measured end to end on 2026-09-27 (§9.11).
 
 **OpenClaw**, from `agent-fabric-live` `harnesses/openclaw/`:
 
@@ -959,7 +968,7 @@ informed when Mario says (B6).
 
 ## 9. ScratchPad in the harnesses
 
-**Status:** design, nothing built · **Date:** 2026-09-27
+**Status:** design; PI built and measured (§9.11), OpenClaw and Claude Code not built · **Date:** 2026-09-27
 
 Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
@@ -1006,8 +1015,12 @@ exit codes 0–3 and the JSON on stdout and stderr pass through unchanged:
 - `--volume "$SCRATCHPAD_VOLUME"` on `init` only;
 - `--thread-id "$SP_THREAD_ID" --root-id "$SP_ROOT_ID"` when both are set
   (§9.7);
+- `--creator "$SP_CREATOR"`, the agent's prompt address, on `publish-file`;
+- `--grantee-account "$SP_CALLER_ACCOUNT" --grantee-user "$SP_CALLER_USER"`
+  on `grant`: the verified caller of the prompt being served;
 - it refuses, with exit 2 and sp's own error shape, a call that passes any
-  of those flags itself, and the `grant` command.
+  of those flags itself, and a `grant` when no served prompt has a verified
+  caller.
 
 The rules come from the command line itself:
 
@@ -1018,7 +1031,7 @@ The rules come from the command line itself:
 | `--dir` on every call | `read` accepts it: `sp read --url … --creds … --ref … --dir ws --volume V` parsed and failed on the token, not the flags | measured |
 | The model's own connection flags are refused | Go's flag package keeps the last value of a repeated flag, so a model could otherwise point sp elsewhere; the connection stays out of the model's hands | read (Go `flag`) |
 | Variables, not a command prefix | the command the model runs, and any permission question about it, stays `scripts/sp <command> …`; Claude Code's allow rules, should an operator write one, do not match past a `VAR=… cmd` prefix unless the variable is on its known-safe list (permissions docs, "Wrappers") | read |
-| `grant` is refused | the fabric's grants are first-hand and kept in a ledger by the agent tools' ScratchPad extension (`typescript/src/scratchpad-extension.ts`); a grant the model made with sp would bypass the ledger and the rule that only an agent that reads references gets one | design choice |
+| `grant` goes to the served prompt's caller only | the fabric's grants are first-hand: an agent grants read on its own content to the agent it hands the reference to. A reply goes to the caller, and no hook of the contract sees the reply, so the add-on cannot make that grant itself (an SDK-built agent's `grantCaller`); the model makes it, and the wrapper fixes the grantee. A reference handed to anyone else goes through `prompt_agent` and the agent tools' ScratchPad extension (`typescript/src/scratchpad-extension.ts`). Stated honestly: this grant is not in that extension's ledger, so a grant request about it is not answered from it | design choice, revised when PI was built (2026-09-27): the design first refused `grant` |
 
 **The skill.** ScratchPad's skill, with three changes: every example runs
 `scripts/sp` and passes no `--url`, `--creds`, `--dir` or `--volume`; the
@@ -1183,7 +1196,7 @@ keep `<stateDir>/scratchpad` on persistent storage; and use
 
 | Harness | Steps | Built by us |
 | --- | --- | --- |
-| PI | one flag, `--skill <add-on>/skill/scratchpad` (or the `skills` setting); the `bash` tool on (the demo's `--no-builtin-tools` off, or `--tools` naming `bash`). Nothing else: the connection comes from the plugin's context and the environment reaches bash | the add-on's variables, optionally the per-call ids |
+| PI | one flag, `--skill <add-on>/skill/scratchpad` (or the `skills` setting); the `bash` tool on (the demo's `--no-builtin-tools` off, or `--tools` naming `bash`). Nothing else: the connection comes from the plugin's context and the environment reaches bash | built (2026-09-27): the add-on's variables and the per-call ids (`plugins/pi`, §9.11) |
 | OpenClaw | three config changes: `skills.load.extraDirs`; the skill named in the agent's skill allowlist (the demo's `[]`); `exec` and `read` in `tools.allow` | the add-on's variables |
 | Claude Code | one flag, `--plugin-dir <add-on>` (or `CLAUDE_CODE_PLUGIN_DIRS`); `Bash` and `Skill` out of the settings' `deny`; `permissions: { "mode": "query" }` in the plugin's config, so questions reach the caller; the four variables in the launch environment or `settings.json` `env`, unless the add-on's plugin writes them from a `SessionStart` hook | the plugin manifest in the add-on package, optionally that hook |
 | Public plugin, all three | — | the `metadata` field of §9.1, one neutral change per plugin |
@@ -1226,6 +1239,45 @@ the operator's configuration allows, reading the credentials file included.
 "The model never handles credentials" means it never passes them: the
 wrapper adds them and refuses them from the model. It does not mean the
 model cannot reach them.
+
+### 9.11 PI, built and measured
+
+Built in `plugins/pi` on 2026-09-27: the skill (`skill/scratchpad/SKILL.md`,
+ScratchPad's skill at `79f8927` adapted to `scripts/sp`), the wrapper
+(`skill/scratchpad/scripts/sp`), the builds (`scripts/build-sp.sh`, at pack
+time, gitignored) and the add-on's variables (`src/scratchpad.ts`). Not
+built: `scratchPadExtension` in `toolExtensions`, and the registration key,
+which waits for the public plugin's `metadata` field (§9.6).
+
+**The run, measured on this machine on 2026-09-27.** A local ScratchPad from
+ScratchPad's `79f8927` (`scratchpad serve`, provisioned with one volume per
+agent) on a `nats-server` 2.14.6 in operator mode; one tenant account with
+two users, a caller and PI. PI 0.85.1 with the public plugin at `e8355c3`
+and this add-on, started as §6 step 7 says, the model
+`anthropic/claude-sonnet-5`. The caller, an SDK client signing its prompt:
+
+1. published `The secret word is kumquat-40479.` in its own volume and
+   granted PI's user read;
+2. prompted PI with the reference, asking for the word and for a file of
+   PI's own holding it backwards, shared with the caller.
+
+What PI's model did, from its session, every command through the bash tool:
+`cat` of the skill's `SKILL.md`; `scripts/sp read --ref …`, which returned
+the 34 bytes, decoded with `base64 -d`; `scripts/sp publish-file`, refused
+with `workspace has no created volume; run init`; `scripts/sp init`, which
+created its volume; `scripts/sp publish-file` again, whose receipt carries
+the served prompt's pair (`"trace":{"thread_id":…,"root_id":…}`);
+`scripts/sp grant --ref …`, the grantee filled in by the wrapper. It never
+passed a connection flag. Its reply named `kumquat-40479` and ended with its
+reference; the caller read that reference with its own credentials and got
+`97404-tauqmuk`.
+
+Also measured by the run: with `--tools` naming `bash` and the plugin's
+tools, PI listed the skill, and its model's tools were exactly `bash`,
+`discover_agents`, `prompt_agent` and `answer_agent` (asked in a second
+prompt, which also ran a `discover_agents` call); the plugin's service
+needs publish on `$SYS.REQ.USER.INFO` for its identity check, which the
+test users first lacked.
 
 ## 10. Appendix: the text for the public repo
 
