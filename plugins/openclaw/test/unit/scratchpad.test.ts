@@ -70,6 +70,8 @@ describe("the environment", () => {
       SP_NATS_URL: "nats://127.0.0.1:4222",
       SP_NATS_CREDS: "/keys/oc.creds",
       SCRATCHPAD_DIR: dir,
+      // Where scripts/sp records the grants it makes, beside the workspace.
+      SP_GRANTS_FILE: `${dir}.grants`,
     });
     expect(statSync(dir).isDirectory()).toBe(true);
     await ext.started!({ agents: fakeClient().agents, service: fakeService(ADDRESS) });

@@ -164,6 +164,7 @@ export { EDGE_SUBJECT_OPTION, EDGE_SUBJECT_VAR, resolveEdgeSubject } from "./plu
 
 export {
   exportScratchPad,
+  readRecordedGrants,
   resolveScratchPad,
   SCRATCHPAD_OPTION,
   ScratchPadHandOn,
@@ -171,6 +172,8 @@ export {
   SP_VARS,
   spBinary,
   spPort,
+  withRecordedGrants,
+  type RecordedGrant,
   type ScratchPadSettings,
 } from "./plugin-scratchpad.js";
 

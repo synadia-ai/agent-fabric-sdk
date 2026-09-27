@@ -153,6 +153,7 @@ bash tool passes them to every command (measured on PI 0.85.1):
 | `SP_CREATOR`                          | at start: PI's prompt address                                 | `--creator`, on `publish-file`                                                 |
 | `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its hand-over to PI's loop to its end | `--thread-id`, `--root-id`, every call                                         |
 | `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                               | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file`     |
+| `SP_GRANTS_FILE`                      | at start: `<workspace>.grants`                                | nothing: it records there each grant sp confirmed, for grant requests          |
 
 The connection has names of its own, not `NATS_URL` and `NATS_CREDS`, which
 a plugin may read as its own connection. The model passes none of these
@@ -178,6 +179,19 @@ reference PI was neither given nor made is refused. A reference into PI's
 own volume counts as made by PI, since its model publishes with
 `scripts/sp`, which the extension does not see. The extension's own grants
 run the packaged sp directly, with the settings above.
+
+**Grant requests.** A caller PI handed a reference to may hand it on
+through its own agent tools; its ScratchPad extension then asks the creator,
+PI, to grant the receiver read (the grant request, `grant-request.ts` in
+the fabric package). The add-on answers on PI's service, by the rule every
+SDK-built agent answers by: the reference must point into PI's volume, the
+requester must hold a live read grant PI made it first-hand, the grantee
+must be another agent, and the grant is one path, read only, ten minutes at
+most, recorded as made on request, which entitles no one to ask again. The
+grants PI's model makes go through `scripts/sp`, which the add-on does not
+see, so `scripts/sp` records each one sp confirms in `SP_GRANTS_FILE`
+(`<workspace>.grants`), and the add-on counts a live one as first-hand: it
+went to the agent whose prompt PI was serving.
 
 ## Identity
 

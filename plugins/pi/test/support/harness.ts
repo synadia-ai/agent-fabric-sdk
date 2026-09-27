@@ -20,3 +20,7 @@ export {
   parse,
   sleep,
 } from "../../../../typescript/test/support/fixtures.js";
+
+// The fabric package's stand-in for the sp command line.
+export const FAKE_SP = new URL("../../../../typescript/test/harness/fake-sp.mjs", import.meta.url)
+  .pathname;

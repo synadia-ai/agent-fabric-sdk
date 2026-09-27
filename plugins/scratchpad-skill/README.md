@@ -11,7 +11,9 @@ so a harness's model uses ScratchPad through its shell tool:
   publication, the served prompt's verified caller, all from the
   environment the add-on sets, or from the file `SP_ENV_FILE` names where
   the add-on cannot set the shell tool's environment (Claude Code's). It
-  refuses those flags from the model.
+  refuses those flags from the model, and records each grant sp confirms in
+  `SP_GRANTS_FILE`, from which the add-on answers grant requests
+  (`docs/plugins.md` §9.14).
 - `build-sp.sh`: builds sp from ScratchPad's repository at the pinned commit
   for darwin and linux on arm64 and amd64, into `bin/` (gitignored).
 - `install.sh`: run from an add-on's directory (its `npm run build:sp`, and

@@ -22,7 +22,11 @@
 // so a caller's `prompt_agent` hands them to it. And references its model
 // puts into its own `prompt_agent` go through the ScratchPad extension, as
 // an SDK-built agent's do: granted to a receiver that reads references,
-// removed with a note for any other (`ScratchPadHandOn`).
+// removed with a note for any other (`ScratchPadHandOn`). And it answers
+// grant requests for what it published, as an SDK-built agent does
+// (`grant-request.ts`): the grants its model made through `scripts/sp`, which
+// the extension does not see, are recorded by the wrapper in a file the
+// add-on reads (`SP_GRANTS_FILE`, `withRecordedGrants`).
 //
 // Per served prompt, from when the harness starts working on it to its end:
 // the prompt's trace (`SP_THREAD_ID`, `SP_ROOT_ID`) and its verified caller
@@ -31,24 +35,33 @@
 // harness that works on one served prompt at a time; each add-on says why
 // its harness does.
 
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { arch, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
-import type { RequestInterceptor, RequestInterceptorContext } from "@synadia-ai/agent-service";
+import type {
+  AgentService,
+  RequestInterceptor,
+  RequestInterceptorContext,
+} from "@synadia-ai/agent-service";
 import {
   readContextFile,
+  SILENT_LOGGER,
   type Agent,
   type Agents,
   type AgentToolsExtension,
   type AgentToolsPromptContext,
   type AgentToolsPromptRewrite,
   type AgentToolsReplyContext,
+  type Logger,
 } from "@synadia-ai/agents";
+import { grantRequestEndpoint } from "./grant-request.js";
 import type { AgentExtensionContext, ServedRequest } from "./plugin-contract.js";
 import {
   findReferences,
   granteeFromIdentity,
   readsReferences,
+  type GrantKind,
+  type Grantee,
   type ScratchPad,
 } from "./scratchpad.js";
 import {
@@ -82,6 +95,7 @@ export const SP_VARS = {
   rootId: "SP_ROOT_ID",
   callerAccount: "SP_CALLER_ACCOUNT",
   callerUser: "SP_CALLER_USER",
+  grants: "SP_GRANTS_FILE",
 } as const;
 
 /** What ScratchPad was resolved to at start. */
@@ -91,6 +105,12 @@ export interface ScratchPadSettings {
   readonly volume: string;
   /** Unset when neither a setting nor the plugin's state directory gives one. */
   readonly dir?: string;
+  /**
+   * The file `scripts/sp` records its grants in, beside the workspace:
+   * `<dir>.grants`. Unset without a workspace, and then the grants the
+   * model makes do not entitle anyone to a grant request.
+   */
+  readonly grants?: string;
 }
 
 type Env = Record<string, string | undefined>;
@@ -161,7 +181,15 @@ export async function resolveScratchPad(
       log.warn(`agent-fabric: ScratchPad workspace ${dir} could not be created (${String(err)})`);
     }
   }
-  return { url, creds: expandHome(creds), volume, ...(dir !== undefined ? { dir } : {}) };
+  const grants = dir !== undefined ? `${dir}.grants` : undefined;
+  if (grants !== undefined) pruneRecordedGrants(grants, log);
+  return {
+    url,
+    creds: expandHome(creds),
+    volume,
+    ...(dir !== undefined ? { dir } : {}),
+    ...(grants !== undefined ? { grants } : {}),
+  };
 }
 
 /** Sets the start-time variables. */
@@ -170,6 +198,7 @@ export function exportScratchPad(settings: ScratchPadSettings, env: Env): void {
   env[SP_VARS.creds] = settings.creds;
   env[SP_VARS.volume] = settings.volume;
   if (settings.dir !== undefined) env[SP_VARS.dir] = settings.dir;
+  if (settings.grants !== undefined) env[SP_VARS.grants] = settings.grants;
 }
 
 /**
@@ -256,11 +285,41 @@ export class ScratchPadHandOn implements AgentToolsExtension {
     },
   };
 
-  /** Builds the extension, once the plugin's client is on the bus. */
-  start(options: { readonly scratchPad: ScratchPad; readonly agents: Agents }): void {
-    this.#scratchPad = options.scratchPad;
-    this.#inner = scratchPadExtension(options);
+  /**
+   * Builds the extension, once the plugin's client is on the bus. Given the
+   * plugin's service, also answers grant requests for what this agent
+   * published, on the endpoint an SDK-built agent serves them on
+   * (`grantRequestEndpoint`), added through the service's own
+   * `addEndpoint`, since the plugin builds its service before the add-on
+   * could name an extra endpoint. Several instances of one agent share the
+   * work, as an SDK-built agent's do.
+   */
+  start(options: {
+    readonly scratchPad: ScratchPad;
+    readonly agents: Agents;
+    readonly service?: AgentService;
+    readonly logger?: Logger;
+  }): void {
+    const { scratchPad, agents, service } = options;
+    this.#scratchPad = scratchPad;
+    this.#inner = scratchPadExtension({ scratchPad, agents });
     for (const text of this.#early.splice(0)) this.#inner.remember(text);
+    if (service === undefined) return;
+    const logger = options.logger ?? SILENT_LOGGER;
+    const ep = grantRequestEndpoint({
+      promptAddress: service.subject.prompt,
+      scratchPad,
+      logger,
+    });
+    try {
+      service.service.addEndpoint(ep.name, {
+        subject: ep.subject,
+        ...(ep.queue !== undefined ? { queue: ep.queue } : {}),
+        handler: ep.handler,
+      });
+    } catch (err) {
+      logger.warn(`agent-fabric: grant requests are not answered: ${String(err)}`);
+    }
   }
 
   discoveryFields(agent: Agent): Record<string, unknown> {
@@ -291,7 +350,10 @@ export class ScratchPadHandOn implements AgentToolsExtension {
   }
 }
 
-/** The ScratchPad port over the add-on's packaged sp, for its own grants. */
+/**
+ * The ScratchPad port over the add-on's packaged sp, for its own grants and
+ * the grant requests it answers, with the grants `scripts/sp` recorded.
+ */
 export function spPort(
   settings: ScratchPadSettings,
   creator: string,
@@ -300,13 +362,103 @@ export function spPort(
 ): ScratchPad | undefined {
   const bin = spBinary(env, skillDir);
   if (bin === undefined) return undefined;
-  return spCliScratchPad({
+  const port = spCliScratchPad({
     volume: settings.volume,
     nats: { url: settings.url, creds: settings.creds },
     bin,
     creator,
     ...(settings.dir !== undefined ? { dir: settings.dir } : {}),
   });
+  return settings.grants !== undefined ? withRecordedGrants(port, settings.grants) : port;
+}
+
+// The grants `scripts/sp` made, one line each, appended by the wrapper after
+// sp confirmed the grant: `<expires_at> <account> <user> <reference>`, the
+// expiry in seconds since the epoch as sp reported it, the grantee the
+// served prompt's verified caller, the reference as it was granted on.
+
+/** One grant `scripts/sp` recorded. */
+export interface RecordedGrant {
+  readonly expiresAt: number;
+  readonly grantee: Grantee;
+  readonly reference: string;
+}
+
+const RECORDED_LINE = /^(\d+) (\S+) (\S+) (sp-ref:[A-Za-z0-9_-]+)$/;
+
+/** The grants recorded in `file`; none when it does not exist. Malformed lines are skipped. */
+export function readRecordedGrants(file: string): RecordedGrant[] {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return [];
+  }
+  const grants: RecordedGrant[] = [];
+  for (const line of text.split("\n")) {
+    const m = RECORDED_LINE.exec(line);
+    if (m === null) continue;
+    grants.push({
+      expiresAt: Number(m[1]),
+      grantee: { account: m[2] as string, user: m[3] as string },
+      reference: m[4] as string,
+    });
+  }
+  return grants;
+}
+
+// At start, before the model runs: the file keeps only what is still live.
+function pruneRecordedGrants(file: string, log: Logger): void {
+  const t = Math.floor(Date.now() / 1000);
+  const live = readRecordedGrants(file).filter((g) => g.expiresAt > t);
+  try {
+    const staging = `${file}.${process.pid}.tmp`;
+    writeFileSync(
+      staging,
+      live
+        .map((g) => `${g.expiresAt} ${g.grantee.account} ${g.grantee.user} ${g.reference}\n`)
+        .join(""),
+      { mode: 0o600 },
+    );
+    renameSync(staging, file);
+  } catch (err) {
+    log.warn(`agent-fabric: ScratchPad grants file ${file} could not be written (${String(err)})`);
+  }
+}
+
+/**
+ * `port`, whose ledger also holds the grants `scripts/sp` recorded in `file`.
+ * The wrapper grants only to the served prompt's caller, the agent the
+ * harness's model handed its reply to, so each is first-hand, as an
+ * SDK-built agent's grant to the caller of its reply is: its holder may ask
+ * for one more agent. A first-hand grant of the port's own comes first;
+ * the port's answer stands when nothing live is recorded. The reference
+ * must be the one granted on, token for token, as the requester was given
+ * it. `now` is seconds since the epoch.
+ */
+export function withRecordedGrants(
+  port: ScratchPad,
+  file: string,
+  now: () => number = () => Date.now() / 1000,
+): ScratchPad {
+  return {
+    owns: (reference) => port.owns(reference),
+    grantRead: (reference, grantee, trace, toolCallId, kind) =>
+      port.grantRead(reference, grantee, trace, toolCallId, kind),
+    async granted(reference, grantee): Promise<GrantKind | undefined> {
+      const own = await port.granted(reference, grantee);
+      if (own === "first-hand") return own;
+      const t = now();
+      const recorded = readRecordedGrants(file).some(
+        (g) =>
+          g.reference === reference &&
+          g.grantee.account === grantee.account &&
+          g.grantee.user === grantee.user &&
+          g.expiresAt > t,
+      );
+      return recorded ? "first-hand" : own;
+    },
+  };
 }
 
 function stringOf(value: unknown): string | undefined {

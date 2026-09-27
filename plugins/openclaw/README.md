@@ -197,6 +197,7 @@ environment from it on the gateway host, its default with the sandbox off:
 | `SP_CREATOR`                          | at start: OpenClaw's prompt address             | `--creator`, on `publish-file`                                             |
 | `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its dispatch to its end | `--thread-id`, `--root-id`, every call                                     |
 | `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                 | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file` |
+| `SP_GRANTS_FILE`                      | at start: `<workspace>.grants`                  | nothing: it records there each grant sp confirmed, for grant requests      |
 
 The connection has names of its own because OpenClaw's plugin reads
 `NATS_URL` and `NATS_CREDS` in its environment as overrides of the
@@ -213,6 +214,19 @@ as reading references (`scratchpad_refs_ok: "true"` through the extension's
 through the fabric package's ScratchPad extension, as an SDK-built agent's
 do: granted to a receiver that reads references, removed with a note for
 any other.
+
+**Grant requests.** A caller OpenClaw handed a reference to may hand it on
+through its own agent tools; its ScratchPad extension then asks the creator,
+OpenClaw, to grant the receiver read (the grant request, `grant-request.ts` in
+the fabric package). The add-on answers on OpenClaw's service, by the rule every
+SDK-built agent answers by: the reference must point into OpenClaw's volume, the
+requester must hold a live read grant OpenClaw made it first-hand, the grantee
+must be another agent, and the grant is one path, read only, ten minutes at
+most, recorded as made on request, which entitles no one to ask again. The
+grants OpenClaw's model makes go through `scripts/sp`, which the add-on does not
+see, so `scripts/sp` records each one sp confirms in `SP_GRANTS_FILE`
+(`<workspace>.grants`), and the add-on counts a live one as first-hand: it
+went to the agent whose prompt OpenClaw was serving.
 
 ## Public API
 

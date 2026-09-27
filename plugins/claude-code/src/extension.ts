@@ -39,8 +39,10 @@
 // package's SessionStart hook names to the Bash tool: the connection, the
 // workspace and the volume at start, the served prompt's trace and caller
 // from its arrival to its end (`scratchpad.ts`). It registers Claude Code as
-// reading references, and hands the references Claude Code's model puts
-// into `prompt_agent` to the fabric package's ScratchPad extension.
+// reading references, hands the references Claude Code's model puts into
+// `prompt_agent` to the fabric package's ScratchPad extension, and answers
+// grant requests for what Claude Code published, by an SDK-built agent's
+// rule.
 
 import {
   activeTrace,
@@ -257,11 +259,11 @@ export function createFabricExtension(
           writeSpEnv();
         }
         const port = spPort(scratchPad, service.subject.prompt, env);
-        if (port !== undefined) handOn.start({ scratchPad: port, agents });
+        if (port !== undefined) handOn.start({ scratchPad: port, agents, service, logger: log });
         else
           log.warn(
             `${EXTENSION_NAME}: no sp for this platform (set SCRATCHPAD_BIN); ` +
-              "references in prompt_agent are not handed on",
+              "references in prompt_agent are not handed on, and grant requests not answered",
           );
         log.info(
           `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +

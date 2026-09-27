@@ -347,6 +347,7 @@ through `CLAUDE_ENV_FILE`. `scripts/sp` reads it on every call:
 | `SP_CREATOR`                          | at start: Claude Code's prompt address         | `--creator`, on `publish-file`                                             |
 | `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its arrival to its end | `--thread-id`, `--root-id`, every call                                     |
 | `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file` |
+| `SP_GRANTS_FILE`                      | at start: `<workspace>.grants`                 | nothing: it records there each grant sp confirmed, for grant requests      |
 
 A `publish-file` during a served prompt with a verified caller also grants
 that caller read on what it published; a `grant` goes to that caller and no
@@ -359,6 +360,19 @@ extension's `metadata`), and the references its model puts into
 `prompt_agent` go through the fabric package's ScratchPad extension, as an
 SDK-built agent's do: granted to a receiver that reads references, removed
 with a note for any other.
+
+**Grant requests.** A caller Claude Code handed a reference to may hand it on
+through its own agent tools; its ScratchPad extension then asks the creator,
+Claude Code, to grant the receiver read (the grant request, `grant-request.ts` in
+the fabric package). The add-on answers on Claude Code's service, by the rule every
+SDK-built agent answers by: the reference must point into Claude Code's volume, the
+requester must hold a live read grant Claude Code made it first-hand, the grantee
+must be another agent, and the grant is one path, read only, ten minutes at
+most, recorded as made on request, which entitles no one to ask again. The
+grants Claude Code's model makes go through `scripts/sp`, which the add-on does not
+see, so `scripts/sp` records each one sp confirms in `SP_GRANTS_FILE`
+(`<workspace>.grants`), and the add-on counts a live one as first-hand: it
+went to the agent whose prompt Claude Code was serving.
 
 **Measured** on Claude Code 2.1.283 on 2026-09-27 (`docs/plugins.md`
 §9.13): given a reference, the model read it through the skill, published
