@@ -1202,9 +1202,15 @@ per served prompt, so they cannot be set once at start.
 
 ### 9.8 Packaging the sp command line
 
-Built from ScratchPad at the commit `build-sp.sh` pins (a clean `git
-archive`), with `CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' ./cmd/sp`
-and Go 1.27.0. The table was **measured** on 2026-09-27 at `79f8927`; at
+The current shared build and standalone release contract is in
+[Standalone ScratchPad binaries](scratchpad-binaries.md). Its one pin is
+`plugins/scratchpad-skill/release.json`; harness packages and release archives
+use the same executable bytes and notices. Standalone downloads occur during
+explicit onboarding or image creation. Tool calls use the packaged binary.
+
+The following historical measurements used clean source archives,
+`CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' ./cmd/sp`, and Go 1.27.0.
+The table was **measured** on 2026-09-27 at `79f8927`; at
 `a28bb49`, the pin since 2026-09-28 (§9.15), the four are 7,404,210 B,
 8,047,728 B, 7,274,656 B and 7,864,480 B, in the same order:
 
@@ -1632,8 +1638,8 @@ covers the wrapper's record.
 ### 9.15 The skill at ScratchPad `a28bb49`
 
 On 2026-09-28 the skill moved from ScratchPad `79f8927` to `a28bb49`, the
-commit the native clients speak. The pin is the one line `SP_COMMIT` in
-`plugins/scratchpad-skill/build-sp.sh`; another commit is that line again.
+commit the native clients speak. That run used the build script's `SP_COMMIT`
+pin. The shared pin now lives in `plugins/scratchpad-skill/release.json` (§9.8).
 What changed in the command line between the two (`internal/volumecli`,
 its README, and ScratchPad's own skill), and what it changed here:
 
