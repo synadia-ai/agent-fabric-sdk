@@ -24,7 +24,7 @@ export {
 
 // ScratchPad for PI's model: the option and the variables the skill's
 // `scripts/sp` reads (`docs/plugins.md` §9).
-export { SCRATCHPAD_OPTION, SP_VARS } from "./scratchpad.js";
+export { SCRATCHPAD_OPTION, SP_VARS, ScratchPadHandOn, spBinary } from "./scratchpad.js";
 
 // What every add-on shares, from the fabric package, re-exported so this
 // package's API is what it was before they moved there.

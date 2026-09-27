@@ -23,7 +23,8 @@
 // `--skill`) reads through `scripts/sp`: the connection, the workspace and
 // the volume before the plugin connects, the served prompt's trace and
 // caller from its hand-over to its end. It registers PI as reading
-// references (`scratchpad.ts`).
+// references, and hands the references PI's model puts into `prompt_agent`
+// to the fabric package's ScratchPad extension (`scratchpad.ts`).
 
 import {
   activeTrace,
@@ -41,8 +42,10 @@ import {
 import {
   exportScratchPad,
   resolveScratchPad,
+  ScratchPadHandOn,
   ServedPromptEnv,
   SP_VARS,
+  spPort,
   type ScratchPadSettings,
 } from "./scratchpad.js";
 
@@ -103,26 +106,39 @@ export function createFabricExtension(
   const promptEnv = new ServedPromptEnv(env);
   // Set before the plugin connects, so a command PI runs at any time finds them.
   if (scratchPad !== undefined) exportScratchPad(scratchPad, env);
+  const handOn = scratchPad !== undefined ? new ScratchPadHandOn() : undefined;
 
   return {
     name: EXTENSION_NAME,
     // The service: tracing first, so the guard runs inside the scope tracing
     // bound and a malformed pair is refused with 400 before the guard
     // looks; the plugin appends its own (the tools' scope) after these.
-    requestInterceptors: [tracing.requestInterceptor, guard.requestInterceptor],
+    // The ScratchPad extension's, last, remembers the references each
+    // served prompt brings, which PI may hand on.
+    requestInterceptors: [
+      tracing.requestInterceptor,
+      guard.requestInterceptor,
+      ...(handOn !== undefined ? [handOn.requestInterceptor] : []),
+    ],
     // The client PI's agent tools prompt through: the edge and the pair,
     // then the waiting mark. Both read the ambient scope, so the order
     // between them does not matter.
     promptInterceptors: [tracing.promptInterceptor, guard.promptInterceptor],
     heartbeatExtras: tracing.heartbeatExtras,
-    // So a caller's `prompt_agent` hands references to PI.
-    ...(scratchPadOn ? { metadata: { [READS_REFERENCES_KEY]: "true" } } : {}),
-    // No `toolExtensions` yet (§9.1 designs `scratchPadExtension` here).
+    ...(handOn !== undefined
+      ? {
+          // References in PI's `prompt_agent`: granted to a receiver that
+          // reads them, removed with a note for any other.
+          toolExtensions: [handOn],
+          // So a caller's `prompt_agent` hands references to PI.
+          metadata: { [READS_REFERENCES_KEY]: "true" },
+        }
+      : {}),
     // No `stopping`: an
     // edge record is published before the prompt it describes and counted
     // as it goes, so there is nothing to flush when the plugin stops.
 
-    started({ service }) {
+    started({ agents, service }) {
       if (ctx.settings.senderIdentity !== "signed" && !warnedIdentityOff) {
         warnedIdentityOff = true;
         log.warn(IDENTITY_OFF_WARNING);
@@ -133,8 +149,15 @@ export function createFabricExtension(
             ? " (propagate-only: lineage forwarded, no edge record published)"
             : `, edge records on ${edgeSubject}`),
       );
-      if (scratchPad !== undefined) {
+      if (scratchPad !== undefined && handOn !== undefined) {
         env[SP_VARS.creator] = service.subject.prompt;
+        const port = spPort(scratchPad, service.subject.prompt, env);
+        if (port !== undefined) handOn.start({ scratchPad: port, agents });
+        else
+          log.warn(
+            `${EXTENSION_NAME}: no sp for this platform (set SCRATCHPAD_BIN); ` +
+              "references in prompt_agent are not handed on",
+          );
         log.info(
           `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +
             (scratchPad.dir !== undefined ? `, workspace ${scratchPad.dir}` : ", no workspace") +

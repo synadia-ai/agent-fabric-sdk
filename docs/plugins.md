@@ -423,8 +423,9 @@ entry's `options.edgeSubject` or the variable `SYNADIA_FABRIC_EDGE_SUBJECT`,
 validated by the fabric package (`assertValidTraceOptions`). The add-on's
 presence is the switch; there is no `tracing` setting (§4).
 
-**ScratchPad.** Built for PI (§9.11); the add-ons return no
-`toolExtensions` today. Level B applies to the harnesses too, the model using ScratchPad's
+**ScratchPad.** Built for PI (§9.11), whose add-on returns
+`scratchPadExtension` in `toolExtensions` and declares that PI reads
+references; OpenClaw's and Claude Code's return none yet. Level B applies to the harnesses too, the model using ScratchPad's
 skill and the sp command line through the harness's shell tool, with the
 add-on returning `scratchPadExtension`; §9 is the design.
 
@@ -684,7 +685,7 @@ session, a pseudo-terminal when scripted (§6 step 7).
 | The `409` loop guard | nothing | returns its request and prompt interceptors | `RequestRejectedError` | `loopGuard()`, `loop-guard.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23), and the scope it reads |
 | The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, read by the add-on alone | nothing | `resolveEdgeSubject()` gives every add-on the precedence (`plugin-settings.ts`, TypeScript only); validates it |
 | `senderIdentity: signed` | the plugin's setting, as today | required for any record; warns once without it | identity | warns once when a record is due |
-| ScratchPad references | the neutral `metadata` field, to be added (§9.6) | designed, not built: the skill, `scripts/sp`, `scratchPadExtension` (§9) | the tools' extension hooks | `scratchPadExtension`, `spCliScratchPad` |
+| ScratchPad references | the neutral `metadata` field (#218) | PI: the skill, `scripts/sp`, the registration key, `scratchPadExtension` (§9.11); OpenClaw, Claude Code: designed (§9) | the tools' extension hooks | `scratchPadExtension`, `spCliScratchPad` |
 | The proxy's half: the SDK pair, the harness pairs, the `traceparent` flaw | — | — | — | the proxy (`agent-fabric-model-proxy`), M3-31 |
 
 ## 5. Packaging and loading
@@ -929,11 +930,10 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
   change that checks a class by `instanceof` alone would break it silently.
 - **The `409` guard over-refuses** a sibling prompt of the same tree that
   arrives while the harness waits in it (§3.1).
-- **No ScratchPad references in a harness yet.** A reference in a prompt
-  to a harness is removed by the caller's `prompt_agent` before sending
-  (`reference-agents/README.md`, "The agent tools"), until the harness
-  registers that it reads them, which needs the public plugin's `metadata`
-  field (§9.6).
+- **ScratchPad references reach PI only.** A reference in a prompt to
+  OpenClaw or Claude Code is removed by the caller's `prompt_agent` before
+  sending (`reference-agents/README.md`, "The agent tools"), until their
+  add-ons register that they read them; PI's does (§9.11).
 - **`traceparent` from any client files as OpenClaw** until M3-31 (§3.3).
 - **What is measured, and where.** Every add-on, against real turns on
   the test rig: PI in the examples' F19 and OpenClaw in F20 (2026-09-23),
@@ -968,7 +968,7 @@ informed when Mario says (B6).
 
 ## 9. ScratchPad in the harnesses
 
-**Status:** design; PI built and measured (§9.11), OpenClaw and Claude Code not built · **Date:** 2026-09-27
+**Status:** design; PI built and measured, references in and out (§9.11); OpenClaw and Claude Code not built · **Date:** 2026-09-27
 
 Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
@@ -1148,6 +1148,8 @@ so the heartbeat, which the add-on can extend, does not carry it.
 sets the key only when ScratchPad is configured (`SCRATCHPAD_VOLUME` set).
 Until the field exists, a harness can publish and hand on its own
 references, but references handed to it are taken out by the caller.
+The field exists since synadia-agents #218 (2026-09-27, `2c6eb76` on
+`sdk-release-rollout`), and PI's add-on sets the key (§9.11).
 
 ### 9.7 Trace context: `SP_THREAD_ID` and `SP_ROOT_ID` (optional for level B)
 
@@ -1245,9 +1247,16 @@ model cannot reach them.
 Built in `plugins/pi` on 2026-09-27: the skill (`skill/scratchpad/SKILL.md`,
 ScratchPad's skill at `79f8927` adapted to `scripts/sp`), the wrapper
 (`skill/scratchpad/scripts/sp`), the builds (`scripts/build-sp.sh`, at pack
-time, gitignored) and the add-on's variables (`src/scratchpad.ts`). Not
-built: `scratchPadExtension` in `toolExtensions`, and the registration key,
-which waits for the public plugin's `metadata` field (§9.6).
+time, gitignored) and the add-on's variables (`src/scratchpad.ts`); then,
+once the public plugin had the `metadata` field, the registration key and
+`scratchPadExtension` in `toolExtensions`. Two things the extension needed
+from the add-on: it is built in `started()`, when the plugin's client
+exists, behind a wrapper the factory returns (`ScratchPadHandOn`); and a
+reference into PI's own volume counts as given, since the model publishes
+with `scripts/sp`, which the extension does not see. The factory, the
+module's default export, is asynchronous now: it resolves ScratchPad
+before the plugin reads `metadata`, which the plugin does once before its
+service starts.
 
 **The run, measured on this machine on 2026-09-27.** A local ScratchPad from
 ScratchPad's `79f8927` (`scratchpad serve`, provisioned with one volume per
@@ -1278,6 +1287,26 @@ tools, PI listed the skill, and its model's tools were exactly `bash`,
 prompt, which also ran a `discover_agents` call); the plugin's service
 needs publish on `$SYS.REQ.USER.INFO` for its identity check, which the
 test users first lacked.
+
+**The second run: references handed on, measured on 2026-09-27.** The same
+stack with a third tenant user and volume; the public plugin at `2c6eb76`,
+with #218. The receiver was the TypeScript reference agent
+(`reference-agents/typescript`, ScratchPad on, the model
+`claude-sonnet-5` through Anthropic's OpenAI-compatible endpoint). The
+caller's discovery showed `scratchpad_refs_ok=true` on both PI and the
+reader, PI's from the plugin's real registration. The caller asked PI to
+publish a file holding a launch code and to ask the reader, through
+`prompt_agent`, what the file said, without telling it the code. PI's
+model published with `scripts/sp`, called `prompt_agent` with only the
+instruction and the reference, and the reader's reply carried the code:
+the reference agent read the file with its own credentials and handed the
+content to its model. PI's volume then showed two grants on the file: one
+to the caller, which the model made with `scripts/sp grant` (the wrapper
+names the served prompt's caller), and one to the reader, which the
+extension made in `prompt_agent`. The reader's reply carried a reference
+of its own, which PI's model read back with `scripts/sp read`. So the
+skill now says that a reference for another agent goes into `prompt_agent`
+unchanged, with no grant of the model's own.
 
 ## 10. Appendix: the text for the public repo
 

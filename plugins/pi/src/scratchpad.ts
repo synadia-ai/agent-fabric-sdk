@@ -13,6 +13,12 @@
 // When the service is up: `SP_CREATOR`, this agent's prompt address, which
 // every reference it publishes names as its creator.
 //
+// The registration says PI reads references (`scratchpad_refs_ok`), so a
+// caller's `prompt_agent` hands them to it. And references PI's model puts
+// into its own `prompt_agent` go through the fabric package's ScratchPad
+// extension, as an SDK-built agent's do: granted to a receiver that reads
+// references, removed with a note for any other (`ScratchPadHandOn`).
+//
 // Per served prompt, from its hand-over to PI's loop to its end: the prompt's
 // trace (`SP_THREAD_ID`, `SP_ROOT_ID`) and its verified caller
 // (`SP_CALLER_ACCOUNT`, `SP_CALLER_USER`), the one agent `scripts/sp grant`
@@ -21,17 +27,35 @@
 // remote turn gets the served prompt's (§7, "PI's turn boundaries").
 
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { arch, homedir, platform } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { RequestInterceptor, RequestInterceptorContext } from "@synadia-ai/agent-service";
 import {
+  findReferences,
   granteeFromIdentity,
+  READS_SCRATCHPAD_REFERENCES_FIELD,
+  readsReferences,
+  SCRATCHPAD_BIN_VAR,
   SCRATCHPAD_DIR_VAR,
   SCRATCHPAD_VOLUME_VAR,
+  scratchPadExtension,
+  spCliScratchPad,
   type AgentExtensionContext,
+  type ScratchPad,
+  type ScratchPadExtension,
   type ServedRequest,
   type TraceScope,
 } from "@synadia-ai/agent-fabric";
-import { readContextFile } from "@synadia-ai/agents";
+import {
+  readContextFile,
+  type Agent,
+  type Agents,
+  type AgentToolsExtension,
+  type AgentToolsPromptContext,
+  type AgentToolsPromptRewrite,
+  type AgentToolsReplyContext,
+} from "@synadia-ai/agents";
 
 /** The config entry's option that holds ScratchPad's settings. */
 export const SCRATCHPAD_OPTION = "scratchpad";
@@ -173,6 +197,100 @@ export class ServedPromptEnv {
     delete this.env[SP_VARS.callerAccount];
     delete this.env[SP_VARS.callerUser];
   }
+}
+
+/**
+ * The sp binary this package ships for this machine, or `SCRATCHPAD_BIN`;
+ * `undefined` on a platform it is not built for. The add-on's own grants run
+ * it directly, with the flags `scripts/sp` would add.
+ */
+export function spBinary(env: Env): string | undefined {
+  const own = env[SCRATCHPAD_BIN_VAR];
+  if (own !== undefined && own !== "") return own;
+  const os = platform() === "darwin" ? "darwin" : platform() === "linux" ? "linux" : undefined;
+  const cpu = arch() === "arm64" ? "arm64" : arch() === "x64" ? "amd64" : undefined;
+  if (os === undefined || cpu === undefined) return undefined;
+  // `src/` in the tests, `dist/` when installed: both one level below the package.
+  const here = dirname(fileURLToPath(import.meta.url));
+  return join(here, "..", "skill", "scratchpad", "bin", `sp-${os}-${cpu}`);
+}
+
+/**
+ * The fabric package's ScratchPad extension, for the plugin's `AgentTools`
+ * and its service, before it can exist: it needs the plugin's `Agents`
+ * client and this agent's address, which arrive in `started()`, after the
+ * factory returned its hooks. Until then it keeps the prompts it serves, to
+ * remember their references once it is built.
+ *
+ * One addition to the extension: PI's model publishes with `scripts/sp`,
+ * which the extension does not see, and the extension hands on only what
+ * the agent was given. So a reference into PI's own volume is remembered as
+ * given before the prompt rewrite looks, exactly as an SDK-built agent
+ * remembers what it commits.
+ */
+export class ScratchPadHandOn implements AgentToolsExtension {
+  #inner: ScratchPadExtension | undefined;
+  #scratchPad: ScratchPad | undefined;
+  readonly #early: string[] = [];
+
+  readonly requestInterceptor: RequestInterceptor = {
+    aroundRequest: (ctx: RequestInterceptorContext, next: () => Promise<void>) => {
+      if (this.#inner === undefined) this.#early.push(ctx.envelope.prompt);
+      else this.#inner.remember(ctx.envelope.prompt);
+      return next();
+    },
+  };
+
+  /** Builds the extension, once the plugin's client is on the bus. */
+  start(options: { readonly scratchPad: ScratchPad; readonly agents: Agents }): void {
+    this.#scratchPad = options.scratchPad;
+    this.#inner = scratchPadExtension(options);
+    for (const text of this.#early.splice(0)) this.#inner.remember(text);
+  }
+
+  discoveryFields(agent: Agent): Record<string, unknown> {
+    return (
+      this.#inner?.discoveryFields(agent) ?? {
+        [READS_SCRATCHPAD_REFERENCES_FIELD]: readsReferences(agent.metadata),
+      }
+    );
+  }
+
+  async beforePrompt(ctx: AgentToolsPromptContext): Promise<AgentToolsPromptRewrite | void> {
+    const inner = this.#inner;
+    const scratchPad = this.#scratchPad;
+    if (inner === undefined || scratchPad === undefined) {
+      if (findReferences(ctx.prompt).length === 0) return;
+      return {
+        error: "the prompt was not sent: ScratchPad is not ready yet; try again in a moment",
+      };
+    }
+    for (const reference of new Set(findReferences(ctx.prompt))) {
+      if (await scratchPad.owns(reference)) inner.remember(reference);
+    }
+    return inner.beforePrompt(ctx);
+  }
+
+  afterReply(ctx: AgentToolsReplyContext): void {
+    this.#inner?.afterReply(ctx);
+  }
+}
+
+/** The ScratchPad port over the packaged sp, for the add-on's own grants. */
+export function spPort(
+  settings: ScratchPadSettings,
+  creator: string,
+  env: Env,
+): ScratchPad | undefined {
+  const bin = spBinary(env);
+  if (bin === undefined) return undefined;
+  return spCliScratchPad({
+    volume: settings.volume,
+    nats: { url: settings.url, creds: settings.creds },
+    bin,
+    creator,
+    ...(settings.dir !== undefined ? { dir: settings.dir } : {}),
+  });
 }
 
 function stringOf(value: unknown): string | undefined {

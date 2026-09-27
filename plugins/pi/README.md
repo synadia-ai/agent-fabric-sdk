@@ -64,9 +64,7 @@ into a refusal the caller sees at once.
 
 **What it does not do.** No `served` record: PI's calls carry the headers,
 so they need none, and PI writes nothing to `TRACE.edges` but the edges of
-its own delegations. No `toolExtensions` yet: a reference PI's model puts
-in a `prompt_agent` goes out as it is, neither granted nor removed (§9.1
-designs `scratchPadExtension` here). No `stopping`: an edge is published before the prompt
+its own delegations. No `stopping`: an edge is published before the prompt
 it describes and counted as it goes, so there is nothing to flush.
 
 ## Naming it
@@ -160,11 +158,18 @@ read on what it publishes to the agent that prompted it and to no other.
 On a platform sp is not built for, `scripts/sp` says so, in sp's own error
 shape with exit 2. `SCRATCHPAD_BIN` names another sp binary.
 
-**Not yet.** Discovery shows PI as reading no references
-(`reads_scratchpad_references: false`) until the public plugin lets an
-extension add registration metadata, so a caller's `prompt_agent` still
-takes references out of prompts to PI; a caller that prompts PI directly, with no
-ScratchPad extension on its tools, is not affected.
+**References in and out.** With ScratchPad on, the add-on registers PI as
+reading references (`scratchpad_refs_ok: "true"` through the extension's
+`metadata`), so discovery shows `reads_scratchpad_references: true` and a
+caller's `prompt_agent` hands them to PI. And the references PI's model puts
+into its own `prompt_agent` go through the fabric package's ScratchPad
+extension, as an SDK-built agent's do: a receiver that reads references is
+granted read, first-hand, right before the prompt goes out; any other gets
+the text without them and the call's result says how many were removed; a
+reference PI was neither given nor made is refused. A reference into PI's
+own volume counts as made by PI, since its model publishes with
+`scripts/sp`, which the extension does not see. The extension's own grants
+run the packaged sp directly, with the settings above.
 
 ## Identity
 
@@ -185,14 +190,15 @@ thread's calls carry its timing.
 
 ## Public API
 
-|                                                                                                                                                                               |                                                                                                       |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `default`, `createFabricExtension(ctx, env?)`                                                                                                                                 | the factory of the contract; `env` is where the variable is read from, `process.env` by default       |
-| `resolveEdgeSubject(options, env?)`                                                                                                                                           | the setting's precedence, as above                                                                    |
-| `SCRATCHPAD_OPTION`, `SP_VARS`                                                                                                                                                | ScratchPad's option key and the variables `scripts/sp` reads                                          |
-| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                           | the constants                                                                                         |
-| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `serving(rootId)`, `waiting(rootId)` |
-| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI   |
+|                                                                                                                                                                               |                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`, `fabricExtension(ctx, env?)`                                                                                                                                       | the factory of the contract: resolves ScratchPad, then builds the extension; `env` is where the variables are read and ScratchPad's are set, `process.env` by default |
+| `createFabricExtension(ctx, env?, scratchPad?)`                                                                                                                               | the same, synchronous, from settings already resolved                                                                                                                 |
+| `resolveEdgeSubject(options, env?)`                                                                                                                                           | the setting's precedence, as above                                                                                                                                    |
+| `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                                           | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the packaged sp's path                                                                 |
+| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                           | the constants                                                                                                                                                         |
+| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `serving(rootId)`, `waiting(rootId)`                                                                 |
+| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI                                                                   |
 
 The setting's precedence, the loop guard and the contract's types live in
 `@synadia-ai/agent-fabric`, shared by every add-on under `plugins/`; this

@@ -7,9 +7,11 @@ import { mkdtempSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Agent, Agents, AgentToolsPromptContext } from "@synadia-ai/agents";
 import { READS_REFERENCES_KEY } from "@synadia-ai/agent-fabric";
-import createExtension, { SCRATCHPAD_OPTION, SP_VARS } from "../../src/index.js";
+import createExtension, { SCRATCHPAD_OPTION, ScratchPadHandOn, SP_VARS } from "../../src/index.js";
 import { extensionContext, recordingLogger, serve } from "../support/fake-plugin.js";
+import { makeReference, MemoryScratchPad } from "../support/scratchpad-fake.js";
 
 const ADDRESS = "agents.prompt.pi.team.editor";
 const handles = { service: { subject: { prompt: ADDRESS } } };
@@ -210,21 +212,26 @@ describe("per served prompt", () => {
   });
 });
 
-describe("references: the registration", () => {
+describe("references: the registration and the tool extension", () => {
   const configured = (): Record<string, string | undefined> => ({
     SCRATCHPAD_VOLUME: "pi-vol",
     NATS_URL: "nats://127.0.0.1:4222",
     NATS_CREDS: "/keys/pi.creds",
   });
 
-  it("declares that PI reads references when ScratchPad is on", async () => {
+  it("declares reads-references and adds the extension when ScratchPad is on", async () => {
     const ext = await createExtension(extensionContext({ stateDir: home }), configured());
     expect(ext.metadata).toEqual({ [READS_REFERENCES_KEY]: "true" });
+    expect(ext.toolExtensions).toHaveLength(1);
+    expect(ext.toolExtensions![0]).toBeInstanceOf(ScratchPadHandOn);
+    expect(ext.requestInterceptors).toHaveLength(3);
   });
 
-  it("declares nothing when ScratchPad is off", async () => {
+  it("declares nothing and adds nothing when ScratchPad is off", async () => {
     const ext = await createExtension(extensionContext({ stateDir: home }), {});
     expect(ext.metadata).toBeUndefined();
+    expect(ext.toolExtensions).toBeUndefined();
+    expect(ext.requestInterceptors).toHaveLength(2);
   });
 
   it("sets the connection before the plugin connects, the creator once the service is up", async () => {
@@ -234,5 +241,62 @@ describe("references: the registration", () => {
     expect(env[SP_VARS.creator]).toBeUndefined();
     await ext.started!({ agents: {}, service: { subject: { prompt: ADDRESS } } } as never);
     expect(env[SP_VARS.creator]).toBe(ADDRESS);
+  });
+});
+
+describe("ScratchPadHandOn", () => {
+  const TARGET = "agents.prompt.fabric-r.fabric.reader";
+  const reader = {
+    promptSubject: TARGET,
+    identity: "AREADER.UREADER",
+    idSigVerified: true,
+    metadata: { [READS_REFERENCES_KEY]: "true" },
+  } as unknown as Agent;
+  const promptTo = (prompt: string): AgentToolsPromptContext =>
+    ({
+      address: TARGET,
+      target: reader,
+      prompt,
+      arguments: {},
+    }) as unknown as AgentToolsPromptContext;
+  const agents = {} as Agents;
+
+  it("before it starts, reports discovery from the registration and refuses a prompt with references", async () => {
+    const handOn = new ScratchPadHandOn();
+    expect(handOn.discoveryFields(reader)).toEqual({ reads_scratchpad_references: true });
+    expect(await handOn.beforePrompt(promptTo("no references here"))).toBeUndefined();
+    const refused = await handOn.beforePrompt(promptTo(`see ${makeReference("PiVol", "/a")}`));
+    expect((refused as { error: string }).error).toContain("ScratchPad is not ready yet");
+  });
+
+  it("hands on PI's own reference, published with scripts/sp, as given: a first-hand grant", async () => {
+    const handOn = new ScratchPadHandOn();
+    const volume = new MemoryScratchPad("PiVol");
+    handOn.start({ scratchPad: volume, agents });
+    const reference = makeReference("PiVol", "/a", ADDRESS);
+    expect(await handOn.beforePrompt(promptTo(`see ${reference}`))).toBeUndefined();
+    expect(volume.grants).toEqual([
+      expect.objectContaining({ reference, grantee: "AREADER.UREADER", kind: "first-hand" }),
+    ]);
+  });
+
+  it("remembers the references of prompts served before it started", async () => {
+    // A reference the target itself created: given to PI in a served
+    // prompt, it may go back to its creator without a grant.
+    const theirs = makeReference("ReaderVol", "/r", TARGET);
+    const early = new ScratchPadHandOn();
+    await early.requestInterceptor.aroundRequest(
+      { envelope: { prompt: `here: ${theirs}` } } as never,
+      () => Promise.resolve(),
+    );
+    early.start({ scratchPad: new MemoryScratchPad("PiVol"), agents });
+    expect(await early.beforePrompt(promptTo(`back to you: ${theirs}`))).toBeUndefined();
+
+    const late = new ScratchPadHandOn();
+    late.start({ scratchPad: new MemoryScratchPad("PiVol"), agents });
+    const refused = (await late.beforePrompt(promptTo(`back to you: ${theirs}`))) as {
+      error: string;
+    };
+    expect(refused.error).toContain("is not one you were given");
   });
 });

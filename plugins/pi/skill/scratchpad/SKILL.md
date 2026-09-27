@@ -81,6 +81,16 @@ The grant goes to the agent whose prompt you are serving, and to no one else.
 The returned expiry can be earlier than requested because the grant cannot outlive its retained root.
 Then put the unchanged reference in your reply.
 
+## Hand a reference to another agent
+
+Put the unchanged reference in the prompt of `prompt_agent`, and nothing
+more: do not grant for it yourself. The agent tools grant the receiver read
+when it reads references (`discover_agents` shows
+`reads_scratchpad_references: true`), and take the reference out of the
+prompt otherwise, saying so in the call's result. A reference another agent
+handed you goes on the same way; its creator decides whether the receiver
+may read it.
+
 ## Publish an edited directory
 
 An external editor or executor prepares `SOURCE_DIRECTORY`.
