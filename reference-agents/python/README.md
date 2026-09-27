@@ -4,6 +4,10 @@
 
 ## What is here
 
+`fabric_agent/reply.py` applies the UTF-8 delivery boundary.
+`tests/test_reply.py` and `tests/test_reply_agent.py` check exact replies, grants, refusals, and subsequent model history.
+The handler gate requires `nats-server` and fails when the executable is absent.
+
 | Path | What |
 | --- | --- |
 | `fabric_agent/agent.py` | the agent: the four behaviours, each marked where it happens |
@@ -20,6 +24,9 @@
 | `env.example` | the one file per agent; copy to `.env` |
 
 ScratchPad comes from the fabric package: `await native_scratchpad_from_env(env, nc=nc, creator=address)` in `fabric_agent/agent.py` borrows the agent's authenticated connection and gives `None` when `SCRATCHPAD_VOLUME` is unset. A configured volume requires a persistent private `SCRATCHPAD_DIR`; it needs no shell or `sp`. `__main__.py` passes the environment it read, `.env` included. Reference-policy tests explicitly inject the CLI adapter with a stand-in `sp`. The SDK's separate native tests use the real ScratchPad service.
+
+Results above 65,536 UTF-8 bytes travel by a granted ScratchPad reference, with a bounded refusal when the handoff fails.
+The next model turn keeps that delivery message. See [bounded replies](../docs/bounded-replies.md) for the contract and tests.
 
 New here? `../docs/getting-started/python.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
 

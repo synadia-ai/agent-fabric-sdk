@@ -11,6 +11,7 @@
 | `src/echo.ts` | the smallest agent, behaviour (1) alone: a signed identity, tracing on through the fabric package, every prompt answered with the prompt; `npm run echo`. Step 1 of `../docs/getting-started/typescript.md` |
 | `src/config.ts` | every variable the agent reads, with its default |
 | `src/model.ts` | one chat-completions client pointed at the proxy, and the loop that runs the model's tool calls |
+| `src/reply.ts`, `test/reply*.test.ts` | UTF-8 reply boundaries, verified grants, bounded refusal and subsequent model history |
 | `src/tools.ts` | the model loop's side of the SDK's agent tools: their definitions as chat-completions `function`s, not a word changed, and a call run by name with the model's tool-call id |
 | `src/prompt.ts` | a caller for the command line: `npm run prompt -- <address or kind> "<text>"`, signed with the environment's credentials; a refused or failed prompt is one line, not a stack |
 | `test/tools.test.ts` | the tools as the agent wires them, on a real server: the definitions word for word what the SDK's files derive for the tools offered, the three by default and the six with `AGENT_TOOLS=all`; the edge `prompt_agent` writes has the served thread as its parent; the grant before a reference of its own is handed over, the creator asked for another's, the references taken out for an agent that reads none, only a given reference handed on; the two loop guards; errors in words |
@@ -18,16 +19,22 @@
 | `test/grant-request.test.ts` | the fabric package's grant request between signed agents, on a real server, over a ScratchPad in memory: the creator grants a third agent at the request of one it granted; no signature, a replay, a requester never granted, a requester granted only on request, a request for oneself and another volume's reference are refused |
 | `env.example` | the one file per agent; copy to `.env` |
 
-ScratchPad comes from the fabric package: `scratchPadFromEnv` in `src/agent.ts` builds it from `SCRATCHPAD_VOLUME` and the package's other three variables, over the `sp` command line, and gives nothing when the volume is unset. The package tests it against a stand-in `sp`.
+ScratchPad comes from the fabric package: `nativeScratchPadFromEnv` in `src/agent.ts` borrows the agent's authenticated NATS connection.
+An unset `SCRATCHPAD_VOLUME` disables ScratchPad. A configured volume requires a persistent private `SCRATCHPAD_DIR`.
+The native client needs no shell or `sp`. Policy tests explicitly inject the CLI adapter with a stand-in `sp`.
+The SDK's separate native tests use the real ScratchPad service.
+
+Results above 65,536 UTF-8 bytes travel by a granted ScratchPad reference, with a bounded refusal when the handoff fails.
+The next model turn keeps that delivery message. See [bounded replies](../docs/bounded-replies.md) for the contract and tests.
 
 New here? `../docs/getting-started/typescript.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
 
 ## Prerequisites
 
-- Node 20 or later, npm.
-- `nats-server` on PATH for the tests (`brew install nats-server`); without it the fabric tests skip themselves.
+- Node 22.13 or later for native ScratchPad, npm.
+- `nats-server` on PATH for the tests (`brew install nats-server`). The bounded-reply gate fails when it is absent; older fabric tests skip.
 - Until the packages are published: `make setup` in `reference-agents/`. It checks the SDK checkout `../../../synadia-agents` is there and on its branch (the `Makefile` names it), builds the SDK's two TypeScript packages and then this repository's fabric package, `../../typescript`, and installs this agent. It builds only what changed, so it is safe to run again.
-- For ScratchPad, which is optional: the `sp` binary, ScratchPad's command line, built from ScratchPad's repository, and a credentials file (an nkey seed alone is not a form `sp` takes).
+- For ScratchPad, which is optional: a service import in the agent's NATS account, an allocated volume, and a private persistent workspace.
 
 ## Install and test
 
