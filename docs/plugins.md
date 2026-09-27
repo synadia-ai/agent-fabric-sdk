@@ -969,6 +969,12 @@ the design, the answers it rests on per harness, what it costs, and what
 the operator has to do. It replaces the "not in a harness" of §3.1 and §7
 for level B.
 
+**Nothing here restricts the harness's shell.** The harness keeps its
+tools as the operator configured them; the skill needs only that the
+shell tool is on. Where a harness asks for permission, the question goes
+to the caller over the protocol (a `query`, protocol spec §7), not to a
+terminal (§9.5).
+
 Every answer carries how it is known: **measured** (something was run on
 this machine) or **read** (docs or code, with the place). The versions read
 and run: PI 0.85.1, OpenClaw 2026.9.4, Claude Code 2.1.282 (the test
@@ -1011,14 +1017,16 @@ The rules come from the command line itself:
 | `--volume` on `init` only | `read` and `hydrate` refuse a `--volume` other than the reference's (`internal/volumecli/share.go:21`), and a harness reads other agents' references; the workspace commands check it only when it is given (`workspace.go:53`); `init` requires it (`workspace.go:101`) | read |
 | `--dir` on every call | `read` accepts it: `sp read --url … --creds … --ref … --dir ws --volume V` parsed and failed on the token, not the flags | measured |
 | The model's own connection flags are refused | Go's flag package keeps the last value of a repeated flag, so a model could otherwise point sp elsewhere; the connection stays out of the model's hands | read (Go `flag`) |
-| Variables, not a command prefix | Claude Code's allow rules do not match past a `VAR=… cmd` prefix unless the variable is on its known-safe list (permissions docs, "Wrappers") | read |
+| Variables, not a command prefix | the command the model runs, and any permission question about it, stays `scripts/sp <command> …`; Claude Code's allow rules, should an operator write one, do not match past a `VAR=… cmd` prefix unless the variable is on its known-safe list (permissions docs, "Wrappers") | read |
 | `grant` is refused | the fabric's grants are first-hand and kept in a ledger by the agent tools' ScratchPad extension (`typescript/src/scratchpad-extension.ts`); a grant the model made with sp would bypass the ledger and the rule that only an agent that reads references gets one | design choice |
 
 **The skill.** ScratchPad's skill, with three changes: every example runs
 `scripts/sp` and passes no `--url`, `--creds`, `--dir` or `--volume`; the
 "publish and share" part ends at the reference, which the model hands on
-in `prompt_agent` (or in its reply) and the agent tools grant; and, for
-Claude Code, `allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/sp *)`.
+in `prompt_agent` (or in its reply) and the agent tools grant; and no
+`allowed-tools`. ScratchPad's skill has `allowed-tools: Bash(sp *)`, which
+in Claude Code would pre-approve the calls; without it every call follows
+the operator's rules, allowed by them or asked of the caller.
 
 **The variables.** The names are the package's existing contract for
 `scratchPadFromEnv` (`typescript/src/scratchpad-cli.ts`, `SCRATCHPAD_VOLUME`,
@@ -1063,7 +1071,7 @@ runtime? What is the smallest step otherwise?
 
 | Harness | Answer | Source | How known |
 | --- | --- | --- | --- |
-| PI | **Not from our module.** An extension can add skills at runtime by answering `resources_discover` with `{ skillPaths }`, but our module is handed only its context, never PI's extension API, and the public plugin does not forward that event. PI loads skills from `~/.pi/agent/skills/`, `~/.agents/skills/`, a trusted project's `.pi/skills/`, a package's `pi.skills`, the `skills` setting, and `--skill <path>`. A package's `pi.skills` loads only when the package directory is given to `-e`, not a file in it, and the demo gives a file. **Smallest step:** one flag, `--skill <add-on>/skill/scratchpad`, which also loads under `--no-skills`. Or, the recommended form, `-e <add-on>/pi`, a small PI extension in our package that answers `resources_discover` and also gates the shell (§9.5) | `docs/skills.md` "Locations"; `docs/extensions.md` "resources_discover"; `dist/core/resource-loader.js:230-246, 277, 312-332`; the plugin's `extensions/extensions.ts:66-75`, `nats-channel.ts:828-970` | read; the directory-versus-file rule measured through PI's `DefaultResourceLoader` with a fake package |
+| PI | **Not from our module.** An extension can add skills at runtime by answering `resources_discover` with `{ skillPaths }`, but our module is handed only its context, never PI's extension API, and the public plugin does not forward that event. PI loads skills from `~/.pi/agent/skills/`, `~/.agents/skills/`, a trusted project's `.pi/skills/`, a package's `pi.skills`, the `skills` setting, and `--skill <path>`. A package's `pi.skills` loads only when the package directory is given to `-e`, not a file in it, and the demo gives a file. **Smallest step:** one flag, `--skill <add-on>/skill/scratchpad`, which also loads under `--no-skills`, or the same path in the `skills` setting | `docs/skills.md` "Locations"; `docs/extensions.md` "resources_discover"; `dist/core/resource-loader.js:230-246, 277, 312-332`; the plugin's `extensions/extensions.ts:66-75`, `nats-channel.ts:828-970` | read; the directory-versus-file rule measured through PI's `DefaultResourceLoader` with a fake package |
 | OpenClaw | **Not through an API.** The plugin API has no skill registration, and our module gets no API. A plugin manifest may list `skills`, but a path whose real path leaves the plugin root is refused, and a ScratchPad skill in the public plugin would break the one-way rule anyway. Our module could copy the directory into `<stateDir>/skills` (the managed directory, which is watched). That was rejected: it writes into the harness's home unasked and outlives the add-on. **Smallest step:** one config entry, `skills.load.extraDirs: ["<add-on>/skill"]`. Where an agent has a skill allowlist, the skill must also be named there: the demo sets `agents.defaults.skills: []`, which hides every skill | `docs/tools/skills.md` (locations, 39-48; plugin skills, 242-258; gating, 206-233, 461-520; watching, 703-745); `dist/plugin-skills-*.mjs:180-212`; the plugin's `src/extensions.ts:61-86` | read |
 | Claude Code | **Not from our module.** The MCP server cannot register a skill. The documented runtime route is a `SessionStart` hook that writes into a skills directory and returns `reloadSkills: true`, and hooks belong to a plugin. The public plugin could carry the skill in its `skills/`, but that would break the one-way rule. **Smallest step:** the add-on package is also a Claude Code plugin in its own right (`.claude-plugin/plugin.json`, `skills/scratchpad/`), loaded with a second `--plugin-dir <add-on>` or with `CLAUDE_CODE_PLUGIN_DIRS` (2.1.280 and later). Its paths stay inside its own root, as Claude Code requires. The skill's name is then `<plugin>:scratchpad` | skills docs, "Choose where skills load"; hooks docs, "SessionStart decision control"; plugins reference, "Path rules / Containment"; env-vars docs, `CLAUDE_CODE_PLUGIN_DIRS` | read |
 
@@ -1071,7 +1079,7 @@ runtime? What is the smallest step otherwise?
 
 | Harness | Answer | Source | How known |
 | --- | --- | --- | --- |
-| PI | The system prompt lists each skill with `<location>`, the absolute path of its `SKILL.md`, and says: "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands." There is no variable. The list appears only when a tool named `read` or `bash` is active, so under the demo's `--no-builtin-tools` it appears only if our PI extension's tool is named `bash` (§9.5; not measured) | `dist/core/skills.js:275-297`; `dist/core/system-prompt.js:13-14, 30, 111` | read; the rendering measured |
+| PI | The system prompt lists each skill with `<location>`, the absolute path of its `SKILL.md`, and says: "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands." There is no variable. The list appears only when the `read` or the `bash` tool is active; the demo's `--no-builtin-tools` turns both off | `dist/core/skills.js:275-297`; `dist/core/system-prompt.js:13-14, 30, 111` | read; the rendering measured |
 | OpenClaw | The same shape: `<location>` is the absolute `SKILL.md` path (with `~/` shortened), and the line before the list tells the model to resolve relative paths against the skill directory. `{baseDir}` in a skill is left to the model, since no code substitutes it. The skills section appears only when the `read` tool is visible | `dist/skill-contract-*.mjs:38-58`; `dist/system-prompt-params-*.mjs:260, 726`; `docs/tools/creating-skills.md:134-140` | read |
 | Claude Code | `${CLAUDE_SKILL_DIR}` is substituted in the skill's text and in the Bash rules of its `allowed-tools`. For a plugin skill, it is the skill's directory inside the plugin. The loaded skill also starts with "Base directory for this skill: …". The Skill tool delivers the text, so the `Read` tool may stay denied | skills docs, "Available string substitutions" | read; the "Base directory" line measured in the binary |
 
@@ -1086,13 +1094,27 @@ enough.
 | OpenClaw | **Yes, on the gateway host.** The exec child's environment is built per call from `process.env`, passed through a blocklist filter, plus `OPENCLAW_SHELL=exec`. The sandbox is off by default, so exec runs on the gateway. In a sandbox, `process.env` would not pass | `dist/bash-tools-*.mjs:2996, 3029-3052`; `docs/tools/exec.md:46, 73, 82` | read; the filter measured: it keeps `SCRATCHPAD_*` and `NATS_URL` (`NATS_CREDS` was not tried by name; the filter is a blocklist) and drops `NODE_OPTIONS` |
 | Claude Code | **Not from our module.** It runs in the MCP server, a child of Claude Code and a sibling of the Bash tool's processes, so its `process.env` reaches neither. The Bash tool inherits Claude Code's launch environment and the settings' `env`. A `SessionStart` hook can append exports to `CLAUDE_ENV_FILE`, and they persist for later Bash commands. `CLAUDE_PLUGIN_ROOT` is not in the Bash tool's environment. So the operator sets the four variables in the launch environment or in `settings.json` `env`, or the add-on's own plugin ships a `SessionStart` hook that resolves them the way the module does (§9.1) and writes them to `CLAUDE_ENV_FILE` | env-vars docs (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`); settings reference, `env`; hooks docs, "Persist environment variables"; plugins reference, "Where each variable resolves" | read (the sibling processes: OS semantics) |
 
-### 9.5 Shell: allowing exactly `scripts/sp`
+### 9.5 The shell tool and permission questions
 
-| Harness | Answer | Source | How known |
-| --- | --- | --- | --- |
-| PI | **PI has no per-command gate.** `--tools`, `--exclude-tools`, `--no-builtin-tools` and `--no-tools` switch whole tools. The skill field `allowed-tools` is documented as experimental and has no hit in `dist`, so nothing enforces it. Only a PI extension can gate: `tool_call` can block or rewrite a call, and `registerTool({ name: "bash" })` replaces the tool. Our module gets neither hook. **Design:** the PI extension in our package (`-e <add-on>/pi`, §9.2) registers a `bash` tool whose `execute` accepts only `<skill dir>/scripts/sp` and its arguments, split as argv, and runs them without a shell. That closes `;`, `&&` and `$( )`, which a string check on the command would let through. The demo runs `--no-builtin-tools`, so today PI has no shell at all. Extension tools stay on under that flag | `docs/usage.md:212-214`; `docs/skills.md` "Frontmatter"; `docs/extensions.md` "tool_call", `:2082` | read |
-| OpenClaw | **Yes, by configuration.** Gateway exec defaults to no approvals (`full`). For exactly one command: put `exec` and `read` in `tools.allow`, set exec to allowlist mode with ask off, and add one allowlist entry, the absolute path of `scripts/sp`, to the per-agent approvals (kept in OpenClaw's state database, edited with `openclaw approvals`). Keep `safeBins` unset and `autoAllowSkills` off. Chains need every part allowlisted, and redirections are refused. **Unknown:** whether a shebang script is bound by its own path or by its interpreter. **Also:** the `read` tool, which the skills list requires, can read any file the gateway can, the credentials included. The demo allows only the three agent tools, disables `elevated` and `commands.bash`, and hides all skills | `docs/tools/exec.md:107, 121-130, 215, 227-229`; `docs/tools/exec-approvals.md:100-170, 422-494`; the "Interpreter/runtime commands" part of the advanced approvals doc | read |
-| Claude Code | **Yes, by permission rules.** Rules are evaluated deny, then ask, then allow, and an allow cannot carve an exception out of a deny. A compound command (`&&`, `\|\|`, `;`, `\|`, `&`, newlines) must match a rule in every part. A skill's `allowed-tools` grants without a prompt, only during the turn that invoked the skill, and deny rules still win. The demo denies `Bash` and `Skill` outright, which removes both from the model's context. **Change:** take `Bash` and `Skill` out of `deny`; add `Bash(<add-on>/skill/scratchpad/scripts/sp *)` and `Skill(<plugin>:scratchpad)` to `allow`; set `defaultMode: "dontAsk"`, which denies every call that would otherwise prompt. Without it, the demo's default mode waits on a terminal dialog that no one answers, because the channel relays prompts only with `permissions.mode: "query"` | permissions docs, "Manage permissions", "Compound commands"; skills docs, `allowed-tools`; permission-modes docs; the plugin's `server.ts:593` | read |
+The skill needs the harness's shell tool on, and in PI and OpenClaw the
+skills list needs it (or `read`) to appear at all (§9.3). Beyond that the
+harness's tools stay as the operator configured them. What matters is
+whether the harness asks for permission, and where the question goes: to
+the caller, as a protocol `query` on the served prompt's stream, which
+reaches the caller's model as the result of its `prompt_agent` and is
+answered with `answer_agent` (`agents/pi/README.md:175`,
+`agents/openclaw/README.md:229`), or to no one.
+
+| Harness | The shell tool | Does the harness ask? | Does the plugin relay it? | How known |
+| --- | --- | --- | --- | --- |
+| PI | `bash`, a built-in, on by default; the demo runs `--no-builtin-tools`, so the operator turns it on (`--tools` naming `bash`, or no `--no-builtin-tools`) | **Never.** "No permission popups": PI has no permission system, and its tools run with the permissions of the user who started it; a confirmation flow is left to extensions (`README.md:503`, `docs/usage.md:309`, `docs/security.md:33`, `docs/extensions.md` "Permission gates") | **Nothing to relay.** The plugin emits no `query`: "PI doesn't initiate permission prompts or clarifications over this channel" (`agents/pi/README.md:308`); no ask or permission code in `agents/pi/extensions/` | read |
+| OpenClaw | `exec` (and `read`, for the skills list), named in `tools.allow`; the demo allows only the three agent tools | **Only when configured to.** Gateway exec defaults to `tools.exec.mode: "full"`, no prompts; `ask` and `auto` ask a human on an allowlist miss. A prompt that finds no approval surface, or times out, resolves by `askFallback`, default `deny` (`docs/tools/exec.md:107` and "Modes"; `docs/tools/exec-approvals.md:240-245`) | **No.** The plugin has no approval handling and emits no `query` (no ask, permission or approval code in `agents/openclaw/src/`). OpenClaw can forward approval prompts to a plugin channel as ordinary outbound text, answered with `/approve <id>` (`docs/tools/exec-approvals-advanced.md:232-262, 306-314`); whether that reaches a NATS caller mid-turn was not measured, and it would be text, not a protocol question | read |
+| Claude Code | `Bash`, on by default; the demo denies `Bash` and `Skill` outright, which removes both from the model's context, so the operator takes them out of `deny` | **Yes**, for any tool call no rule allows, in the default permission mode (permissions docs, "Manage permissions") | **Yes, in query mode.** With `permissions: { "mode": "query" }` in the plugin's config (`/nats-channel:configure permissions query`), the plugin takes Claude Code's `permission_request` notification (it declares `claude/channel/permission`, `server.ts:469`) and asks the caller of the last active served prompt with a `query`: the tool, its description, the input preview and "Reply 'yes' to allow or 'no' to deny." An answer of `yes`/`allow` or `no`/`deny` (or JSON with `behavior`) decides; no answer in 2 minutes, or no active served prompt, denies (`server.ts:75, 235-245, 593-634`; `agents/claude-code/README.md` "Permissions"). In the default `terminal` mode the dialog waits in the terminal, and the demo sets no mode, so a session with no human waits | read |
+
+So in PI, and in OpenClaw's default mode, the model runs `scripts/sp`
+without a question. In Claude Code every `scripts/sp` call becomes a
+question to the caller unless the operator allows it by a rule, which is
+the operator's choice.
 
 ### 9.6 References: declaring `reads_scratchpad_references: true`
 
@@ -1122,7 +1144,7 @@ per served prompt, so they cannot be set once at start.
 
 | Harness | Answer | Source | How known |
 | --- | --- | --- | --- |
-| PI | **Yes, with a caveat.** The add-on sets the two variables in `process.env` at `promptAccepted` (inside the request's scope, from `activeTrace()`) and deletes them at `promptEnded`. The bash tool reads `process.env` on every call. The variables are process-wide, which is sound only because the plugin serves one prompt at a time; local typing during a remote turn gets the served ids (§7, "PI's turn boundaries"). The PI extension of §9.5 could instead pass them per call. No tool-call id | `dist/core/tools/bash.js:119-140`; the plugin's prompt queue | **measured** (the per-call read) |
+| PI | **Yes, with a caveat.** The add-on sets the two variables in `process.env` at `promptAccepted` (inside the request's scope, from `activeTrace()`) and deletes them at `promptEnded`. The bash tool reads `process.env` on every call. The variables are process-wide, which is sound only because the plugin serves one prompt at a time; local typing during a remote turn gets the served ids (§7, "PI's turn boundaries"). No tool-call id | `dist/core/tools/bash.js:119-140`; the plugin's prompt queue | **measured** (the per-call read) |
 | OpenClaw | **Yes through the public plugin; roughly without it.** OpenClaw's `resolve_exec_env` plugin hook adds variables to every exec call, and only the public plugin holds the API. The fallback is the PI approach, `process.env` set around `aroundDispatch`. It is read per call, but it is process-wide and depends on one turn at a time (§3.1) | `docs/plugins/hooks/reference.md:146`; `dist/bash-tools-*.mjs:2920-2948, 2999-3003` | read |
 | Claude Code | **Not from our module.** Its environment does not reach the Bash tool (§9.4). The only per-call route is a `PreToolUse` hook on `Bash` that rewrites the command (`updatedInput`) and returns `allow`, since the rewritten command must still pass the rules. It would read the served ids from a file the module writes. That hook would live in the add-on's own plugin, and it is not designed further here. The public plugin's `PreToolUse` hook matches only the agent tools and prints nothing | hooks docs, "PreToolUse decision control"; the plugin's `hooks/hooks.json`, `hooks/session-event.ts:35-47` | read |
 
@@ -1161,45 +1183,49 @@ keep `<stateDir>/scratchpad` on persistent storage; and use
 
 | Harness | Steps | Built by us |
 | --- | --- | --- |
-| PI | one flag, `-e <add-on>/pi`; nothing else, since the connection comes from the plugin's context and the environment reaches bash | the PI extension (skill path, `bash` restricted to `scripts/sp`, optionally the per-call ids) and the add-on's variables |
-| OpenClaw | four config changes: `skills.load.extraDirs`; the skill named in the agent's skill allowlist (the demo's `[]`); `exec` and `read` in `tools.allow`; exec in allowlist mode with one approvals entry for `scripts/sp` | the add-on's variables |
-| Claude Code | one flag, `--plugin-dir <add-on>` (or `CLAUDE_CODE_PLUGIN_DIRS`); four settings changes: `Bash` and `Skill` out of `deny`, the two `allow` rules, `defaultMode: "dontAsk"`; the four variables in the launch environment or `settings.json` `env`, unless the add-on's plugin writes them from a `SessionStart` hook | the plugin manifest in the add-on package, optionally that hook |
+| PI | one flag, `--skill <add-on>/skill/scratchpad` (or the `skills` setting); the `bash` tool on (the demo's `--no-builtin-tools` off, or `--tools` naming `bash`). Nothing else: the connection comes from the plugin's context and the environment reaches bash | the add-on's variables, optionally the per-call ids |
+| OpenClaw | three config changes: `skills.load.extraDirs`; the skill named in the agent's skill allowlist (the demo's `[]`); `exec` and `read` in `tools.allow` | the add-on's variables |
+| Claude Code | one flag, `--plugin-dir <add-on>` (or `CLAUDE_CODE_PLUGIN_DIRS`); `Bash` and `Skill` out of the settings' `deny`; `permissions: { "mode": "query" }` in the plugin's config, so questions reach the caller; the four variables in the launch environment or `settings.json` `env`, unless the add-on's plugin writes them from a `SessionStart` hook | the plugin manifest in the add-on package, optionally that hook |
 | Public plugin, all three | — | the `metadata` field of §9.1, one neutral change per plugin |
 
-### 9.10 Recommendation: PI first
+### 9.10 Recommendation: PI first, then OpenClaw, then Claude Code
 
 **PI first, end to end.** It has the easiest registration and the least
-setup: one flag, and the environment reaches the shell tool without any
-setting. Both are measured on PI 0.85.1. The per-call trace ids come
-without a public-plugin change (§9.7). PI already runs headless on the test
-rig, unlike Claude Code, which runs only in an interactive session with an
-Anthropic credential (§7). The cost is ours: the small PI extension that
-restricts `bash` to `scripts/sp`, because PI has no gate of its own.
+setup: one flag and the shell tool on, with an environment that reaches the
+shell tool without any setting. Both are measured on PI 0.85.1. PI never
+asks for permission, so no question has to travel. The per-call trace ids
+come without a public-plugin change (§9.7), and PI runs headless on the
+test rig. Nothing of ours is built beyond the add-on's variables.
 
-**Claude Code second.** Its gate and its paths are the best documented of
-the three: exact permission rules, `${CLAUDE_SKILL_DIR}` in `allowed-tools`,
-and `dontAsk`. But the environment is a settings step, or a hook of ours,
-and it is the heaviest harness to run.
+**OpenClaw second.**
+Registration is one config entry, plus the skill allowlist and
+`tools.allow`. Its environment reaches exec without a setting (read), and
+its default exec mode asks nothing. It too runs headless.
 
-**OpenClaw last.** It needs the most configuration: four entries, one of
-them in a state database. It leaves one unknown open, how a shebang script
-is bound by the approvals. And the `read` tool that its skills list needs
-can read the credentials.
+**Claude Code last.** Our module cannot give its shell the
+environment, so that is a settings step or a hook of ours. Every
+`scripts/sp` call is a question to the caller unless the operator allows
+it. The per-call ids need a hook of ours. And it is the heaviest harness to
+run: interactive only, with an Anthropic credential (§7). Its relay of
+permission questions over the protocol is the one real advantage, and it
+exists already.
 
 **What blocks the design, per harness:**
 
 - **All three:** the registration key `scratchpad_refs_ok` needs the public
   plugin's `metadata` field. Without it, references cannot be handed to a
   harness (§9.6). No add-on-only route exists.
-- **PI:** "exactly `scripts/sp`" cannot be enforced by PI or by our module.
-  It needs our PI extension, loaded by the operator's `-e`. With `--skill`
-  alone, bash is unrestricted.
 - **Claude Code:** our module cannot give the shell its environment. It
   needs a launch or settings step, or a hook in the add-on's own plugin.
   The per-call ids need that hook too.
-- **OpenClaw:** nothing is impossible. The gate depends on the unknown
-  shebang binding, which the first OpenClaw session measures, and the skills
-  list forces a `read` tool that is not confined to the skill.
+- **PI and OpenClaw:** nothing is impossible.
+
+**Stated honestly.** Nothing restricts what the model runs. PI never asks,
+and OpenClaw's default does not either, so the model can run any command
+the operator's configuration allows, reading the credentials file included.
+"The model never handles credentials" means it never passes them: the
+wrapper adds them and refuses them from the model. It does not mean the
+model cannot reach them.
 
 ## 10. Appendix: the text for the public repo
 
