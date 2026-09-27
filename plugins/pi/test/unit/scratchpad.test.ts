@@ -65,6 +65,9 @@ describe("at start", () => {
       SCRATCHPAD_VOLUME: "pi-vol",
       NATS_URL: "nats://127.0.0.1:4222",
       NATS_CREDS: "/keys/pi.creds",
+      // What scripts/sp reads: the connection under names of its own.
+      SP_NATS_URL: "nats://127.0.0.1:4222",
+      SP_NATS_CREDS: "/keys/pi.creds",
       SCRATCHPAD_DIR: dir,
       SP_CREATOR: ADDRESS,
     });

@@ -63,7 +63,14 @@ describe("the environment", () => {
     const env = configured();
     const ext = await createExtension(extensionContext({ stateDir: state }), env);
     const dir = join(state, "scratchpad");
-    expect(env).toEqual({ ...configured(), SCRATCHPAD_DIR: dir });
+    // The connection under names of its own: OpenClaw's plugin reads NATS_URL
+    // and NATS_CREDS as overrides of its account, so the add-on never sets them.
+    expect(env).toEqual({
+      ...configured(),
+      SP_NATS_URL: "nats://127.0.0.1:4222",
+      SP_NATS_CREDS: "/keys/oc.creds",
+      SCRATCHPAD_DIR: dir,
+    });
     expect(statSync(dir).isDirectory()).toBe(true);
     await ext.started!({ agents: fakeClient().agents, service: fakeService(ADDRESS) });
     expect(env[SP_VARS.creator]).toBe(ADDRESS);

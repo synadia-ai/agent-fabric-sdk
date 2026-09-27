@@ -66,13 +66,26 @@ describe("resolveScratchPad", () => {
     expect(settings).toMatchObject({ volume: "Opt", url: "nats://opt:1", creds: "/opt.creds" });
   });
 
+  it("takes the connection from the plugin's configuration when it names url and credentials", async () => {
+    const ctx = context();
+    const withConfig = {
+      ...ctx,
+      settings: { ...ctx.settings, config: { url: "nats://oc:4222", credentials: "/oc.creds" } },
+    };
+    expect(await resolveScratchPad(withConfig, { SCRATCHPAD_VOLUME: "OcVol" })).toMatchObject({
+      volume: "OcVol",
+      url: "nats://oc:4222",
+      creds: "/oc.creds",
+    });
+  });
+
   it("exports the start-time variables", () => {
     const env: Record<string, string | undefined> = {};
     exportScratchPad({ volume: "V", url: "nats://u:1", creds: "/c", dir: "/d" }, env);
     expect(env).toEqual({
       SCRATCHPAD_VOLUME: "V",
-      NATS_URL: "nats://u:1",
-      NATS_CREDS: "/c",
+      SP_NATS_URL: "nats://u:1",
+      SP_NATS_CREDS: "/c",
       SCRATCHPAD_DIR: "/d",
     });
   });

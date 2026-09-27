@@ -70,16 +70,17 @@ scripts/sp publish-file --source "$SOURCE" --path "$ARTIFACT_PATH" --operation-i
 Copy the returned `reference` without editing its contents.
 This command publishes a complete root containing that one file.
 It also retains the root in the same atomic publication.
+While you serve a prompt, it also grants the agent that prompted you read on that file: the result's `granted_to_caller` says so, and `caller_grant_error` says why not.
+Then put the unchanged reference in your reply.
 
-Before you reply with the reference, let the agent that prompted you read it:
+To grant that agent read again, for example after the grant expired:
 
 ```sh
 scripts/sp grant --ref "$REFERENCE" --operation-id "$GRANT_ID" --ttl-seconds 600
 ```
 
-The grant goes to the agent whose prompt you are serving, and to no one else.
+A grant goes to the agent whose prompt you are serving, and to no one else.
 The returned expiry can be earlier than requested because the grant cannot outlive its retained root.
-Then put the unchanged reference in your reply.
 
 ## Hand a reference to another agent
 

@@ -8,9 +8,11 @@
 // At start, once: the connection, the workspace and the volume, from the
 // config entry's `options.scratchpad`, else the variables of the same names
 // the package reads (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, `NATS_URL`,
-// `NATS_CREDS`), else, for the connection, the plugin's own NATS context,
-// which `sp` cannot read: its URL and credentials file. `sp` must connect as
-// the plugin does, since a caller grants read to the agent it prompted.
+// `NATS_CREDS`), else, for the connection, the plugin's own: its NATS
+// context, which `sp` cannot read (PI's, Claude Code's), or the `url` and
+// `credentials` of its configuration (OpenClaw's account block). `sp` must
+// connect as the plugin does, since a caller grants read to the agent it
+// prompted.
 // Without a volume ScratchPad is off and nothing is set.
 //
 // When the service is up: `SP_CREATOR`, the agent's prompt address, which
@@ -65,10 +67,14 @@ import type { TraceScope } from "./trace.js";
 /** The config entry's option that holds ScratchPad's settings. */
 export const SCRATCHPAD_OPTION = "scratchpad";
 
-/** The variables `scripts/sp` reads. */
+/**
+ * The variables `scripts/sp` reads. The connection has names of its own,
+ * not `NATS_URL` and `NATS_CREDS`, which a plugin may read as its own
+ * connection (OpenClaw's does) and which the add-on therefore never sets.
+ */
 export const SP_VARS = {
-  url: "NATS_URL",
-  creds: "NATS_CREDS",
+  url: "SP_NATS_URL",
+  creds: "SP_NATS_CREDS",
   dir: SCRATCHPAD_DIR_VAR,
   volume: SCRATCHPAD_VOLUME_VAR,
   creator: "SP_CREATOR",
@@ -112,8 +118,8 @@ export async function resolveScratchPad(
   const volume = pick("volume", SP_VARS.volume);
   if (volume === undefined) return undefined;
 
-  let url = pick("url", SP_VARS.url);
-  let creds = pick("creds", SP_VARS.creds);
+  let url = pick("url", "NATS_URL");
+  let creds = pick("creds", "NATS_CREDS");
   if (url === undefined || creds === undefined) {
     const context = env["NATS_CONTEXT"] || stringOf(ctx.settings.config["context"]);
     if (context !== undefined) {
@@ -129,10 +135,15 @@ export async function resolveScratchPad(
       }
     }
   }
+  // A plugin that connects without a context names the two in its own
+  // configuration: OpenClaw's account block has `url` and `credentials`.
+  url ??= stringOf(ctx.settings.config["url"]);
+  creds ??= stringOf(ctx.settings.config["credentials"]);
   if (url === undefined || creds === undefined) {
     log.warn(
       "agent-fabric: ScratchPad is off: sp needs a NATS URL and a credentials file " +
-        "(options.scratchpad, NATS_URL and NATS_CREDS, or a NATS context with both)",
+        "(options.scratchpad, NATS_URL and NATS_CREDS, a NATS context with both, " +
+        "or url and credentials in the plugin's configuration)",
     );
     return undefined;
   }

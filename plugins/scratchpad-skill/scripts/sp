@@ -6,7 +6,7 @@
 # or takes SCRATCHPAD_BIN, and runs it with what the model must not handle,
 # from the environment the add-on set up at start:
 #
-#   --url "$NATS_URL" --creds "$NATS_CREDS"   every call
+#   --url "$SP_NATS_URL" --creds "$SP_NATS_CREDS"   every call
 #   --dir "$SCRATCHPAD_DIR"                   every call, when set
 #   --volume "$SCRATCHPAD_VOLUME"             `init` only: `read` and `hydrate`
 #                                             refuse a volume other than the
@@ -21,6 +21,14 @@
 # `grant` with no caller to grant to. Refusals have sp's own shape and exit
 # code: one JSON error on stderr, exit 2, no request sent. Otherwise this
 # replaces itself with sp, so sp's exit codes and output pass through.
+#
+# One exception: a `publish-file` while a prompt with a verified caller is
+# served also grants that caller read on what it published, first-hand, as
+# an SDK-built agent grants the caller its reply. The grant's operation id
+# is the publication's with `-caller`, its expiry the publication's. The
+# result is the publication's JSON with `granted_to_caller` (the grant's
+# result) or `caller_grant_error` (sp's error) added; the exit code is the
+# publication's.
 
 refuse() {
   msg=$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')
@@ -29,16 +37,34 @@ refuse() {
 }
 
 # The command: the first argument that is not a flag or a flag's value, as
-# sp itself finds it. Every sp flag but --apply takes a value.
+# sp itself finds it. Every sp flag but --apply takes a value. On the way,
+# the operation id and the expiry, for the caller's grant after a
+# publication.
 command=
-skip=false
+operation=
+ttl=600
+skip=
 for arg in "$@"; do
-  if $skip; then skip=false; continue; fi
+  if [ -n "$skip" ]; then
+    case $skip in
+      operation-id) operation=$arg ;;
+      ttl-seconds) ttl=$arg ;;
+    esac
+    skip=
+    continue
+  fi
   case $arg in
     --) break ;;
-    -apply | --apply | -*=*) ;;
-    -*) skip=true ;;
-    *) command=$arg; break ;;
+    -apply | --apply) ;;
+    -*=*)
+      name=${arg%%=*}
+      case ${name#-} in
+        -operation-id | operation-id) operation=${arg#*=} ;;
+        -ttl-seconds | ttl-seconds) ttl=${arg#*=} ;;
+      esac
+      ;;
+    -*) skip=${arg#-}; skip=${skip#-} ;;
+    *) [ -z "$command" ] && command=$arg ;;
   esac
 done
 
@@ -77,11 +103,11 @@ else
 fi
 [ -x "$bin" ] || refuse "no sp binary at $bin; the add-on package ships one per platform (npm run build:sp)"
 
-if [ -z "${NATS_URL:-}" ] || [ -z "${NATS_CREDS:-}" ]; then
-  refuse "ScratchPad is not configured for this agent: NATS_URL and NATS_CREDS are unset"
+if [ -z "${SP_NATS_URL:-}" ] || [ -z "${SP_NATS_CREDS:-}" ]; then
+  refuse "ScratchPad is not configured for this agent: SP_NATS_URL and SP_NATS_CREDS are unset"
 fi
 
-set -- --url "$NATS_URL" --creds "$NATS_CREDS" "$@"
+set -- --url "$SP_NATS_URL" --creds "$SP_NATS_CREDS" "$@"
 if [ -n "${SCRATCHPAD_DIR:-}" ]; then
   set -- --dir "$SCRATCHPAD_DIR" "$@"
 fi
@@ -107,4 +133,41 @@ case $command in
     ;;
 esac
 
-exec "$bin" "$@"
+if [ "$command" != publish-file ] || [ -z "${SP_CALLER_ACCOUNT:-}" ] || [ -z "${SP_CALLER_USER:-}" ]; then
+  exec "$bin" "$@"
+fi
+
+# Publish, then grant the served prompt's caller read on it.
+out=$("$bin" "$@")
+status=$?
+if [ $status -ne 0 ]; then
+  [ -n "$out" ] && printf '%s\n' "$out"
+  exit $status
+fi
+ref=$(printf '%s' "$out" | sed -n 's/.*"reference":"\(sp-ref:[A-Za-z0-9_-]*\)".*/\1/p')
+if [ -z "$ref" ]; then
+  printf '%s\n' "$out"
+  exit 0
+fi
+set -- --url "$SP_NATS_URL" --creds "$SP_NATS_CREDS"
+if [ -n "${SCRATCHPAD_DIR:-}" ]; then
+  set -- "$@" --dir "$SCRATCHPAD_DIR"
+fi
+if [ -n "${SP_THREAD_ID:-}" ] && [ -n "${SP_ROOT_ID:-}" ]; then
+  set -- "$@" --thread-id "$SP_THREAD_ID" --root-id "$SP_ROOT_ID"
+fi
+errfile=$(mktemp "${TMPDIR:-/tmp}/sp-grant.XXXXXX")
+granted=$("$bin" "$@" grant --ref "$ref" \
+  --grantee-account "$SP_CALLER_ACCOUNT" --grantee-user "$SP_CALLER_USER" \
+  --operation-id "${operation:-publication}-caller" --ttl-seconds "$ttl" 2>"$errfile")
+gstatus=$?
+gerr=$(cat "$errfile")
+rm -f "$errfile"
+head=$(printf '%s' "$out" | sed 's/}[[:space:]]*$//')
+if [ $gstatus -eq 0 ] && [ -n "$granted" ]; then
+  printf '%s,"granted_to_caller":%s}\n' "$head" "$granted"
+else
+  [ -n "$gerr" ] || gerr='{"error":{"code":"unknown","message":"the grant printed nothing","unknown":true}}'
+  printf '%s,"caller_grant_error":%s}\n' "$head" "$gerr"
+fi
+exit 0
