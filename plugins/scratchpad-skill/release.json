@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "release": "sp-v0.1.0",
+  "source_repository": "synadia-ai/scratchpad",
+  "source_commit": "a28bb495cce1dc0e3df2b73c22f7b10594b9262b",
+  "go_version": "go1.26.7",
+  "targets": ["darwin/arm64", "darwin/amd64", "linux/arm64", "linux/amd64"],
+  "build_flags": ["-trimpath", "-buildvcs=false", "-ldflags=-s -w"],
+  "dependencies": {
+    "github.com/klauspost/compress": "v1.19.2",
+    "github.com/nats-io/nats.go": "v1.53.1",
+    "github.com/nats-io/nkeys": "v0.4.16",
+    "github.com/nats-io/nuid": "v1.0.1",
+    "golang.org/x/crypto": "v0.55.0",
+    "golang.org/x/sys": "v0.47.0",
+    "golang.org/x/text": "v0.41.0"
+  }
+}

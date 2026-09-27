@@ -41,5 +41,6 @@ else
 fi
 cp "$here/scripts/sp" "$dest/scripts/sp"
 chmod +x "$dest/scripts/sp"
-cp "$here"/bin/sp-* "$here/bin/COMMIT" "$dest/bin/"
+cp "$here"/bin/sp-* "$here/bin/COMMIT" "$here/bin/BUILD.json" "$dest/bin/"
+cp "$here/bin/THIRD_PARTY_NOTICES" "$dest/THIRD_PARTY_NOTICES"
 echo "installed ScratchPad's skill in $dest"
