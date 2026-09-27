@@ -69,6 +69,8 @@ describe("at start", () => {
       SP_NATS_URL: "nats://127.0.0.1:4222",
       SP_NATS_CREDS: "/keys/pi.creds",
       SCRATCHPAD_DIR: dir,
+      // Where scripts/sp records the grants it makes, beside the workspace.
+      SP_GRANTS_FILE: `${dir}.grants`,
       SP_CREATOR: ADDRESS,
     });
     expect(statSync(dir).isDirectory()).toBe(true);

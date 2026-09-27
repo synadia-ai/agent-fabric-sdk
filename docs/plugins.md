@@ -996,7 +996,7 @@ informed when Mario says (B6).
 
 ## 9. ScratchPad in the harnesses
 
-**Status:** design; PI (§9.11), OpenClaw (§9.12) and Claude Code (§9.13) built and measured, references in and out · **Date:** 2026-09-27
+**Status:** design; PI (§9.11), OpenClaw (§9.12) and Claude Code (§9.13) built and measured, references in and out; grant requests answered by all three (§9.14) · **Date:** 2026-09-28
 
 Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
@@ -1048,7 +1048,8 @@ exit codes 0–3 and the JSON on stdout and stderr pass through unchanged:
 - `--grantee-account "$SP_CALLER_ACCOUNT" --grantee-user "$SP_CALLER_USER"`
   on `grant`: the verified caller of the prompt being served; and the same
   grant after a successful `publish-file` while such a prompt is served,
-  as an SDK-built agent grants the caller its reply (§9.12);
+  as an SDK-built agent grants the caller its reply (§9.12); each such
+  grant sp confirms is recorded in `SP_GRANTS_FILE` (§9.14);
 - it refuses, with exit 2 and sp's own error shape, a call that passes any
   of those flags itself, and a `grant` when no served prompt has a verified
   caller.
@@ -1062,7 +1063,7 @@ The rules come from the command line itself:
 | `--dir` on every call | `read` accepts it: `sp read --url … --creds … --ref … --dir ws --volume V` parsed and failed on the token, not the flags | measured |
 | The model's own connection flags are refused | Go's flag package keeps the last value of a repeated flag, so a model could otherwise point sp elsewhere; the connection stays out of the model's hands | read (Go `flag`) |
 | Variables, not a command prefix | the command the model runs, and any permission question about it, stays `scripts/sp <command> …`; Claude Code's allow rules, should an operator write one, do not match past a `VAR=… cmd` prefix unless the variable is on its known-safe list (permissions docs, "Wrappers") | read |
-| `grant` goes to the served prompt's caller only | the fabric's grants are first-hand: an agent grants read on its own content to the agent it hands the reference to. A reply goes to the caller, and no hook of the contract sees the reply, so the add-on cannot make that grant itself (an SDK-built agent's `grantCaller`); the model makes it, and the wrapper fixes the grantee. A reference handed to anyone else goes through `prompt_agent` and the agent tools' ScratchPad extension (`typescript/src/scratchpad-extension.ts`). Stated honestly: this grant is not in that extension's ledger, so a grant request about it is not answered from it | design choice, revised when PI was built (2026-09-27): the design first refused `grant` |
+| `grant` goes to the served prompt's caller only | the fabric's grants are first-hand: an agent grants read on its own content to the agent it hands the reference to. A reply goes to the caller, and no hook of the contract sees the reply, so the add-on cannot make that grant itself (an SDK-built agent's `grantCaller`); the model makes it, and the wrapper fixes the grantee. A reference handed to anyone else goes through `prompt_agent` and the agent tools' ScratchPad extension (`typescript/src/scratchpad-extension.ts`). The wrapper records each such grant sp confirms, so a grant request from the caller is answered from it (§9.14) | design choice, revised when PI was built (2026-09-27): the design first refused `grant`; recorded for grant requests since 2026-09-28 |
 
 **The skill.** ScratchPad's skill, with three changes: every example runs
 `scripts/sp` and passes no `--url`, `--creds`, `--dir` or `--volume`; the
@@ -1450,7 +1451,7 @@ already a plugin for the skill, and a plugin carries hooks. So:
 - the hook, at `SessionStart`, appends `export SP_ENV_FILE='<that path>'` to
   `CLAUDE_ENV_FILE`, the state directory by the plugin's own rule
   (`NATS_STATE_DIR`, else `~/.claude/channels/nats`);
-- `scripts/sp` reads the file on every call: its nine names and no others,
+- `scripts/sp` reads the file on every call: its ten names and no others,
   each value assigned as it is, never run. When the file exists it is the
   truth, so a served prompt's variable it does not name is unset.
 
@@ -1543,6 +1544,88 @@ keep the workspace. And measured on the way: `--disable-slash-commands`,
 the remedy §6 gives for the skills of the directories above the working
 directory, removes the Skill tool itself, so it and ScratchPad exclude each
 other; a home of the instance's own already keeps the user's skills out.
+
+### 9.14 Grant requests for what a harness published
+
+Built in the fabric package and the three add-ons on 2026-09-28. An agent
+handed a reference may read it, not pass it on: ScratchPad has no
+delegation, so an agent that hands on a reference it did not create asks
+the creator to grant the receiver read (`typescript/src/grant-request.ts`).
+An SDK-built agent answers on `agents.sp-grant.<its address>`, by one rule:
+the reference points into its own volume, the requester holds a live read
+grant the creator made it first-hand, the grantee is another agent; then one
+path, read only, the usual expiry, recorded as made on request, which
+entitles no one to ask again. Until now a harness did not answer, so a
+reference a harness published and its caller handed on was taken out of
+the prompt, and the receiver got the text alone.
+
+**The endpoint.** `ScratchPadHandOn.start` takes the plugin's service,
+which `started()` hands every add-on, and adds `grantRequestEndpoint` to it
+through the service's own `addEndpoint` (`AgentService.service`, the SDK's
+public route for an endpoint added after start): the plugin builds its
+service before the add-on could name an extra endpoint, and the contract
+has no field for one. The same endpoint, the same `SenderGate`, the same
+rule and the same port as an SDK-built agent's, so no public-plugin
+change.
+
+**The ledger.** The rule asks whether the creator granted the requester
+read first-hand, and the port answers from a ledger of the grants it made
+itself. A harness's grants to its caller are made by `scripts/sp`, in the
+model's shell, which no hook sees (§9.1). So the wrapper records them:
+after sp confirms a grant, the model's `grant` or the one after a
+`publish-file`, it appends `<expires_at> <account> <user> <reference>` to
+`SP_GRANTS_FILE`, which the add-on sets at start to `<workspace>.grants`
+(through the file of §9.13 in Claude Code's case) and prunes of expired
+lines. The add-on's port (`withRecordedGrants`) counts a live recorded
+grant on that exact reference, to that requester, as first-hand, since the
+wrapper grants only to the served prompt's verified caller, the agent the
+harness handed its reply to, as an SDK-built agent's grant to the caller of
+its reply is first-hand. Grants the extension or the endpoint made are in
+the port's own ledger, as before; one made on request never entitles.
+
+**Stated honestly.** The file is the model's to write, as its shell is: a
+model that writes a line there could have a grant made to an agent of its
+choosing. It could already do that, and more, by running the sp binary with
+the credentials the operator gave the harness (§9.10, "Stated honestly"),
+so the file widens nothing. The record is on the machine, not in
+ScratchPad: a harness moved to another machine without its workspace
+answers no request about the grants it made before.
+
+**The run, measured on this machine on 2026-09-28.** A local ScratchPad
+from `79f8927` (`scratchpad serve`) on `nats-server` in operator mode, one
+tenant account with a caller, PI and a reader, a volume each. PI 0.85.1
+with the public plugin at `sdk-release-rollout` `3b9a20d` and this add-on,
+started as §6 step 7 says, the model `claude-sonnet-5` through Anthropic's
+OpenAI-compatible endpoint. The reader was the TypeScript reference agent,
+ScratchPad on. The caller was an SDK-built agent: `AgentTools` with the
+fabric package's `scratchPadExtension` over `spCliScratchPad`, and no
+model, its tool calls made by a script.
+
+1. The caller's `prompt_agent` asked PI to publish a file with a launch
+   code and reply with its reference. PI's model read `SKILL.md`, ran
+   `scripts/sp init`, then `printf … | scripts/sp publish-file --source -`;
+   the wrapper granted the caller read (grant 8) and recorded it. PI
+   replied with the reference in 14 s; the caller read the file with its
+   own credentials.
+2. The caller's `prompt_agent` handed the reference, unchanged, to the
+   reader. The extension asked PI; PI's add-on logged `grant request:
+   granted` with the reader as grantee and the caller as requester, and
+   made grant 9, to the reader. The reference stayed in the prompt
+   (`references_removed` absent), and the reader read the 31 bytes with its
+   own credentials and handed them to its model.
+
+PI's volume afterwards, as sp `describe` shows it: grant 8 to the caller
+and grant 9 to the reader, on the one file. What the reader's model made of
+it: it quoted the code, then said it could not verify the content, since it
+arrived in its prompt and not through a tool of its own, the reading of
+§9.13's first run again. Its own reply by reference failed (`invalid`, in
+its log), which this run did not look into.
+
+The suites: each add-on's `test/integration/grant-requests.test.ts` runs the
+same hand-on against the add-on started through its own `started()`, with
+the fabric package's stand-in sp, and the refusals: no recorded grant to the
+requester, or an expired one. `plugins/pi/test/unit/scripts-sp.test.ts`
+covers the wrapper's record.
 
 ## 10. Appendix: the text for the public repo
 

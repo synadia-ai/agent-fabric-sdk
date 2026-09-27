@@ -464,3 +464,107 @@ describe("a publication while a prompt with a verified caller is served", () => 
     expect(r.calls).toHaveLength(1);
   });
 });
+
+// The grants the wrapper makes, recorded for the add-on, which answers grant
+// requests from them (`withRecordedGrants` in the fabric package).
+describe("the record of a grant, in SP_GRANTS_FILE", () => {
+  const CALLER = { SP_CALLER_ACCOUNT: "ACALLER", SP_CALLER_USER: "UCALLER" };
+
+  function spRun(
+    args: string[],
+    env: Record<string, string>,
+  ): { status: number | null; stdout: string; stderr: string; recorded: string[] } {
+    const file = join(root, `grants-${Math.random().toString(36).slice(2)}`);
+    const r = spawnSync(script, args, {
+      encoding: "utf8",
+      env: {
+        PATH: `${fakes}:/usr/bin:/bin`,
+        FAKE_UNAME_S: "Darwin",
+        FAKE_UNAME_M: "arm64",
+        FAKE_JSON: "1",
+        ...CONNECTION,
+        SP_GRANTS_FILE: file,
+        ...env,
+      },
+    });
+    const recorded = existsSync(file) ? readFileSync(file, "utf8").split("\n").slice(0, -1) : [];
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr, recorded };
+  }
+
+  it("records the model's grant, and passes sp's result through", () => {
+    const r = spRun(["grant", "--ref", "sp-ref:abc", "--operation-id", "g1"], CALLER);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ handle: { slot: 0, generation: 4 }, expires_at: 99 });
+    expect(r.recorded).toEqual(["99 ACALLER UCALLER sp-ref:abc"]);
+  });
+
+  it("takes the reference in any of sp's flag forms", () => {
+    expect(spRun(["grant", "--ref=sp-ref:eq", "--operation-id", "g1"], CALLER).recorded).toEqual([
+      "99 ACALLER UCALLER sp-ref:eq",
+    ]);
+    expect(spRun(["-ref", "sp-ref:one", "grant"], CALLER).recorded).toEqual([
+      "99 ACALLER UCALLER sp-ref:one",
+    ]);
+  });
+
+  it("records the grant after a publication", () => {
+    const r = spRun(["publish-file", "--source", "-", "--path", "/r.txt"], CALLER);
+    expect(r.status).toBe(0);
+    expect(r.recorded).toEqual(["99 ACALLER UCALLER sp-ref:abc123"]);
+  });
+
+  it("records nothing when sp refused the grant, and passes its error and exit code through", () => {
+    const grant = spRun(["grant", "--ref", "sp-ref:abc"], { ...CALLER, FAKE_GRANT_FAIL: "1" });
+    expect(grant.status).toBe(1);
+    expect(JSON.parse(grant.stderr)).toEqual({
+      error: { code: "denied", message: "refused", unknown: false },
+    });
+    expect(grant.recorded).toEqual([]);
+    const published = spRun(["publish-file", "--source", "-"], { ...CALLER, FAKE_GRANT_FAIL: "1" });
+    expect(published.status).toBe(0);
+    expect(published.recorded).toEqual([]);
+  });
+
+  it("records nothing for a reference that is not one token", () => {
+    expect(spRun(["grant", "--ref", "sp-ref:a b"], CALLER).recorded).toEqual([]);
+    expect(spRun(["grant", "--ref", "sp-ref:a\n1 A U sp-ref:b"], CALLER).recorded).toEqual([]);
+    expect(spRun(["grant", "--ref", "notaref"], CALLER).recorded).toEqual([]);
+  });
+
+  it("still grants when the file cannot be written", () => {
+    const r = spRun(["grant", "--ref", "sp-ref:abc"], {
+      ...CALLER,
+      SP_GRANTS_FILE: join(root, "no-such-dir", "grants"),
+    });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe("");
+    expect(JSON.parse(r.stdout)).toMatchObject({ expires_at: 99 });
+  });
+
+  it("takes the file's name from SP_ENV_FILE too", () => {
+    const grants = join(root, `grants-from-env-file-${Math.random().toString(36).slice(2)}`);
+    const envFile = join(root, `sp-${Math.random().toString(36).slice(2)}.env`);
+    writeFileSync(
+      envFile,
+      [
+        "SP_NATS_URL=nats://127.0.0.1:4333",
+        "SP_NATS_CREDS=/keys/cc.creds",
+        "SP_CALLER_ACCOUNT=ACALLER",
+        "SP_CALLER_USER=UCALLER",
+        `SP_GRANTS_FILE=${grants}`,
+      ].join("\n"),
+    );
+    const r = spawnSync(script, ["grant", "--ref", "sp-ref:abc"], {
+      encoding: "utf8",
+      env: {
+        PATH: `${fakes}:/usr/bin:/bin`,
+        FAKE_UNAME_S: "Darwin",
+        FAKE_UNAME_M: "arm64",
+        FAKE_JSON: "1",
+        SP_ENV_FILE: envFile,
+      },
+    });
+    expect(r.status).toBe(0);
+    expect(readFileSync(grants, "utf8")).toBe("99 ACALLER UCALLER sp-ref:abc\n");
+  });
+});

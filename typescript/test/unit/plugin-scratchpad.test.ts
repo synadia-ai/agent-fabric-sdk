@@ -1,20 +1,24 @@
 // ScratchPad for a harness's model, the pieces every add-on shares
 // (`plugin-scratchpad.ts`): the settings' precedence, the per-prompt
-// variables, the packaged sp's path, and the ScratchPad extension behind
-// its wrapper. The add-ons' own suites drive them through their factories.
+// variables, the packaged sp's path, the grants `scripts/sp` recorded, and
+// the ScratchPad extension behind its wrapper, with the grant requests it
+// answers. The add-ons' own suites drive them through their factories.
 
-import { mkdtempSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Logger } from "@synadia-ai/agents";
+import type { AgentService } from "@synadia-ai/agent-service";
 import {
   exportScratchPad,
+  readRecordedGrants,
   resolveScratchPad,
   ScratchPadHandOn,
   ServedPromptEnv,
   SP_VARS,
   spBinary,
+  withRecordedGrants,
   type AgentExtensionContext,
 } from "../../src/index.js";
 import { MemoryScratchPad, promptContext, stubAgent, stubAgents } from "../support/scratchpad.js";
@@ -57,6 +61,7 @@ describe("resolveScratchPad", () => {
       url: "nats://env:1",
       creds: "/env.creds",
       dir: join(state, "scratchpad"),
+      grants: join(state, "scratchpad.grants"),
     });
     expect(statSync(join(state, "scratchpad")).isDirectory()).toBe(true);
     const settings = await resolveScratchPad(
@@ -81,13 +86,64 @@ describe("resolveScratchPad", () => {
 
   it("exports the start-time variables", () => {
     const env: Record<string, string | undefined> = {};
-    exportScratchPad({ volume: "V", url: "nats://u:1", creds: "/c", dir: "/d" }, env);
+    exportScratchPad(
+      { volume: "V", url: "nats://u:1", creds: "/c", dir: "/d", grants: "/d.grants" },
+      env,
+    );
     expect(env).toEqual({
       SCRATCHPAD_VOLUME: "V",
       SP_NATS_URL: "nats://u:1",
       SP_NATS_CREDS: "/c",
       SCRATCHPAD_DIR: "/d",
+      SP_GRANTS_FILE: "/d.grants",
     });
+  });
+
+  it("keeps only the live grants scripts/sp recorded, and no grants file without a workspace", async () => {
+    const state = mkdtempSync(join(tmpdir(), "fabric-plugin-sp-"));
+    const grants = join(state, "scratchpad.grants");
+    const t = Math.floor(Date.now() / 1000);
+    writeFileSync(
+      grants,
+      `${t - 1} AOLD UOLD sp-ref:old\nnot a line\n${t + 600} ALIVE ULIVE sp-ref:live\n`,
+    );
+    const env = { SCRATCHPAD_VOLUME: "V", NATS_URL: "nats://u:1", NATS_CREDS: "/c" };
+    expect((await resolveScratchPad(context({}, state), env))?.grants).toBe(grants);
+    expect(readFileSync(grants, "utf8")).toBe(`${t + 600} ALIVE ULIVE sp-ref:live\n`);
+    expect((await resolveScratchPad(context(), env))?.grants).toBeUndefined();
+  });
+});
+
+describe("the grants scripts/sp recorded", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fabric-plugin-grants-"));
+  const CALLER = { account: "ACALLER", user: "UCALLER" };
+  const pad = new MemoryScratchPad("vol-own", "agents.prompt.h.team.agent");
+  const recorded = pad.commit("/published.txt");
+  const file = join(dir, "grants");
+  writeFileSync(file, `2000 ACALLER UCALLER ${recorded}\n1000 AGONE UGONE ${recorded}\n`);
+  const ported = withRecordedGrants(pad, file, () => 1500);
+
+  it("reads the lines the wrapper writes, and skips anything else", () => {
+    writeFileSync(join(dir, "mixed"), `12 A U sp-ref:x\n12 A U not-a-ref\nx A U sp-ref:y\n\n`);
+    expect(readRecordedGrants(join(dir, "mixed"))).toEqual([
+      { expiresAt: 12, grantee: { account: "A", user: "U" }, reference: "sp-ref:x" },
+    ]);
+    expect(readRecordedGrants(join(dir, "absent"))).toEqual([]);
+  });
+
+  it("counts a live recorded grant as first-hand, for that grantee and that reference only", async () => {
+    expect(await ported.granted(recorded, CALLER)).toBe("first-hand");
+    expect(await ported.granted(recorded, { account: "AGONE", user: "UGONE" })).toBeUndefined();
+    expect(await ported.granted(pad.commit("/other.txt"), CALLER)).toBeUndefined();
+    expect(await ported.granted(recorded, { account: "ACALLER", user: "UOTHER" })).toBeUndefined();
+  });
+
+  it("keeps the port's own answer when nothing live is recorded", async () => {
+    const other = pad.commit("/granted-on-request.txt");
+    await ported.grantRead(other, CALLER, undefined, undefined, "on-request");
+    expect(await ported.granted(other, CALLER)).toBe("on-request");
+    expect(pad.grants.at(-1)).toMatchObject({ reference: other, kind: "on-request" });
+    expect(await ported.owns(other)).toBe(true);
   });
 });
 
@@ -143,6 +199,44 @@ describe("ScratchPadHandOn", () => {
     expect(pad.grants).toEqual([
       expect.objectContaining({ reference, grantee: "AREADER.UREADER", kind: "first-hand" }),
     ]);
+  });
+
+  it("answers grant requests on the service it is given, next to the agent's prompt address", () => {
+    const added: { name: string; subject: string; queue?: string }[] = [];
+    const service = {
+      subject: { prompt: "agents.prompt.h.team.agent" },
+      service: {
+        addEndpoint: (name: string, opts: { subject: string; queue?: string }) => {
+          added.push({ name, subject: opts.subject, ...(opts.queue ? { queue: opts.queue } : {}) });
+        },
+      },
+    } as unknown as AgentService;
+    new ScratchPadHandOn().start({
+      scratchPad: new MemoryScratchPad("vol-own"),
+      agents: stubAgents().agents,
+      service,
+    });
+    expect(added).toEqual([
+      { name: "sp-grant", subject: "agents.sp-grant.h.team.agent", queue: "agents" },
+    ]);
+  });
+
+  it("says so, and hands on all the same, when the endpoint cannot be added", async () => {
+    const warned: string[] = [];
+    const logger: Logger = { ...quiet, warn: (m) => warned.push(m) };
+    const service = {
+      subject: { prompt: "agents.prompt.h.team.agent" },
+      service: {
+        addEndpoint: () => {
+          throw new Error("taken");
+        },
+      },
+    } as unknown as AgentService;
+    const pad = new MemoryScratchPad("vol-own");
+    const handOn = new ScratchPadHandOn();
+    handOn.start({ scratchPad: pad, agents: stubAgents().agents, service, logger });
+    expect(warned).toEqual(["agent-fabric: grant requests are not answered: Error: taken"]);
+    expect(await handOn.beforePrompt(promptContext(reader, `see ${pad.commit()}`))).toBeUndefined();
   });
 
   it("remembers what the prompts served before it started brought", async () => {

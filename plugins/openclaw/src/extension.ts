@@ -34,9 +34,10 @@
 // `skills.load.extraDirs`) reads through `scripts/sp`: the connection, the
 // workspace and the volume before the plugin connects, the served prompt's
 // trace and caller around its dispatch until its end. It registers OpenClaw
-// as reading references, and hands the references OpenClaw's model puts
-// into `prompt_agent` to the fabric package's ScratchPad extension
-// (`scratchpad.ts`).
+// as reading references, hands the references OpenClaw's model puts into
+// `prompt_agent` to the fabric package's ScratchPad extension
+// (`scratchpad.ts`), and answers grant requests for what OpenClaw
+// published, by an SDK-built agent's rule.
 
 import {
   activeTrace,
@@ -176,11 +177,11 @@ export function createFabricExtension(
       if (scratchPad !== undefined && handOn !== undefined) {
         env[SP_VARS.creator] = service.subject.prompt;
         const port = spPort(scratchPad, service.subject.prompt, env);
-        if (port !== undefined) handOn.start({ scratchPad: port, agents });
+        if (port !== undefined) handOn.start({ scratchPad: port, agents, service, logger: log });
         else
           log.warn(
             `${EXTENSION_NAME}: no sp for this platform (set SCRATCHPAD_BIN); ` +
-              "references in prompt_agent are not handed on",
+              "references in prompt_agent are not handed on, and grant requests not answered",
           );
         log.info(
           `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +

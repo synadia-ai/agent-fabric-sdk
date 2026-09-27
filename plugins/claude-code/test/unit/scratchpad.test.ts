@@ -102,6 +102,8 @@ describe("the file scripts/sp reads", () => {
       SP_NATS_CREDS: "/keys/cc.creds",
       SCRATCHPAD_VOLUME: "CcVol",
       SCRATCHPAD_DIR: dir,
+      // Where scripts/sp records the grants it makes, beside the workspace.
+      SP_GRANTS_FILE: `${dir}.grants`,
     });
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(statSync(dir).isDirectory()).toBe(true);

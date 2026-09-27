@@ -20,7 +20,7 @@
 # A call that passes any of these flags itself is refused, and so is a
 # `grant` with no caller to grant to. Refusals have sp's own shape and exit
 # code: one JSON error on stderr, exit 2, no request sent. Otherwise this
-# replaces itself with sp, so sp's exit codes and output pass through.
+# runs sp, so sp's exit codes and output pass through.
 #
 # One exception: a `publish-file` while a prompt with a verified caller is
 # served also grants that caller read on what it published, first-hand, as
@@ -29,6 +29,13 @@
 # result is the publication's JSON with `granted_to_caller` (the grant's
 # result) or `caller_grant_error` (sp's error) added; the exit code is the
 # publication's.
+#
+# Every grant this makes and sp confirms, that one or a `grant` of the
+# model's, is recorded in SP_GRANTS_FILE, when set, as one line:
+# `<expires_at> <account> <user> <reference>`. The add-on reads the file
+# when another agent asks it for a grant on this agent's content: the caller
+# granted here may have one more agent granted, as an SDK-built agent's
+# caller may (`grant-request.ts` in the fabric package).
 #
 # Where the add-on cannot set the shell tool's environment (Claude Code's,
 # whose Bash tool is no child of the add-on's process), it writes these
@@ -45,16 +52,18 @@ refuse() {
 # The command: the first argument that is not a flag or a flag's value, as
 # sp itself finds it. Every sp flag but --apply takes a value. On the way,
 # the operation id and the expiry, for the caller's grant after a
-# publication.
+# publication, and the reference, for the record of a grant.
 command=
 operation=
 ttl=600
+given_ref=
 skip=
 for arg in "$@"; do
   if [ -n "$skip" ]; then
     case $skip in
       operation-id) operation=$arg ;;
       ttl-seconds) ttl=$arg ;;
+      ref) given_ref=$arg ;;
     esac
     skip=
     continue
@@ -67,6 +76,7 @@ for arg in "$@"; do
       case ${name#-} in
         -operation-id | operation-id) operation=${arg#*=} ;;
         -ttl-seconds | ttl-seconds) ttl=${arg#*=} ;;
+        -ref | ref) given_ref=${arg#*=} ;;
       esac
       ;;
     -*) skip=${arg#-}; skip=${skip#-} ;;
@@ -98,7 +108,7 @@ if [ -n "${SP_ENV_FILE:-}" ] && [ -f "$SP_ENV_FILE" ]; then
       *=*)
         case ${line%%=*} in
           SP_NATS_URL | SP_NATS_CREDS | SCRATCHPAD_DIR | SCRATCHPAD_VOLUME | SP_CREATOR | \
-            SP_THREAD_ID | SP_ROOT_ID | SP_CALLER_ACCOUNT | SP_CALLER_USER)
+            SP_THREAD_ID | SP_ROOT_ID | SP_CALLER_ACCOUNT | SP_CALLER_USER | SP_GRANTS_FILE)
             # The name is one of these; the value is assigned as it is.
             eval "${line%%=*}=\${line#*=}"
             ;;
@@ -156,6 +166,30 @@ case $command in
     ;;
 esac
 
+# Records a grant sp confirmed: $1 the reference, $2 sp's result. A
+# reference that is not one token, or a result without its expiry, is not
+# recorded; nor is anything when the file cannot be written.
+record() {
+  [ -n "${SP_GRANTS_FILE:-}" ] || return 0
+  case $1 in
+    sp-ref:*[!A-Za-z0-9_-]* | sp-ref:) return 0 ;;
+    sp-ref:*) ;;
+    *) return 0 ;;
+  esac
+  expires=$(printf '%s' "$2" | sed -n 's/.*"expires_at":\([0-9][0-9]*\).*/\1/p')
+  [ -n "$expires" ] || return 0
+  { printf '%s %s %s %s\n' "$expires" "$SP_CALLER_ACCOUNT" "$SP_CALLER_USER" "$1" \
+    >>"$SP_GRANTS_FILE"; } 2>/dev/null || true
+}
+
+if [ "$command" = grant ] && [ -n "${SP_GRANTS_FILE:-}" ]; then
+  out=$("$bin" "$@")
+  status=$?
+  [ -n "$out" ] && printf '%s\n' "$out"
+  [ $status -eq 0 ] && record "$given_ref" "$out"
+  exit $status
+fi
+
 if [ "$command" != publish-file ] || [ -z "${SP_CALLER_ACCOUNT:-}" ] || [ -z "${SP_CALLER_USER:-}" ]; then
   exec "$bin" "$@"
 fi
@@ -188,6 +222,7 @@ gerr=$(cat "$errfile")
 rm -f "$errfile"
 head=$(printf '%s' "$out" | sed 's/}[[:space:]]*$//')
 if [ $gstatus -eq 0 ] && [ -n "$granted" ]; then
+  record "$ref" "$granted"
   printf '%s,"granted_to_caller":%s}\n' "$head" "$granted"
 else
   [ -n "$gerr" ] || gerr='{"error":{"code":"unknown","message":"the grant printed nothing","unknown":true}}'
