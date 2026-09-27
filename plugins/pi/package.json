@@ -27,7 +27,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "build:sp": "sh scripts/build-sp.sh",
+    "build:sp": "sh ../scratchpad-skill/install.sh",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

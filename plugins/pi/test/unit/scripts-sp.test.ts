@@ -16,6 +16,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
+// The one skill the add-ons share, and this add-on's installed copy of it
+// (`npm run build:sp`), which carries the binaries.
+const SOURCE = resolve(__dirname, "../../../scratchpad-skill");
 const SKILL = resolve(__dirname, "../../skill/scratchpad");
 const PLATFORMS = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64"] as const;
 
@@ -28,7 +31,7 @@ beforeAll(() => {
   mkdirSync(join(root, "skill", "scripts"), { recursive: true });
   mkdirSync(join(root, "skill", "bin"));
   script = join(root, "skill", "scripts", "sp");
-  copyFileSync(join(SKILL, "scripts", "sp"), script);
+  copyFileSync(join(SOURCE, "scripts", "sp"), script);
   chmodSync(script, 0o755);
   for (const p of PLATFORMS) executable(join(root, "skill", "bin", `sp-${p}`), FAKE_SP);
   fakes = join(root, "fakes");

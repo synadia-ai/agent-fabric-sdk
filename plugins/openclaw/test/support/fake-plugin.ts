@@ -56,6 +56,8 @@ export interface ContextOverrides {
   readonly senderIdentity?: "off" | "signed";
   readonly options?: Readonly<Record<string, unknown>>;
   readonly logger?: Logger;
+  readonly stateDir?: string;
+  readonly config?: Readonly<Record<string, unknown>>;
 }
 
 /** What the plugin hands the factory, as the OpenClaw gateway fills it. */
@@ -68,8 +70,12 @@ export function extensionContext(overrides: ContextOverrides = {}): AgentExtensi
       name: "summarizer",
       senderIdentity: overrides.senderIdentity ?? "signed",
       minSenderTrust: "signed",
-      stateDir: "/tmp/openclaw-state",
-      config: { owner: "team", agentName: "summarizer", senderIdentity: "signed" },
+      stateDir: overrides.stateDir ?? "/tmp/openclaw-state",
+      config: overrides.config ?? {
+        owner: "team",
+        agentName: "summarizer",
+        senderIdentity: "signed",
+      },
     },
     options: overrides.options ?? {},
     logger: overrides.logger ?? recordingLogger().logger,

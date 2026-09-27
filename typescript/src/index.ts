@@ -146,6 +146,18 @@ export { loopGuard, loopGuardDescription, LOOP_GUARD_CODE, type LoopGuard } from
 
 export { EDGE_SUBJECT_OPTION, EDGE_SUBJECT_VAR, resolveEdgeSubject } from "./plugin-settings.js";
 
+export {
+  exportScratchPad,
+  resolveScratchPad,
+  SCRATCHPAD_OPTION,
+  ScratchPadHandOn,
+  ServedPromptEnv,
+  SP_VARS,
+  spBinary,
+  spPort,
+  type ScratchPadSettings,
+} from "./plugin-scratchpad.js";
+
 export type {
   AgentExtension,
   AgentExtensionContext,

@@ -1,9 +1,9 @@
 #!/bin/sh
-# Builds the sp command line into skill/scratchpad/bin, one binary per
-# platform scripts/sp picks from: darwin and linux, arm64 and amd64, with
-# cgo off and stripped (`docs/plugins.md` §9.8). Run at pack time
-# (`prepack`) and by hand for a checkout (`npm run build:sp`). The binaries
-# are never committed.
+# Builds the sp command line into bin/ here, one binary per platform
+# scripts/sp picks from: darwin and linux, arm64 and amd64, with cgo off and
+# stripped (`docs/plugins.md` §9.8). `install.sh` runs it and copies the
+# binaries into an add-on's skill directory. The binaries are never
+# committed.
 #
 # The source is ScratchPad's repository at the pinned commit, exported with
 # `git archive` so the checkout is left as it is. SCRATCHPAD_SRC names the
@@ -11,9 +11,9 @@
 set -eu
 
 SP_COMMIT=${SP_COMMIT:-79f892734955fc1f01e810b5272dbd4c466325b6}
-here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 src=${SCRATCHPAD_SRC:-$here/../../../scratchpad}
-out=$here/skill/scratchpad/bin
+out=$here/bin
 targets="darwin/arm64 darwin/amd64 linux/arm64 linux/amd64"
 
 if [ -f "$out/COMMIT" ] && [ "$(cat "$out/COMMIT")" = "$SP_COMMIT" ]; then
