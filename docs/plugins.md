@@ -1553,6 +1553,16 @@ the remedy §6 gives for the skills of the directories above the working
 directory, removes the Skill tool itself, so it and ScratchPad exclude each
 other; a home of the instance's own already keeps the user's skills out.
 
+**Two more things for the operator, measured in a running stack
+(2026-09-27, Claude Code 2.1.283).** Claude Code can start in auto mode,
+where its own classifier approves or blocks tool calls, so no permission
+question reaches the caller: the settings pin `permissions.defaultMode:
+"default"`. And a session's first prompt can be served before Claude Code
+lists the session's skills, so an instruction conditioned on the listing
+fails once; the model is told to call the skill by name whenever it holds a
+reference. `plugins/claude-code/README.md` carries both in the operator's
+steps.
+
 ### 9.14 Grant requests for what a harness published
 
 Built in the fabric package and the three add-ons on 2026-09-28. An agent

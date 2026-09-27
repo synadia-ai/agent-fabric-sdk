@@ -293,10 +293,15 @@ tool. Nothing restricts Bash or any other tool.
    ```json
    {
      "permissions": {
+       "defaultMode": "default",
        "allow": ["mcp__plugin_nats-channel_nats", "Skill(agent-fabric:scratchpad)"]
      }
    }
    ```
+
+   `defaultMode: "default"` matters: Claude Code 2.1.283 can start in auto
+   mode, where its own classifier approves or blocks a tool call, so no
+   permission question ever reaches the caller.
 
 3. A volume reserved for Claude Code's identity by the ScratchPad operator,
    in the extension's entry in the channel's `config.json`, or as
@@ -308,6 +313,13 @@ tool. Nothing restricts Bash or any other tool.
 
 Keep `Bash` and `Skill` out of the settings' `deny`, and do not start
 Claude Code with `--disable-slash-commands`, which removes the Skill tool.
+
+**The first prompt of a session.** Claude Code can serve a session's first
+prompt before it lists the session's skills to the model. An instruction
+that says "use ScratchPad only when the skill is listed" therefore fails
+once: the model answers that it cannot read a reference. Tell the model to
+call the skill by name (`agent-fabric:scratchpad`) whenever it holds a
+reference, and to ask for the text only if the skill does not exist.
 
 **Permission questions.** The skill's copy here has one line ScratchPad's
 own skill has and the shared one does not:
