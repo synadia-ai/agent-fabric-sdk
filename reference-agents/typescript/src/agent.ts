@@ -39,7 +39,7 @@ import {
   traceHeaders,
   type ScratchPadClient,
 } from "@synadia-ai/agent-fabric";
-import { AgentService } from "@synadia-ai/agent-service";
+import { AgentService, RequestRejectedError } from "@synadia-ai/agent-service";
 import {
   Agents,
   AgentSubject,
@@ -49,7 +49,7 @@ import {
   type Logger,
 } from "@synadia-ai/agents";
 import type { AgentConfig } from "./config.js";
-import { converse, createModelClient, type ChatMessage } from "./model.js";
+import { converse, createModelClient, EmptyReplyError, type ChatMessage } from "./model.js";
 import { NO_TOOLS, offeredTools, toolRunner } from "./tools.js";
 
 export interface RunningAgent {
@@ -246,13 +246,21 @@ export async function startAgent(
       ...history,
       { role: "user", content: userContent },
     ];
-    const result = await converse({
-      model,
-      tools: offered,
-      messages,
-      traceHeaders,
-      log: (line) => log(`${tag} ${line}`),
-    });
+    let result: Awaited<ReturnType<typeof converse>>;
+    try {
+      result = await converse({
+        model,
+        tools: offered,
+        messages,
+        traceHeaders,
+        log: (line) => log(`${tag} ${line}`),
+      });
+    } catch (err) {
+      // The model kept answering with nothing while calls it started were
+      // open: the prompt fails with the reason, never succeeds with no reply.
+      if (err instanceof EmptyReplyError) throw new RequestRejectedError(500, err.message);
+      throw err;
+    }
 
     // (4) What it produced: committed under this thread's name, and the
     // reference appended to the reply, so whoever asked can hand it on

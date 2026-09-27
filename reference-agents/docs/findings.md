@@ -321,3 +321,17 @@ Not about the reference agents: moved out on 2026-09-26. `agent-fabric-examples`
 5. **Every reply ends with a reference** once `SCRATCHPAD_VOLUME` is set, and `env.example` sets it; the first README's arithmetic output showed none. Now shown.
 
 **The runs.** Tree `4d857a2dc93e342fd78e21d16fd45e23` (http://localhost:18280/threads/4d857a2dc93e342fd78e21d16fd45e23): the caller → the assistant → the helper, one root and one child under it, 5 model calls, 11,388 tokens in and 275 out; the assistant's model first called `discover_agents` with a filter, `{"agent": "arithmetic"}`, found nothing, then called it without, and prompted the helper; 14.7 s. The handoff, tree `e4a8ab1f3f9940f45f6bc66eeb088ae2`: the assistant read the reference it was given, granted the helper read on its own text, and prompted it; the helper read it and counted 26 words; two threads, 4 model calls, 11,117 in and 902 out, three grants (the helper's before the send, and each agent's to its caller); 28.7 s. The Python caller prompted the helper directly the same way. The two virtual keys were issued through the key manager's route (`POST /api/tenants/<T1>/keys`, the one the `/keys` screen calls), provider `openrouter`, 24 hours, labelled "examples walk", never printed.
+
+## F29 — An empty completion while a call waits on a question ended the turn as done, with an empty reply
+
+**Observed 2026-09-27 on a live stack.** The coordinator's model delegated, the prompted agent asked three permission questions in turn, and the model answered each with `answer_agent`. After the fourth question the model returned a completion with `content: null` and no tool calls. `converse` took that as the final reply: the turn ended `ok`, the caller got an empty reply, and the call that was waiting on the fourth question ended with the served prompt.
+
+**Fixed in both agents** (`src/model.ts`, `fabric_agent/model.py`). `converse` follows the calls the model started through the tools' own results, each of which carries the call's `call_id` and `state` and, while it is `input_required`, the question. An empty completion while any call is `input_required` or `running` is not a reply:
+- the empty answer is dropped from the conversation;
+- the model is told which calls wait and on what (the call, whom it went to, the question, `answer_agent`), and is asked again;
+- after two such re-asks a third empty completion fails the turn with `EmptyReplyError`, which the agent raises as a `RequestRejectedError(500, …)`. The caller sees `the model returned an empty reply 3 times while 1 call it started was still open (…); no reply was produced`, never `ok` with nothing.
+
+An empty completion with no call open is still the reply, as before. The tests: `typescript/test/model.test.ts` and `python/tests/test_model.py` drive `converse` with a scripted model; the agent tests' fake model has two new modes, `hush` (empty once, then `answer_agent` when told) and `mute` (empty every time), against the agent that asks before it answers.
+
+**Where it belongs.** The agents track the calls from the tool results because `AgentTools` exposes no list of a served prompt's open calls outside `execute()` (`list_agent_calls` is offered only with the six tools). Every model loop built on `AgentTools` has the same end-of-turn question, so a public accessor on `AgentTools` in the protocol SDK, the served scope's open calls with their state and pending question, would let each loop ask it instead of parsing results. Proposed, not done.
+

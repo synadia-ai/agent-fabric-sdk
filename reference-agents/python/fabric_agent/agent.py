@@ -48,7 +48,7 @@ from synadia_ai.agent_fabric import (
     scratchpad_from_env,
     trace_headers,
 )
-from synadia_ai.agent_service import AgentService, PromptStream, ServiceIdentity
+from synadia_ai.agent_service import AgentService, PromptStream, RequestRejectedError, ServiceIdentity
 from synadia_ai.agents import (
     Agents,
     AgentSubject,
@@ -60,7 +60,7 @@ from synadia_ai.agents import (
 )
 
 from .config import AgentConfig
-from .model import ChatMessage, ModelClient, converse
+from .model import ChatMessage, EmptyReplyError, ModelClient, converse
 from .tools import NO_TOOLS, offered_tools, tool_runner
 
 #: How many prompts one agent serves at once. The Python host serves one at a
@@ -267,13 +267,18 @@ async def start_agent(
             *history,
             {"role": "user", "content": user_content},
         ]
-        result = await converse(
-            model=model,
-            tools=offered,
-            messages=messages,
-            trace_headers=trace_headers,
-            log=lambda line: log(f"{tag} {line}"),
-        )
+        try:
+            result = await converse(
+                model=model,
+                tools=offered,
+                messages=messages,
+                trace_headers=trace_headers,
+                log=lambda line: log(f"{tag} {line}"),
+            )
+        except EmptyReplyError as err:
+            # The model kept answering with nothing while calls it started were
+            # open: the prompt fails with the reason, never succeeds with no reply.
+            raise RequestRejectedError(500, str(err)) from err
 
         # (4) What it produced: committed under this thread's name, and the
         # reference appended to the reply, so whoever asked can hand it on

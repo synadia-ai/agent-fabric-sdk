@@ -17,6 +17,7 @@ while the loop runs.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -104,6 +105,32 @@ class ConverseResult:
     tool_calls: int
 
 
+@dataclass(frozen=True)
+class OpenCall:
+    """A call the model started that has not ended, as the tools last reported it."""
+
+    call_id: str
+    state: str  # "running" or "input_required"
+    #: Whom the call went to, when the model's ``prompt_agent`` said.
+    address: str | None = None
+    #: What the prompted agent asked, while the call is ``input_required``.
+    question: str | None = None
+
+
+class EmptyReplyError(Exception):
+    """The model answered with nothing, again and again, while calls it started
+    were still open: the turn is not done, and it has no reply. The agent fails
+    the prompt with this message rather than answer it with nothing."""
+
+    def __init__(self, empty_replies: int, open_calls: Sequence[OpenCall]) -> None:
+        self.empty_replies = empty_replies
+        self.open_calls = list(open_calls)
+        super().__init__(
+            f"the model returned an empty reply {empty_replies} times while {_describe_open(open_calls)}; "
+            "no reply was produced"
+        )
+
+
 async def converse(
     *,
     model: ModelClient,
@@ -111,6 +138,7 @@ async def converse(
     messages: list[ChatMessage],
     trace_headers: Callable[[], Mapping[str, str]],
     max_tool_rounds: int = 8,
+    max_empty_replies: int = 2,
     log: Callable[[str], None] | None = None,
 ) -> ConverseResult:
     """Run the model until it answers in words.
@@ -123,10 +151,21 @@ async def converse(
     thread the model spawns afterwards. ``max_tool_rounds`` is how many
     model calls may ask for tools before the model is asked to answer in
     words, against a model that keeps calling tools.
+
+    An empty answer is not a reply while a call the model started is still
+    open, waiting on a question it has to answer or still running: the turn is
+    not done. The empty answer is dropped, the model is told which calls wait
+    and on what, and asked again, at most ``max_empty_replies`` times; then the
+    turn fails with :class:`EmptyReplyError`. Which calls are open comes from
+    the tools' own results: each carries the call's ``call_id`` and ``state``,
+    and a question while it is ``input_required``. An empty answer with
+    nothing open is the reply, as before.
     """
     say = log or (lambda _line: None)
     model_calls = 0
     tool_calls = 0
+    empty_replies = 0
+    open_calls: dict[str, OpenCall] = {}
     round_ = 0
     while True:
         tools_offered = tools.definitions if round_ < max_tool_rounds else []
@@ -141,7 +180,20 @@ async def converse(
             f"{usage.get('prompt_tokens', '?')} in / {usage.get('completion_tokens', '?')} out tokens"
         )
         if not calls:
-            return ConverseResult(reply=message.get("content") or "", model_calls=model_calls, tool_calls=tool_calls)
+            reply = message.get("content") or ""
+            if reply.strip() or not open_calls:
+                return ConverseResult(reply=reply, model_calls=model_calls, tool_calls=tool_calls)
+            empty_replies += 1
+            waiting = list(open_calls.values())
+            if empty_replies > max_empty_replies:
+                raise EmptyReplyError(empty_replies, waiting)
+            say(f"  empty reply while {_describe_open(waiting)}: asking again ({empty_replies} of {max_empty_replies})")
+            # The empty answer is no turn of the conversation: out of the
+            # history, and a word to the model in its place.
+            messages.pop()
+            messages.append({"role": "user", "content": _still_open(waiting)})
+            round_ += 1
+            continue
         for call in calls:
             function = call.get("function") or {}
             name = function.get("name", "")
@@ -151,13 +203,86 @@ async def converse(
             content = await tools.call(name, arguments, call_id)
             tool_calls += 1
             messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
+            _track(open_calls, name, arguments, content)
         round_ += 1
+
+
+def _track(open_calls: dict[str, OpenCall], tool: str, args: Any, content: str) -> None:
+    """Note what a tool result says about the calls it names: a call
+    ``running`` or ``input_required`` is open, any other state has ended. A
+    result that names no call (discovery, an error) changes nothing;
+    ``list_agent_calls`` names every call of the prompt being served."""
+    try:
+        result = json.loads(content)
+    except ValueError:
+        return
+    if not isinstance(result, dict):
+        return
+    address = _address_of(args) if tool == "prompt_agent" else None
+    entries = result["calls"] if isinstance(result.get("calls"), list) else [result]
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        call_id, state = entry.get("call_id"), entry.get("state")
+        if not isinstance(call_id, str) or not isinstance(state, str):
+            continue
+        if state not in ("running", "input_required"):
+            open_calls.pop(call_id, None)
+            continue
+        known = open_calls.get(call_id)
+        to = entry["address"] if isinstance(entry.get("address"), str) else (address or (known.address if known else None))
+        # A question stands until the call leaves ``input_required``.
+        asked = entry["question"] if isinstance(entry.get("question"), str) else (known.question if known else None)
+        question = asked if state == "input_required" else None
+        open_calls[call_id] = OpenCall(call_id=call_id, state=state, address=to, question=question)
+
+
+def _address_of(args: Any) -> str | None:
+    try:
+        parsed = json.loads(args) if isinstance(args, str) else args
+    except ValueError:
+        return None
+    address = parsed.get("address") if isinstance(parsed, dict) else None
+    return address if isinstance(address, str) else None
+
+
+def _describe_call(call: OpenCall) -> str:
+    to = f" to {call.address}" if call.address is not None else ""
+    if call.state == "input_required":
+        asked = f' to "{call.question}"' if call.question is not None else ""
+        return f"{call.call_id}{to} waits for an answer{asked}"
+    return f"{call.call_id}{to} is still running"
+
+
+def _describe_open(calls: Sequence[OpenCall]) -> str:
+    counted = "1 call it started was still open" if len(calls) == 1 else f"{len(calls)} calls it started were still open"
+    return f"{counted} ({'; '.join(_describe_call(c) for c in calls)})"
+
+
+def _still_open(calls: Sequence[OpenCall]) -> str:
+    """What the model is told in place of its empty answer."""
+    lines = [
+        f"- {_describe_call(c)}: answer it with answer_agent."
+        if c.state == "input_required"
+        else f"- {_describe_call(c)}: collect its result before you answer."
+        for c in calls
+    ]
+    head = "a call you started is still open." if len(calls) == 1 else "calls you started are still open."
+    return (
+        "Your last answer was empty, but the prompt you are serving is not done: "
+        + head
+        + "\n"
+        + "\n".join(lines)
+        + "\nDeal with them, then answer the prompt in words."
+    )
 
 
 __all__ = [
     "ChatMessage",
     "Completion",
     "ConverseResult",
+    "EmptyReplyError",
+    "OpenCall",
     "ModelClient",
     "ToolRunner",
     "converse",

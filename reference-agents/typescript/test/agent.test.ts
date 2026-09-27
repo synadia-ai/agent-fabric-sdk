@@ -9,7 +9,10 @@
 //             prompt saying "delegate to <address>[: <text>]" it asks for
 //             prompt_agent; on a tool result with a question it asks for
 //             answer_agent, answering "yes"; on any other tool result it
-//             answers with it; otherwise it answers plainly
+//             answers with it; otherwise it answers plainly. A prompt that
+//             starts "hush" makes it answer the question with nothing once,
+//             then with answer_agent when told the call waits; "mute", with
+//             nothing every time
 //
 //   pad     — a ScratchPad in memory, in place of the fabric package's one
 //             over the `sp` command line (the package tests that one),
@@ -46,7 +49,7 @@ import {
   type TraceIds,
 } from "@synadia-ai/agent-fabric";
 import { AgentService } from "@synadia-ai/agent-service";
-import { Agents, signerFromSeed } from "@synadia-ai/agents";
+import { Agents, ServiceError, signerFromSeed } from "@synadia-ai/agents";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startAgent, type RunningAgent } from "../src/agent.js";
 import type { AgentConfig } from "../src/config.js";
@@ -196,10 +199,35 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
         requests.push({ headers: req.headers, body });
         const last = body.messages[body.messages.length - 1]!;
         const delegate = DELEGATE.exec(last.content ?? "");
+        // The prompt being served: the last user message that is not the loop's own word.
+        const asked =
+          [...body.messages]
+            .reverse()
+            .find((m) => m.role === "user" && !(m.content ?? "").startsWith("Your last answer was empty"))?.content ?? "";
+        const silent = /^(hush|mute) /.exec(asked)?.[1];
         let message: ChatMessage;
-        if (last.role === "tool") {
+        if (last.role === "user" && (last.content ?? "").startsWith("Your last answer was empty")) {
+          // Told that a call waits: "hush" answers it now, "mute" stays silent.
+          const waiting = [...body.messages]
+            .reverse()
+            .map((m) => (m.role === "tool" ? (JSON.parse(m.content ?? "{}") as Record<string, string | undefined>) : {}))
+            .find((r) => r["state"] === "input_required");
+          if (silent === "hush" && waiting !== undefined) {
+            const call: ToolCall = {
+              id: "call_fake_3",
+              type: "function",
+              function: { name: "answer_agent", arguments: JSON.stringify({ call_id: waiting["call_id"], answer: "yes" }) },
+            };
+            message = { role: "assistant", content: "", tool_calls: [call] };
+          } else {
+            message = { role: "assistant", content: null };
+          }
+        } else if (last.role === "tool") {
           const result = JSON.parse(last.content ?? "{}") as Record<string, string | undefined>;
-          if (result["state"] === "input_required") {
+          if (result["state"] === "input_required" && silent !== undefined) {
+            // The model that ends its turn with nothing while a call waits.
+            message = { role: "assistant", content: null };
+          } else if (result["state"] === "input_required") {
             const call: ToolCall = {
               id: "call_fake_2",
               type: "function",
@@ -395,6 +423,28 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
     });
     // One child thread, named after the call that started it.
     expect(edges.filter((e) => e.record.tool_call_id !== null).map((e) => e.record.tool_call_id)).toEqual(["call_fake_1"]);
+  });
+
+  it("asks the model again when it answers with nothing while a call waits on a question, and tells it what waits", async () => {
+    const reply = await prompt(`hush delegate to ${asker.subject.prompt}: read the file`);
+    expect(words(reply)).toBe("they said: asked, and was told: yes");
+    expect(answers).toEqual(["yes"]);
+    // prompt_agent, the empty answer, the word about the waiting call, answer_agent, the reply.
+    expect(requests).toHaveLength(4);
+    const told = requests[2]!.body.messages.at(-1)!;
+    expect(told.role).toBe("user");
+    expect(told.content).toContain(`to ${asker.subject.prompt} waits for an answer to "may I read the file?"`);
+    expect(told.content).toContain("answer it with answer_agent");
+  });
+
+  it("fails the prompt, saying why, when the model keeps answering with nothing while a call waits", async () => {
+    const failure = await prompt(`mute delegate to ${asker.subject.prompt}: read the file`).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(ServiceError);
+    const err = failure as ServiceError;
+    expect(err.code).toBe(500);
+    expect(err.message).toContain("the model returned an empty reply 3 times while 1 call it started was still open");
+    expect(requests).toHaveLength(4);
+    expect(pad.commits).toEqual([]);
   });
 
   it("commits its reply, grants the verified caller read on it, and only then appends the reference", async () => {

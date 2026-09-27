@@ -39,7 +39,7 @@ Copy `typescript/` or `python/`, and `env.example` to `.env`. Until the packages
 **In the code.**
 
 - **The persona's default** is in `src/config.ts` (`fabric_agent/config.py`), with every variable the agent reads.
-- **The model loop** is `converse` in `src/model.ts` (`fabric_agent/model.py`): one chat-completions request per model call, each tool call run, until the model answers in words. Another model API changes here; keep the trace headers on every call.
+- **The model loop** is `converse` in `src/model.ts` (`fabric_agent/model.py`): one chat-completions request per model call, each tool call run, until the model answers in words. An empty answer while a call it started still waits or runs is not a reply: the model is told what waits and asked again, and after two such re-asks the prompt fails with the reason (`docs/findings.md` F29). Another model API changes here; keep the trace headers on every call.
 - **What a prompt does** is `serve` in `agent.ts` (`agent.py`): what goes in front of the model, and what happens to the reply. The history is one list per process, shared by every caller; a history per caller is the first thing a real agent changes.
 - **A tool of your own** goes in `src/tools.ts` (`fabric_agent/tools.py`), next to the agent tools: its definition in the list `toolRunner` (`tool_runner`) gives the model, and a branch in its `call`.
 
