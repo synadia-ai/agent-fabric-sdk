@@ -40,7 +40,7 @@ import {
   traceHeaders,
   traceRecordCounts,
 } from "@synadia-ai/agent-fabric";
-import createExtension, { EXTENSION_NAME, type ServedRequest } from "../../src/index.js";
+import { createFabricExtension, EXTENSION_NAME, type ServedRequest } from "../../src/index.js";
 import { extensionContext, recordingLogger } from "../support/fake-plugin.js";
 import {
   dec,
@@ -76,7 +76,7 @@ describe.skipIf(!bin)(
     const services: AgentService[] = [];
     const clients: Agents[] = [];
     const { logger, lines } = recordingLogger();
-    const ext = createExtension(extensionContext({ logger }), {});
+    const ext = createFabricExtension(extensionContext({ logger }), {});
 
     // What happened, in the order the observer saw it.
     const wire: Array<{ what: "edge" | "PI" | "C"; msg: Msg }> = [];

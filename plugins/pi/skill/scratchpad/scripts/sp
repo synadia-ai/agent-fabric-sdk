@@ -1,0 +1,110 @@
+#!/bin/sh
+# scripts/sp: the sp command line for an agent on the fabric
+# (`docs/plugins.md` §9.1 in agent-fabric-sdk).
+#
+# Picks the sp binary for this machine from ../bin (`uname -s`, `uname -m`),
+# or takes SCRATCHPAD_BIN, and runs it with what the model must not handle,
+# from the environment the add-on set up at start:
+#
+#   --url "$NATS_URL" --creds "$NATS_CREDS"   every call
+#   --dir "$SCRATCHPAD_DIR"                   every call, when set
+#   --volume "$SCRATCHPAD_VOLUME"             `init` only: `read` and `hydrate`
+#                                             refuse a volume other than the
+#                                             reference's
+#   --thread-id "$SP_THREAD_ID"               every call, when both are set:
+#   --root-id "$SP_ROOT_ID"                   the prompt being served
+#   --creator "$SP_CREATOR"                   `publish-file`, when set
+#   --grantee-account "$SP_CALLER_ACCOUNT"    `grant`: the agent whose prompt
+#   --grantee-user "$SP_CALLER_USER"          is being served, and no other
+#
+# A call that passes any of these flags itself is refused, and so is a
+# `grant` with no caller to grant to. Refusals have sp's own shape and exit
+# code: one JSON error on stderr, exit 2, no request sent. Otherwise this
+# replaces itself with sp, so sp's exit codes and output pass through.
+
+refuse() {
+  msg=$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  printf '{"error":{"code":"usage","message":"scripts/sp: %s","unknown":false}}\n' "$msg" >&2
+  exit 2
+}
+
+# The command: the first argument that is not a flag or a flag's value, as
+# sp itself finds it. Every sp flag but --apply takes a value.
+command=
+skip=false
+for arg in "$@"; do
+  if $skip; then skip=false; continue; fi
+  case $arg in
+    --) break ;;
+    -apply | --apply | -*=*) ;;
+    -*) skip=true ;;
+    *) command=$arg; break ;;
+  esac
+done
+
+for arg in "$@"; do
+  case $arg in
+    --) break ;;
+  esac
+  name=${arg%%=*}
+  name=${name#-}
+  name=${name#-}
+  case $arg in
+    -*)
+      case $name in
+        url | creds | dir | volume | thread-id | root-id | tool-call-id | creator | grantee-account | grantee-user)
+          refuse "--$name is set by the agent, not passed; run the command without it" ;;
+      esac
+      ;;
+  esac
+done
+
+if [ -n "${SCRATCHPAD_BIN:-}" ]; then
+  bin=$SCRATCHPAD_BIN
+else
+  case $(uname -s) in
+    Darwin) os=darwin ;;
+    Linux) os=linux ;;
+    *) refuse "unsupported platform $(uname -s) $(uname -m); sp is built for darwin and linux on arm64 and amd64" ;;
+  esac
+  case $(uname -m) in
+    arm64 | aarch64) arch=arm64 ;;
+    x86_64 | amd64) arch=amd64 ;;
+    *) refuse "unsupported platform $(uname -s) $(uname -m); sp is built for darwin and linux on arm64 and amd64" ;;
+  esac
+  here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || refuse "cannot find the skill directory"
+  bin=$here/../bin/sp-$os-$arch
+fi
+[ -x "$bin" ] || refuse "no sp binary at $bin; the add-on package ships one per platform (npm run build:sp)"
+
+if [ -z "${NATS_URL:-}" ] || [ -z "${NATS_CREDS:-}" ]; then
+  refuse "ScratchPad is not configured for this agent: NATS_URL and NATS_CREDS are unset"
+fi
+
+set -- --url "$NATS_URL" --creds "$NATS_CREDS" "$@"
+if [ -n "${SCRATCHPAD_DIR:-}" ]; then
+  set -- --dir "$SCRATCHPAD_DIR" "$@"
+fi
+if [ -n "${SP_THREAD_ID:-}" ] && [ -n "${SP_ROOT_ID:-}" ]; then
+  set -- --thread-id "$SP_THREAD_ID" --root-id "$SP_ROOT_ID" "$@"
+fi
+
+case $command in
+  init)
+    [ -n "${SCRATCHPAD_VOLUME:-}" ] || refuse "ScratchPad has no volume for this agent: SCRATCHPAD_VOLUME is unset"
+    set -- --volume "$SCRATCHPAD_VOLUME" "$@"
+    ;;
+  publish-file)
+    if [ -n "${SP_CREATOR:-}" ]; then
+      set -- --creator "$SP_CREATOR" "$@"
+    fi
+    ;;
+  grant)
+    if [ -z "${SP_CALLER_ACCOUNT:-}" ] || [ -z "${SP_CALLER_USER:-}" ]; then
+      refuse "grant goes only to the agent whose prompt is being served, and no prompt with a verified caller is"
+    fi
+    set -- --grantee-account "$SP_CALLER_ACCOUNT" --grantee-user "$SP_CALLER_USER" "$@"
+    ;;
+esac
+
+exec "$bin" "$@"

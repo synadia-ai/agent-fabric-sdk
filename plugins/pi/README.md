@@ -7,9 +7,11 @@ extension module in the shape the plugin loads: named in
 `SYNADIA_PI_EXTENSIONS`, it puts the fabric package's tracing on the
 plugin's service and on the client its agent tools prompt through, the
 fabric's two headers on PI's own model calls, and the `409` loop guard in
-front of PI's handler. Without it the plugin is the plain plugin. The
-contract it fills is the plugin's `agents/EXTENSIONS.md`; the spec is
-[`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1 and §3.2.
+front of PI's handler. It also ships ScratchPad's skill with the sp command
+line, so PI's model reads, publishes and shares ScratchPad content through
+its bash tool. Without it the plugin is the plain plugin. The contract it
+fills is the plugin's `agents/EXTENSIONS.md`; the spec is
+[`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1, §3.2 and §9.
 
 ## What it does
 
@@ -62,8 +64,7 @@ into a refusal the caller sees at once.
 
 **What it does not do.** No `served` record: PI's calls carry the headers,
 so they need none, and PI writes nothing to `TRACE.edges` but the edges of
-its own delegations. No `toolExtensions`: a harness reads no ScratchPad
-reference in the MVP. No `stopping`: an edge is published before the prompt
+its own delegations. No `stopping`: an edge is published before the prompt
 it describes and counted as it goes, so there is nothing to flush.
 
 ## Naming it
@@ -101,6 +102,75 @@ whitespace, a wildcard, not a string) stops the factory; the plugin logs
 `extension "…" not loaded: …` and starts plain, so the mistake is visible at
 start. There is no `tracing` setting: the add-on's presence is the switch.
 
+## ScratchPad
+
+The package carries ScratchPad's skill, adapted for an agent on the fabric,
+in `skill/scratchpad/`: `SKILL.md`, `scripts/sp`, and `bin/` with the sp
+command line for darwin and linux on arm64 and amd64. The model runs
+`scripts/sp` through PI's bash tool; the harness's tools stay as the
+operator configured them, and PI asks no permission for any command.
+
+**The operator's step.** Start PI with the skill and the bash tool on:
+
+```sh
+pi --mode rpc … \
+  -e <plugin>/extensions/nats-channel.ts \
+  --skill <add-on>/skill/scratchpad \
+  --tools bash,discover_agents,prompt_agent,answer_agent
+```
+
+`--skill` loads the directory even under `--no-skills`. PI lists the skill
+to the model only when its `bash` or `read` tool is on, so
+`--no-builtin-tools` alone hides it; `--tools` naming `bash` and the
+plugin's tools keeps them. Then name a volume for PI's identity, reserved
+by the ScratchPad operator: the extension entry's `options.scratchpad`, or
+the variable.
+
+```json
+{ "module": "@synadia-ai/agent-fabric-pi", "options": { "scratchpad": { "volume": "PiVol" } } }
+```
+
+**Where the settings come from.** Once the service is up, the add-on
+resolves each from the entry's `options.scratchpad` (`volume`, `dir`, `url`,
+`creds`), else the variable (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`,
+`NATS_URL`, `NATS_CREDS`), else, for the URL and the credentials file, the
+plugin's own NATS context (`NATS_CONTEXT`, or `context` in
+`nats-channel.json`), which sp cannot read itself. The workspace defaults to
+`scratchpad/` in the plugin's state directory (`~/.pi/agent/scratchpad`),
+created if missing; keep it across restarts. Without a volume ScratchPad is
+off; without a URL and a credentials file it is off with a warning.
+
+**What `scripts/sp` gets.** The add-on sets these in PI's process, and PI's
+bash tool passes them to every command (measured on PI 0.85.1):
+
+| Variable                              | Set                                                           | `scripts/sp` adds                                                              |
+| ------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `NATS_URL`, `NATS_CREDS`              | at start                                                      | `--url`, `--creds`, every call                                                 |
+| `SCRATCHPAD_DIR`                      | at start                                                      | `--dir`, every call                                                            |
+| `SCRATCHPAD_VOLUME`                   | at start                                                      | `--volume`, on `init` only: a read refuses a volume other than the reference's |
+| `SP_CREATOR`                          | at start: PI's prompt address                                 | `--creator`, on `publish-file`                                                 |
+| `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its hand-over to PI's loop to its end | `--thread-id`, `--root-id`, every call                                         |
+| `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                               | `--grantee-account`, `--grantee-user`, on `grant`                              |
+
+The model passes none of these flags; `scripts/sp` refuses them, and
+refuses a `grant` when no served prompt has a verified caller, so PI grants
+read on what it publishes to the agent that prompted it and to no other.
+On a platform sp is not built for, `scripts/sp` says so, in sp's own error
+shape with exit 2. `SCRATCHPAD_BIN` names another sp binary.
+
+**References in and out.** With ScratchPad on, the add-on registers PI as
+reading references (`scratchpad_refs_ok: "true"` through the extension's
+`metadata`), so discovery shows `reads_scratchpad_references: true` and a
+caller's `prompt_agent` hands them to PI. And the references PI's model puts
+into its own `prompt_agent` go through the fabric package's ScratchPad
+extension, as an SDK-built agent's do: a receiver that reads references is
+granted read, first-hand, right before the prompt goes out; any other gets
+the text without them and the call's result says how many were removed; a
+reference PI was neither given nor made is refused. A reference into PI's
+own volume counts as made by PI, since its model publishes with
+`scripts/sp`, which the extension does not see. The extension's own grants
+run the packaged sp directly, with the settings above.
+
 ## Identity
 
 Records are signed, so the plugin needs `senderIdentity: "signed"` with a
@@ -120,13 +190,15 @@ thread's calls carry its timing.
 
 ## Public API
 
-|                                                                                                                                                                               |                                                                                                       |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `default`, `createFabricExtension(ctx, env?)`                                                                                                                                 | the factory of the contract; `env` is where the variable is read from, `process.env` by default       |
-| `resolveEdgeSubject(options, env?)`                                                                                                                                           | the setting's precedence, as above                                                                    |
-| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                           | the constants                                                                                         |
-| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `serving(rootId)`, `waiting(rootId)` |
-| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI   |
+|                                                                                                                                                                               |                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`, `fabricExtension(ctx, env?)`                                                                                                                                       | the factory of the contract: resolves ScratchPad, then builds the extension; `env` is where the variables are read and ScratchPad's are set, `process.env` by default |
+| `createFabricExtension(ctx, env?, scratchPad?)`                                                                                                                               | the same, synchronous, from settings already resolved                                                                                                                 |
+| `resolveEdgeSubject(options, env?)`                                                                                                                                           | the setting's precedence, as above                                                                                                                                    |
+| `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                                           | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the packaged sp's path                                                                 |
+| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                           | the constants                                                                                                                                                         |
+| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `serving(rootId)`, `waiting(rootId)`                                                                 |
+| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI                                                                   |
 
 The setting's precedence, the loop guard and the contract's types live in
 `@synadia-ai/agent-fabric`, shared by every add-on under `plugins/`; this
@@ -143,9 +215,17 @@ outside the repo. The tests: unit, a fake of the plugin driving the events
 `AgentService` and `Agents` over a local `nats-server` in operator mode,
 the edges on the wire validated against `test-fixtures/schemas/edge.json`.
 
+The sp binaries are built from ScratchPad's repository, a checkout next to
+this one (`SCRATCHPAD_SRC` names another), at the commit pinned in
+`scripts/build-sp.sh`, with Go on `PATH`: `npm run build:sp`, which `npm
+pack` runs too (`prepack`). They are gitignored. `test/unit/scripts-sp.test.ts`
+drives `scripts/sp` with fake binaries and a fake `uname`, and runs the real
+binary for this machine when it is built.
+
 ```sh
 (cd ../../typescript && npm install && npm run build)
 npm install
+npm run build:sp
 npm run typecheck && npm run lint && npm run format:check
 npm test
 npm run build

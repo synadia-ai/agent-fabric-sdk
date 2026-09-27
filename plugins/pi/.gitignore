@@ -3,3 +3,4 @@ dist/
 coverage/
 *.tsbuildinfo
 package-lock.json
+skill/scratchpad/bin/

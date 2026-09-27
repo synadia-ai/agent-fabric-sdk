@@ -46,6 +46,8 @@ export interface ContextOverrides {
   readonly senderIdentity?: "off" | "signed";
   readonly options?: Readonly<Record<string, unknown>>;
   readonly logger?: Logger;
+  readonly stateDir?: string;
+  readonly config?: Readonly<Record<string, unknown>>;
 }
 
 /** What the plugin hands the factory, as the PI plugin fills it. */
@@ -58,7 +60,8 @@ export function extensionContext(overrides: ContextOverrides = {}): AgentExtensi
       name: "editor",
       senderIdentity: overrides.senderIdentity ?? "signed",
       minSenderTrust: "signed",
-      config: { context: "fabric", owner: "team", sessionName: "editor" },
+      ...(overrides.stateDir === undefined ? {} : { stateDir: overrides.stateDir }),
+      config: overrides.config ?? { context: "fabric", owner: "team", sessionName: "editor" },
     },
     options: overrides.options ?? {},
     logger: overrides.logger ?? recordingLogger().logger,
