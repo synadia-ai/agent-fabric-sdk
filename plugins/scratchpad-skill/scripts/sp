@@ -29,6 +29,12 @@
 # result is the publication's JSON with `granted_to_caller` (the grant's
 # result) or `caller_grant_error` (sp's error) added; the exit code is the
 # publication's.
+#
+# Where the add-on cannot set the shell tool's environment (Claude Code's,
+# whose Bash tool is no child of the add-on's process), it writes these
+# variables to a file instead, and SP_ENV_FILE names it: `NAME=value` lines,
+# read on every call, the names above and no others. When the file exists
+# it is the truth: a served prompt's variable it does not name is unset.
 
 refuse() {
   msg=$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')
@@ -84,6 +90,23 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [ -n "${SP_ENV_FILE:-}" ] && [ -f "$SP_ENV_FILE" ]; then
+  unset SP_THREAD_ID SP_ROOT_ID SP_CALLER_ACCOUNT SP_CALLER_USER
+  while IFS= read -r line || [ -n "$line" ]; do
+    case $line in
+      *=*)
+        case ${line%%=*} in
+          SP_NATS_URL | SP_NATS_CREDS | SCRATCHPAD_DIR | SCRATCHPAD_VOLUME | SP_CREATOR | \
+            SP_THREAD_ID | SP_ROOT_ID | SP_CALLER_ACCOUNT | SP_CALLER_USER)
+            # The name is one of these; the value is assigned as it is.
+            eval "${line%%=*}=\${line#*=}"
+            ;;
+        esac
+        ;;
+    esac
+  done <"$SP_ENV_FILE"
+fi
 
 if [ -n "${SCRATCHPAD_BIN:-}" ]; then
   bin=$SCRATCHPAD_BIN

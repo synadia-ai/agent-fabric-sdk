@@ -59,6 +59,9 @@ export interface ContextOverrides {
   readonly senderIdentity?: "off" | "signed";
   readonly options?: Readonly<Record<string, unknown>>;
   readonly logger?: Logger;
+  /** `null` for a plugin that names no state directory. */
+  readonly stateDir?: string | null;
+  readonly config?: Readonly<Record<string, unknown>>;
 }
 
 /** What the plugin hands the factory, as the MCP server fills it. */
@@ -71,8 +74,14 @@ export function extensionContext(overrides: ContextOverrides = {}): AgentExtensi
       name: "claude",
       senderIdentity: overrides.senderIdentity ?? "signed",
       minSenderTrust: "signed",
-      stateDir: "/tmp/claude-state",
-      config: { owner: "team", sessionName: "claude", senderIdentity: "signed" },
+      ...(overrides.stateDir === null
+        ? {}
+        : { stateDir: overrides.stateDir ?? "/tmp/claude-state" }),
+      config: overrides.config ?? {
+        owner: "team",
+        sessionName: "claude",
+        senderIdentity: "signed",
+      },
     },
     options: overrides.options ?? {},
     logger: overrides.logger ?? recordingLogger().logger,
