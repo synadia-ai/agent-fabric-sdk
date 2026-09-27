@@ -150,24 +150,59 @@ describe("converse: an empty answer while a call is open", () => {
 });
 
 describe("converse: an empty answer with nothing open", () => {
-  it("is the reply, as before", async () => {
-    const result = await converse({
+  it("is not the reply either: the model is asked once more, and its answer is the reply", async () => {
+    const model = scriptedModel([empty, words("here it is")]);
+    const messages = start();
+    const result = await converse({ model, tools: scriptedTools([]), messages, traceHeaders: () => ({}) });
+    expect(result).toEqual({ reply: "here it is", modelCalls: 2, toolCalls: 0 });
+    const told = model.seen[1]!.at(-1)!;
+    expect(told).toEqual({
+      role: "user",
+      content: "Your last answer was empty. Answer the prompt you are serving in words.",
+    });
+    expect(messages.some((m) => m.role === "assistant" && m.content === null)).toBe(false);
+  });
+
+  it("fails the turn when the second answer is empty too: the model returned no reply", async () => {
+    const model = scriptedModel([empty, words(" ")]);
+    const failure = await converse({
+      model,
+      tools: scriptedTools([]),
+      messages: start(),
+      traceHeaders: () => ({}),
+    }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(EmptyReplyError);
+    const err = failure as EmptyReplyError;
+    expect(err.message).toBe("the model returned no reply: its answer was empty 2 times");
+    expect(err.openCalls).toEqual([]);
+    expect(model.seen).toHaveLength(2);
+  });
+
+  it("asks at most maxEmptyReplies times: with 0, the first empty answer fails", async () => {
+    const failure = await converse({
       model: scriptedModel([empty]),
       tools: scriptedTools([]),
       messages: start(),
       traceHeaders: () => ({}),
-    });
-    expect(result).toEqual({ reply: "", modelCalls: 1, toolCalls: 0 });
+      maxEmptyReplies: 0,
+    }).catch((e: unknown) => e);
+    expect((failure as EmptyReplyError).message).toBe("the model returned no reply: its answer was empty once");
   });
 
-  it("is the reply once the call it started has ended", async () => {
+  it("applies once the call the model started has ended", async () => {
     const model = scriptedModel([
       toolCall("t1", "prompt_agent", { address: ASKER, prompt: "x" }),
       toolCall("t2", "answer_agent", { call_id: "call_1", answer: "yes" }),
       empty,
+      empty,
     ]);
     const tools = scriptedTools([asked, { call_id: "call_1", state: "failed", error: "gone" }]);
-    const result = await converse({ model, tools, messages: start(), traceHeaders: () => ({}) });
-    expect(result).toEqual({ reply: "", modelCalls: 3, toolCalls: 2 });
+    const failure = await converse({ model, tools, messages: start(), traceHeaders: () => ({}) }).catch(
+      (e: unknown) => e,
+    );
+    expect((failure as EmptyReplyError).message).toBe("the model returned no reply: its answer was empty 2 times");
+    expect(model.seen[3]!.at(-1)!.content).toBe(
+      "Your last answer was empty. Answer the prompt you are serving in words.",
+    );
   });
 });

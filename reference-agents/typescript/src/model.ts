@@ -147,7 +147,8 @@ export interface ConverseOptions {
   /**
    * How many times the model is asked again when it answers with nothing
    * while calls it started are still open. One more empty answer fails the
-   * turn ({@link EmptyReplyError}). Default 2.
+   * turn ({@link EmptyReplyError}). Default 2. With no call open the model
+   * is asked again once, at most this many times.
    */
   readonly maxEmptyReplies?: number;
   readonly log?: (line: string) => void;
@@ -164,9 +165,10 @@ export interface OpenCall {
 }
 
 /**
- * The model answered with nothing, again and again, while calls it started
- * were still open: the turn is not done, and it has no reply. The agent
- * fails the prompt with this message rather than answer it with nothing.
+ * The model answered with nothing, again, after it was asked for a reply:
+ * the turn has no reply, and, when calls it started are still open, it is
+ * not done either. The agent fails the prompt with this message rather than
+ * answer it with nothing.
  */
 export class EmptyReplyError extends Error {
   override readonly name = "EmptyReplyError";
@@ -175,8 +177,10 @@ export class EmptyReplyError extends Error {
     readonly openCalls: readonly OpenCall[],
   ) {
     super(
-      `the model returned an empty reply ${emptyReplies} times while ${describeOpen(openCalls)}; ` +
-        "no reply was produced",
+      openCalls.length > 0
+        ? `the model returned an empty reply ${times(emptyReplies)} while ${describeOpen(openCalls)}; ` +
+            "no reply was produced"
+        : `the model returned no reply: its answer was empty ${times(emptyReplies)}`,
     );
   }
 }
@@ -200,8 +204,11 @@ export interface ConverseResult {
  * wait and on what, and asked again, at most `maxEmptyReplies` times; then
  * the turn fails with {@link EmptyReplyError}. Which calls are open comes
  * from the tools' own results: each carries the call's `call_id` and
- * `state`, and a question while it is `input_required`. An empty answer
- * with nothing open is the reply, as before.
+ * `state`, and a question while it is `input_required`.
+ *
+ * An empty answer with nothing open is no reply either: the model is asked
+ * once more for one, and a second empty answer fails the turn with
+ * {@link EmptyReplyError}. A turn never ends `ok` with nothing.
  */
 export async function converse(options: ConverseOptions): Promise<ConverseResult> {
   const maxToolRounds = options.maxToolRounds ?? 8;
@@ -227,15 +234,21 @@ export async function converse(options: ConverseOptions): Promise<ConverseResult
     );
     if (calls.length === 0) {
       const reply = message.content ?? "";
-      if (reply.trim() !== "" || open.size === 0) return { reply, modelCalls, toolCalls };
+      if (reply.trim() !== "") return { reply, modelCalls, toolCalls };
       emptyReplies += 1;
       const waiting = [...open.values()];
-      if (emptyReplies > maxEmptyReplies) throw new EmptyReplyError(emptyReplies, waiting);
-      log(`  empty reply while ${describeOpen(waiting)}: asking again (${emptyReplies} of ${maxEmptyReplies})`);
+      // With calls open the model has work left; with none, one more chance.
+      const bound = waiting.length > 0 ? maxEmptyReplies : Math.min(1, maxEmptyReplies);
+      if (emptyReplies > bound) throw new EmptyReplyError(emptyReplies, waiting);
+      log(
+        waiting.length > 0
+          ? `  empty reply while ${describeOpen(waiting)}: asking again (${emptyReplies} of ${bound})`
+          : `  empty reply: asking again for one (${emptyReplies} of ${bound})`,
+      );
       // The empty answer is no turn of the conversation: out of the history,
       // and a word to the model in its place.
       options.messages.pop();
-      options.messages.push({ role: "user", content: stillOpen(waiting) });
+      options.messages.push({ role: "user", content: waiting.length > 0 ? stillOpen(waiting) : NO_REPLY });
       continue;
     }
     for (const call of calls) {
@@ -298,6 +311,10 @@ function addressOf(args: string): string | undefined {
   }
 }
 
+function times(n: number): string {
+  return n === 1 ? "once" : `${n} times`;
+}
+
 function describeCall(call: OpenCall): string {
   const to = call.address !== undefined ? ` to ${call.address}` : "";
   return call.state === "input_required"
@@ -310,7 +327,10 @@ function describeOpen(calls: readonly OpenCall[]): string {
   return `${counted} (${calls.map(describeCall).join("; ")})`;
 }
 
-/** What the model is told in place of its empty answer. */
+/** What the model is told in place of an empty answer with nothing open. */
+const NO_REPLY = "Your last answer was empty. Answer the prompt you are serving in words.";
+
+/** What the model is told in place of its empty answer while calls are open. */
 function stillOpen(calls: readonly OpenCall[]): string {
   const lines = calls.map((call) =>
     call.state === "input_required"

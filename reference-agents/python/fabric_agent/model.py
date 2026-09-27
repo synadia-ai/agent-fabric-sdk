@@ -118,16 +118,19 @@ class OpenCall:
 
 
 class EmptyReplyError(Exception):
-    """The model answered with nothing, again and again, while calls it started
-    were still open: the turn is not done, and it has no reply. The agent fails
-    the prompt with this message rather than answer it with nothing."""
+    """The model answered with nothing, again, after it was asked for a reply:
+    the turn has no reply, and, when calls it started are still open, it is not
+    done either. The agent fails the prompt with this message rather than
+    answer it with nothing."""
 
     def __init__(self, empty_replies: int, open_calls: Sequence[OpenCall]) -> None:
         self.empty_replies = empty_replies
         self.open_calls = list(open_calls)
         super().__init__(
-            f"the model returned an empty reply {empty_replies} times while {_describe_open(open_calls)}; "
+            f"the model returned an empty reply {_times(empty_replies)} while {_describe_open(open_calls)}; "
             "no reply was produced"
+            if open_calls
+            else f"the model returned no reply: its answer was empty {_times(empty_replies)}"
         )
 
 
@@ -158,8 +161,13 @@ async def converse(
     and on what, and asked again, at most ``max_empty_replies`` times; then the
     turn fails with :class:`EmptyReplyError`. Which calls are open comes from
     the tools' own results: each carries the call's ``call_id`` and ``state``,
-    and a question while it is ``input_required``. An empty answer with
-    nothing open is the reply, as before.
+    and a question while it is ``input_required``.
+
+    An empty answer with nothing open is no reply either: the model is asked
+    once more for one, and a second empty answer fails the turn with
+    :class:`EmptyReplyError`. A turn never ends ``ok`` with nothing. With
+    calls open the model is asked again at most ``max_empty_replies`` times;
+    with none, once, and at most that many.
     """
     say = log or (lambda _line: None)
     model_calls = 0
@@ -181,17 +189,23 @@ async def converse(
         )
         if not calls:
             reply = message.get("content") or ""
-            if reply.strip() or not open_calls:
+            if reply.strip():
                 return ConverseResult(reply=reply, model_calls=model_calls, tool_calls=tool_calls)
             empty_replies += 1
             waiting = list(open_calls.values())
-            if empty_replies > max_empty_replies:
+            # With calls open the model has work left; with none, one more chance.
+            bound = max_empty_replies if waiting else min(1, max_empty_replies)
+            if empty_replies > bound:
                 raise EmptyReplyError(empty_replies, waiting)
-            say(f"  empty reply while {_describe_open(waiting)}: asking again ({empty_replies} of {max_empty_replies})")
+            say(
+                f"  empty reply while {_describe_open(waiting)}: asking again ({empty_replies} of {bound})"
+                if waiting
+                else f"  empty reply: asking again for one ({empty_replies} of {bound})"
+            )
             # The empty answer is no turn of the conversation: out of the
             # history, and a word to the model in its place.
             messages.pop()
-            messages.append({"role": "user", "content": _still_open(waiting)})
+            messages.append({"role": "user", "content": _still_open(waiting) if waiting else _NO_REPLY})
             round_ += 1
             continue
         for call in calls:
@@ -246,6 +260,14 @@ def _address_of(args: Any) -> str | None:
     return address if isinstance(address, str) else None
 
 
+#: What the model is told in place of an empty answer with nothing open.
+_NO_REPLY = "Your last answer was empty. Answer the prompt you are serving in words."
+
+
+def _times(n: int) -> str:
+    return "once" if n == 1 else f"{n} times"
+
+
 def _describe_call(call: OpenCall) -> str:
     to = f" to {call.address}" if call.address is not None else ""
     if call.state == "input_required":
@@ -260,7 +282,7 @@ def _describe_open(calls: Sequence[OpenCall]) -> str:
 
 
 def _still_open(calls: Sequence[OpenCall]) -> str:
-    """What the model is told in place of its empty answer."""
+    """What the model is told in place of its empty answer while calls are open."""
     lines = [
         f"- {_describe_call(c)}: answer it with answer_agent."
         if c.state == "input_required"

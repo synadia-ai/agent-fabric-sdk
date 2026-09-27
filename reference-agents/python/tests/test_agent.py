@@ -283,6 +283,16 @@ async def test_the_agent_against_a_fake_model_behind_a_fake_proxy(tmp_path: Path
             assert len(fake.requests) == 4
             assert pad.commits == []
 
+            # Nothing open, and the model answers with nothing twice: the prompt fails, saying it gave no reply.
+            fake.requests.clear(); pad.commits.clear()
+            with pytest.raises(ProtocolError) as failed:
+                await prompt("blank say something")
+            assert "service error 500" in str(failed.value)
+            assert "the model returned no reply: its answer was empty 2 times" in str(failed.value)
+            assert len(fake.requests) == 2
+            assert fake.requests[1].body["messages"][-1]["content"] == "Your last answer was empty. Answer the prompt you are serving in words."
+            assert pad.commits == []
+
             # The reply committed, the verified caller granted read on it, and only then the reference appended.
             edges.clear(); pad.commits.clear(); pad.grants.clear()
             reply = await prompt("a plain question")

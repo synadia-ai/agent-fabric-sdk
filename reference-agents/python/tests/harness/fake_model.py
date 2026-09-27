@@ -7,7 +7,8 @@ with the tool's result; on a user message containing ``delegate to <address>``
 it asks for ``prompt_agent`` to that address, with ``ping`` or with the text
 after ``: ``; otherwise it answers plainly. A prompt that starts ``hush``
 makes it answer the question with nothing once, then with ``answer_agent``
-when told the call waits; ``mute``, with nothing every time. The same server
+when told the call waits; ``mute``, with nothing every time; ``blank``,
+with nothing to a plain prompt. The same server
 can serve two agents at once, so the interop test uses one for both.
 """
 
@@ -21,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 _DELEGATE = re.compile(r"delegate to ([^\s:]+)(?:: (.*))?")
-_SILENT = re.compile(r"(hush|mute) ")
+_SILENT = re.compile(r"(hush|mute|blank) ")
 _TOLD = "Your last answer was empty"
 
 
@@ -136,6 +137,8 @@ class FakeModel:
                             }
                         ],
                     }
+                elif silent == "blank":
+                    message = {"role": "assistant", "content": None}
                 else:
                     message = {"role": "assistant", "content": f"plain answer to: {content}"}
                 reply = json.dumps(

@@ -12,7 +12,7 @@
 //             answers with it; otherwise it answers plainly. A prompt that
 //             starts "hush" makes it answer the question with nothing once,
 //             then with answer_agent when told the call waits; "mute", with
-//             nothing every time
+//             nothing every time; "blank", with nothing to a plain prompt
 //
 //   pad     — a ScratchPad in memory, in place of the fabric package's one
 //             over the `sp` command line (the package tests that one),
@@ -204,7 +204,7 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
           [...body.messages]
             .reverse()
             .find((m) => m.role === "user" && !(m.content ?? "").startsWith("Your last answer was empty"))?.content ?? "";
-        const silent = /^(hush|mute) /.exec(asked)?.[1];
+        const silent = /^(hush|mute|blank) /.exec(asked)?.[1];
         let message: ChatMessage;
         if (last.role === "user" && (last.content ?? "").startsWith("Your last answer was empty")) {
           // Told that a call waits: "hush" answers it now, "mute" stays silent.
@@ -247,6 +247,8 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
             },
           };
           message = { role: "assistant", content: "", tool_calls: [call] };
+        } else if (silent === "blank") {
+          message = { role: "assistant", content: null };
         } else {
           message = { role: "assistant", content: `plain answer to: ${last.content}` };
         }
@@ -444,6 +446,20 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
     expect(err.code).toBe(500);
     expect(err.message).toContain("the model returned an empty reply 3 times while 1 call it started was still open");
     expect(requests).toHaveLength(4);
+    expect(pad.commits).toEqual([]);
+  });
+
+  it("fails the prompt, saying the model returned no reply, when it answers with nothing twice and nothing is open", async () => {
+    const failure = await prompt("blank say something").catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(ServiceError);
+    const err = failure as ServiceError;
+    expect(err.code).toBe(500);
+    expect(err.message).toContain("the model returned no reply: its answer was empty 2 times");
+    // The empty answer, then the word asking for one, then the second empty answer.
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.body.messages.at(-1)!.content).toBe(
+      "Your last answer was empty. Answer the prompt you are serving in words.",
+    );
     expect(pad.commits).toEqual([]);
   });
 

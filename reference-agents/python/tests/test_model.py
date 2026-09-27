@@ -150,19 +150,50 @@ async def test_a_running_call_is_open_and_the_model_is_told_to_collect_it() -> N
     assert f"call_1 to {ASKER} is still running: collect its result before you answer" in model.seen[2][-1]["content"]
 
 
-async def test_an_empty_answer_with_nothing_open_is_the_reply() -> None:
-    result = await converse(model=ScriptedModel([EMPTY]), tools=ScriptedTools([]), messages=start(), trace_headers=no_headers)  # type: ignore[arg-type]
-    assert (result.reply, result.model_calls, result.tool_calls) == ("", 1, 0)
+NO_REPLY = "Your last answer was empty. Answer the prompt you are serving in words."
 
 
-async def test_an_empty_answer_is_the_reply_once_the_call_has_ended() -> None:
+async def test_an_empty_answer_with_nothing_open_is_not_the_reply_either() -> None:
+    model = ScriptedModel([EMPTY, words("here it is")])
+    messages = start()
+    result = await converse(model=model, tools=ScriptedTools([]), messages=messages, trace_headers=no_headers)  # type: ignore[arg-type]
+    assert (result.reply, result.model_calls, result.tool_calls) == ("here it is", 2, 0)
+    assert model.seen[1][-1] == {"role": "user", "content": NO_REPLY}
+    assert not any(m["role"] == "assistant" and m.get("content") is None for m in messages)
+
+
+async def test_a_second_empty_answer_with_nothing_open_fails_the_turn() -> None:
+    model = ScriptedModel([EMPTY, words(" ")])
+    with pytest.raises(EmptyReplyError) as failed:
+        await converse(model=model, tools=ScriptedTools([]), messages=start(), trace_headers=no_headers)  # type: ignore[arg-type]
+    assert str(failed.value) == "the model returned no reply: its answer was empty 2 times"
+    assert failed.value.open_calls == []
+    assert len(model.seen) == 2
+
+
+async def test_with_max_empty_replies_zero_the_first_empty_answer_fails() -> None:
+    with pytest.raises(EmptyReplyError) as failed:
+        await converse(
+            model=ScriptedModel([EMPTY]),  # type: ignore[arg-type]
+            tools=ScriptedTools([]),
+            messages=start(),
+            trace_headers=no_headers,
+            max_empty_replies=0,
+        )
+    assert str(failed.value) == "the model returned no reply: its answer was empty once"
+
+
+async def test_the_rule_applies_once_the_call_has_ended() -> None:
     model = ScriptedModel(
         [
             tool_call("t1", "prompt_agent", {"address": ASKER, "prompt": "x"}),
             tool_call("t2", "answer_agent", {"call_id": "call_1", "answer": "yes"}),
             EMPTY,
+            EMPTY,
         ]
     )
     tools = ScriptedTools([ASKED, {"call_id": "call_1", "state": "failed", "error": "gone"}])
-    result = await converse(model=model, tools=tools, messages=start(), trace_headers=no_headers)  # type: ignore[arg-type]
-    assert (result.reply, result.model_calls, result.tool_calls) == ("", 3, 2)
+    with pytest.raises(EmptyReplyError) as failed:
+        await converse(model=model, tools=tools, messages=start(), trace_headers=no_headers)  # type: ignore[arg-type]
+    assert str(failed.value) == "the model returned no reply: its answer was empty 2 times"
+    assert model.seen[3][-1]["content"] == NO_REPLY
