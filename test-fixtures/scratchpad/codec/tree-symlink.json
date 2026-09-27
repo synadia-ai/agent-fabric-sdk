@@ -1,0 +1,20 @@
+{
+  "name": "tree-symlink",
+  "kind": "tree",
+  "description": "A symlink entry: l field present, i and x absent; the target is stored verbatim.",
+  "object": {
+    "entries": [
+      {
+        "name": "link",
+        "type": "symlink",
+        "target": "../shared/data.bin"
+      }
+    ]
+  },
+  "expect": {
+    "id": "e0cadd64c88022f070619986fb1140151d4e49562c710121bb76d9b459c6fa42",
+    "canonical_hex": "a1616581a3616c722e2e2f7368617265642f646174612e62696e616e646c696e6b617402",
+    "canonical_sha256": "635ea99396316d742eea09b766339f33dcc173f009268f0c7e4fcb99c50ce71a",
+    "canonical_length": 36
+  }
+}

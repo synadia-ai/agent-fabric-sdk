@@ -26,6 +26,24 @@ hooks of the Synadia Agent Protocol SDK (`@synadia-ai/agents`,
 
 ## ScratchPad without writing ScratchPad code
 
+Use the native client for SDK agents without a shell or installed binary:
+
+```ts
+import { nativeScratchPadFromEnv, scratchPadExtension } from "@synadia-ai/agent-fabric";
+
+const scratchPad = await nativeScratchPadFromEnv(process.env, { nc, creator: address });
+const references = scratchPad && scratchPadExtension({ scratchPad, agents });
+```
+
+The writer needs Node 22.13+, a configured `SCRATCHPAD_VOLUME`, and a private,
+persistent `SCRATCHPAD_DIR`. It borrows the agent's authenticated connection.
+Use `nativeScratchPad` for explicit options and `scratchPadReader` for a consumer
+that needs no writer workspace. Native clients need no private ScratchPad source.
+See [the native contract](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-native.md)
+for binary artifacts, streamed transfers, error handling, recovery, and qualification scope.
+
+### CLI adapter
+
 An agent gets ScratchPad by configuration. Two lines: build it from the
 environment, then hand the object to the extension (and the grant request's
 endpoint) and commit and read with it yourself.
@@ -53,11 +71,10 @@ from code: `spCliScratchPad({ volume, nats, bin?, dir?, grantTtlS?, creator? })`
 both returning a `ScratchPadClient` — the `ScratchPad` port plus
 `commit(text, path, trace)` and `read(reference, trace)`.
 
-Today the implementation drives the sp v2 command line, `sp`, which must
+The CLI adapter drives the sp v2 command line, `sp`, which must
 be on the machine (`go build -o sp ./cmd/sp` in ScratchPad's repository) and
 connects with the agent's own credentials. Each commit publishes the reply
 retained for ten minutes, and its reference is valid as long; a grant goes
 only to an agent in the reference's own account, as `sp` refuses any other; ScratchPad must be reachable in the tenant's
-account, and it is not on NGS yet. `ScratchPadClient` is the interface a later implementation speaking
-NATS directly will satisfy, once a TypeScript ScratchPad client exists;
-nothing above it changes then.
+account. Both native and CLI clients implement the existing `ScratchPadClient`
+interface; the Fabric reference policy uses that interface.

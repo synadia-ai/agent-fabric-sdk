@@ -1,0 +1,15 @@
+{
+  "name": "reject-tree-too-deep",
+  "kind": "deep_tree",
+  "description": "A chain of MAX_DEPTH+1 (129) nodes.",
+  "object": {
+    "depth": 129,
+    "dir_name": "d",
+    "leaf": {
+      "name": "leaf.txt",
+      "type": "file",
+      "id_hex": "bbd0a948147562912ae06dd1a2fe5fd104e7a3c651b6309b7d51fab805aa8351"
+    }
+  },
+  "reject": "depth"
+}

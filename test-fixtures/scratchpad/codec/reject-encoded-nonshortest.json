@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-nonshortest",
+  "kind": "file",
+  "description": "The empty file with s = 0 encoded as 0x18 0x00 rather than 0x00.",
+  "mode": "decode",
+  "encoded_hex": "a361638061645820e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85561731800",
+  "id": "14ef44bd25b09ca68da16f54ba71c426b56c9614265c1dd96ec2d51fdcb4e2af",
+  "reject": "non-shortest"
+}

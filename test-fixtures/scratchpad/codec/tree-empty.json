@@ -1,0 +1,14 @@
+{
+  "name": "tree-empty",
+  "kind": "tree",
+  "description": "The empty tree node, the root of an empty volume (ADR-0004 section 3.2 worked example).",
+  "object": {
+    "entries": []
+  },
+  "expect": {
+    "id": "b8fa148a1d53d1dbe03f651fe0ebc6b85c57ebdc8d1c6a0080fdf42ae96d5453",
+    "canonical_hex": "a1616580",
+    "canonical_sha256": "3cfc1d8ddae0927435ca6b2b1e7b3c980131334988d3bedc980671adc4c82dfe",
+    "canonical_length": 4
+  }
+}

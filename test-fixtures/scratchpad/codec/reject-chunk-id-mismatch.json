@@ -1,0 +1,9 @@
+{
+  "name": "reject-chunk-id-mismatch",
+  "kind": "chunk",
+  "description": "Chunk bytes with a wrong claimed id.",
+  "mode": "decode",
+  "encoded_hex": "00112233",
+  "id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "reject": "id-mismatch"
+}

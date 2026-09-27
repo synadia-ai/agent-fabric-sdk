@@ -1,0 +1,16 @@
+{
+  "name": "reject-exec-on-symlink",
+  "kind": "tree",
+  "description": "The executable bit is only for file entries.",
+  "object": {
+    "entries": [
+      {
+        "name": "l",
+        "type": "symlink",
+        "target": "x",
+        "executable": true
+      }
+    ]
+  },
+  "reject": "type-invalid"
+}

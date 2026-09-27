@@ -1,0 +1,11 @@
+{
+  "name": "reject-tree-too-wide",
+  "kind": "wide_tree",
+  "description": "MAX_ENTRIES+1 (8193) entries in one node.",
+  "object": {
+    "count": 8193,
+    "name_prefix": "f-",
+    "id_hex": "bbd0a948147562912ae06dd1a2fe5fd104e7a3c651b6309b7d51fab805aa8351"
+  },
+  "reject": "entry-count"
+}

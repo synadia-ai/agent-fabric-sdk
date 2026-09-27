@@ -1,0 +1,15 @@
+{
+  "name": "reject-name-nul",
+  "kind": "tree",
+  "description": "A name containing NUL (via name_hex) is forbidden.",
+  "object": {
+    "entries": [
+      {
+        "name_hex": "610062",
+        "type": "file",
+        "id_hex": "0101010101010101010101010101010101010101010101010101010101010101"
+      }
+    ]
+  },
+  "reject": "name-forbidden"
+}

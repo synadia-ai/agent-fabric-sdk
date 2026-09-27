@@ -1,0 +1,15 @@
+{
+  "name": "reject-name-invalid-utf8",
+  "kind": "tree",
+  "description": "Invalid UTF-8 name bytes (via name_hex).",
+  "object": {
+    "entries": [
+      {
+        "name_hex": "fffe",
+        "type": "file",
+        "id_hex": "0101010101010101010101010101010101010101010101010101010101010101"
+      }
+    ]
+  },
+  "reject": "utf8"
+}

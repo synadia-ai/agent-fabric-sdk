@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-chunk-shape",
+  "kind": "file",
+  "description": "Two chunks whose first is 100 bytes: only the final chunk may be short.",
+  "mode": "decode",
+  "encoded_hex": "a3616382825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1864825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb183261645820000000000000000000000000000000000000000000000000000000000000000061731896",
+  "id": "99f0698352e6b4947976b7dce81a8720ab4750aedf91ec8d121ad4caeb8220e2",
+  "reject": "chunk-shape"
+}

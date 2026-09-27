@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-missing-i",
+  "kind": "tree",
+  "description": "M2: a file entry without its required i field: an absent required field is always key-missing, never type-invalid.",
+  "mode": "decode",
+  "encoded_hex": "a1616581a2616e6161617400",
+  "id": "f5a6bdc85719963cd7a428f19652ce41d1d116f682052214dd49f978771c666c",
+  "reject": "key-missing"
+}

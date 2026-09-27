@@ -35,7 +35,7 @@ import {
   grantRequestEndpoint,
   READS_REFERENCES_KEY,
   scratchPadExtension,
-  scratchPadFromEnv,
+  nativeScratchPadFromEnv,
   traceHeaders,
   type ScratchPadClient,
 } from "@synadia-ai/agent-fabric";
@@ -86,14 +86,12 @@ export async function startAgent(
   // Where this agent takes prompts: `agents.prompt.<kind>.<owner>.<name>`.
   const address = AgentSubject.new(cfg.agent.kind, cfg.agent.owner, cfg.agent.name).prompt;
 
-  // (4) ScratchPad, as the environment configures it: the fabric package
-  // reads `SCRATCHPAD_VOLUME` and the rest, and drives the `sp` command line
-  // until a TypeScript ScratchPad client exists. `sp` connects as this agent
-  // does. Unset, there is none: the agent still does (1) to (3) and is a
-  // participant, just one that pastes. Every reference it makes names this
-  // agent as its creator.
-  const scratchpad =
-    deps.scratchpad ?? scratchPadFromEnv(deps.env ?? process.env, { creator: address, nats: cfg.nats });
+  // ScratchPad borrows this authenticated connection. The private workspace
+  // must persist across restarts; SCRATCHPAD_VOLUME unset disables the feature.
+  const nativeScratchpad = deps.scratchpad === undefined
+    ? await nativeScratchPadFromEnv(deps.env ?? process.env, { creator: address, nc })
+    : undefined;
+  const scratchpad = deps.scratchpad ?? nativeScratchpad;
 
   // Tracing, from the fabric package: three hooks the SDK takes. The
   // service's two adopt or mint each prompt's thread, run the handler
@@ -306,6 +304,7 @@ export async function startAgent(
       await tools.close();
       await client.close();
       await service.stop();
+      await nativeScratchpad?.close();
       await nc.close();
       bundle.wipe();
     },

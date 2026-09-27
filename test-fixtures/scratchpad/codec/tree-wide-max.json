@@ -1,0 +1,15 @@
+{
+  "name": "tree-wide-max",
+  "kind": "wide_tree",
+  "description": "One node with exactly MAX_ENTRIES (8192) file entries named f-0000 through f-8191; short names keep the node under MAX_NODE_BYTES, so the count cap is the one exercised.",
+  "object": {
+    "count": 8192,
+    "name_prefix": "f-",
+    "id_hex": "bbd0a948147562912ae06dd1a2fe5fd104e7a3c651b6309b7d51fab805aa8351"
+  },
+  "expect": {
+    "id": "4928c307d4ac3a2474953525e2a18dda3a1e8749573de34ca88d818d8abaca0b",
+    "canonical_sha256": "81e6bdc9bdb156d6f14a8a66be1f2a12a9edc0423cb510c96ebe2926ea3e451b",
+    "canonical_length": 401414
+  }
+}

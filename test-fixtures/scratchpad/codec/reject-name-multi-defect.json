@@ -1,0 +1,15 @@
+{
+  "name": "reject-name-multi-defect",
+  "kind": "tree",
+  "description": "M1: a 300-byte decomposed name breaks both the length rule and the NFC rule. The fixed check order (utf8, length, forbidden, NFC) makes length fire first.",
+  "object": {
+    "entries": [
+      {
+        "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxe\u0301",
+        "type": "file",
+        "id_hex": "8888888888888888888888888888888888888888888888888888888888888888"
+      }
+    ]
+  },
+  "reject": "name-length"
+}

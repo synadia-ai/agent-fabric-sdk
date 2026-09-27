@@ -1,0 +1,36 @@
+{
+  "name": "tree-basic",
+  "kind": "tree",
+  "description": "Mixed entries given out of input order; the encoder must sort by raw name bytes.",
+  "object": {
+    "entries": [
+      {
+        "name": "run.sh",
+        "type": "file",
+        "id_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+        "executable": true
+      },
+      {
+        "name": "a.txt",
+        "type": "file",
+        "id_hex": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "name": "link",
+        "type": "symlink",
+        "target": "../shared/data.bin"
+      },
+      {
+        "name": "sub",
+        "type": "dir",
+        "id_hex": "b8fa148a1d53d1dbe03f651fe0ebc6b85c57ebdc8d1c6a0080fdf42ae96d5453"
+      }
+    ]
+  },
+  "expect": {
+    "id": "cba489f4e935d6bdb3956cbabe28189415f4be4723a3f5bf3f93e59f7b950e2f",
+    "canonical_hex": "a1616584a3616958202222222222222222222222222222222222222222222222222222222222222222616e65612e747874617400a3616c722e2e2f7368617265642f646174612e62696e616e646c696e6b617402a4616958201111111111111111111111111111111111111111111111111111111111111111616e6672756e2e7368617400617801a361695820b8fa148a1d53d1dbe03f651fe0ebc6b85c57ebdc8d1c6a0080fdf42ae96d5453616e63737562617401",
+    "canonical_sha256": "d09846767409e099ac33a1b8d22b2f3d97aa113bee8c1adb3f31e1c9f31ed1eb",
+    "canonical_length": 182
+  }
+}

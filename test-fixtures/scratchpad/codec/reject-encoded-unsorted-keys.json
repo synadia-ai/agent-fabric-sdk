@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-unsorted-keys",
+  "kind": "file",
+  "description": "File-object map with d before c: keys must ascend bytewise.",
+  "mode": "decode",
+  "encoded_hex": "a3616458200000000000000000000000000000000000000000000000000000000000000000616380617300",
+  "id": "3f53ff48ed06b9e9d3e927865e730318bbbc66a1fc960f4a35b67060f0dce985",
+  "reject": "key-order"
+}

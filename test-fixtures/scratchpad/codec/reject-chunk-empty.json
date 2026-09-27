@@ -1,0 +1,9 @@
+{
+  "name": "reject-chunk-empty",
+  "kind": "chunk",
+  "description": "B1: a zero-length standalone chunk with the CORRECT digest for empty bytes. The length check runs before the digest check, so the reason is chunk-shape, never id-mismatch.",
+  "mode": "decode",
+  "encoded_hex": "",
+  "id": "79b2fe166e0996d5db1815cb90789c98370435375203c1d94266107bdf44fece",
+  "reject": "chunk-shape"
+}

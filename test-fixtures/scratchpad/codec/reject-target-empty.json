@@ -1,0 +1,14 @@
+{
+  "name": "reject-target-empty",
+  "kind": "tree",
+  "description": "A symlink entry without a target.",
+  "object": {
+    "entries": [
+      {
+        "name": "l",
+        "type": "symlink"
+      }
+    ]
+  },
+  "reject": "target-invalid"
+}

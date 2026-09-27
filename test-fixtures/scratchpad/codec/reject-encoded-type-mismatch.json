@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-type-mismatch",
+  "kind": "file",
+  "description": "The s field carries a text string instead of an unsigned integer.",
+  "mode": "decode",
+  "encoded_hex": "a361638061645820000000000000000000000000000000000000000000000000000000000000000061736130",
+  "id": "5fd5523957618966fcddb1b6d200dbdad3ddced2a4f7956a346d83cc38be58ba",
+  "reject": "type-mismatch"
+}

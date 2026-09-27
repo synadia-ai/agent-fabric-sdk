@@ -1,0 +1,15 @@
+{
+  "name": "reject-name-slash",
+  "kind": "tree",
+  "description": "A name containing / is forbidden; paths are API-layer syntax.",
+  "object": {
+    "entries": [
+      {
+        "name": "a/b",
+        "type": "file",
+        "id_hex": "0101010101010101010101010101010101010101010101010101010101010101"
+      }
+    ]
+  },
+  "reject": "name-forbidden"
+}

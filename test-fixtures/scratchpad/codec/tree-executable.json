@@ -1,0 +1,21 @@
+{
+  "name": "tree-executable",
+  "kind": "tree",
+  "description": "An executable file entry: x present with value 1.",
+  "object": {
+    "entries": [
+      {
+        "name": "tool",
+        "type": "file",
+        "id_hex": "5555555555555555555555555555555555555555555555555555555555555555",
+        "executable": true
+      }
+    ]
+  },
+  "expect": {
+    "id": "924afcfa8ccc015f2bd597940c529c9f2d33282b2b10b09e9c0cc78382a85ef5",
+    "canonical_hex": "a1616581a4616958205555555555555555555555555555555555555555555555555555555555555555616e64746f6f6c617400617801",
+    "canonical_sha256": "c82a8f3a8b1a47d7b8e9fad291d10bd2090b0dbbc8477318bef50605f1bfc39e",
+    "canonical_length": 54
+  }
+}

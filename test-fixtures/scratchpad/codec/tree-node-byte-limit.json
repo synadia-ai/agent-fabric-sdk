@@ -1,0 +1,17 @@
+{
+  "name": "tree-node-byte-limit",
+  "kind": "wide_tree",
+  "description": "A node whose canonical encoding is exactly MAX_NODE_BYTES (921600 bytes): 8155 entries with 69-byte names plus one 35-byte-named entry. The byte bound, not the count cap, is the binding limit.",
+  "object": {
+    "count": 8155,
+    "name_prefix": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+    "pad": 4,
+    "id_hex": "bbd0a948147562912ae06dd1a2fe5fd104e7a3c651b6309b7d51fab805aa8351",
+    "extra_name": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+  },
+  "expect": {
+    "id": "4f1012797f85aa8ac818319ec56de4efdbd8eb786cfa8f129c7927764e6a3922",
+    "canonical_sha256": "1f23a9d2cca4a93bcbb4d25aeeecb0818668526cbc2365fc2ce75839dc9e247b",
+    "canonical_length": 921600
+  }
+}

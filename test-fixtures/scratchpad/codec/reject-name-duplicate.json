@@ -1,0 +1,20 @@
+{
+  "name": "reject-name-duplicate",
+  "kind": "tree",
+  "description": "Two entries share one name.",
+  "object": {
+    "entries": [
+      {
+        "name": "a",
+        "type": "file",
+        "id_hex": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      {
+        "name": "a",
+        "type": "dir",
+        "id_hex": "b8fa148a1d53d1dbe03f651fe0ebc6b85c57ebdc8d1c6a0080fdf42ae96d5453"
+      }
+    ]
+  },
+  "reject": "duplicate-name"
+}

@@ -1,6 +1,6 @@
 # Getting started: a TypeScript agent on the fabric
 
-**Date:** 2026-09-26 · **Status:** every command on this page was run in this order, on a Mac, with `anthropic/claude-sonnet-5` through the model proxy, and the outputs shown are from those runs; the steps take about ten minutes once the prerequisites are in place. Since 2026-09-26 the page starts from a fabric you already have, and the same two agents ran step 5's two-agent case and step 6's handoff on such a fabric that day. The Python page, `python.md`, is this page with Python's commands.
+The model and console examples come from the 2026-09-26 walkthrough. Step 6 describes the native TypeScript ScratchPad client and its persistent workspace. The [native client contract](../../../docs/scratchpad-native.md) defines that interface; [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19) holds delivery and validation status. The Python walkthrough uses the CLI adapter.
 
 You will put one agent on the fabric and grow it in six steps. Each step adds one thing, and after each you look at what the console shows and why.
 
@@ -17,7 +17,7 @@ The agent is `reference-agents/typescript/` in this repository. It is the refere
 
 ## Before you start
 
-**The tools.** Node 20 or later and npm; `nats-server` on PATH for the tests; until the packages are published, `bun`, with which `make setup` builds the SDK's TypeScript packages. For step 6, if your fabric has ScratchPad, its command line `sp`, built from ScratchPad's repository.
+**The tools.** Node 22.13 or later and npm; `nats-server` on PATH for the tests; until the packages are published, `bun`, with which `make setup` builds the SDK's TypeScript packages. Step 6 uses the native NATS client and needs no `sp` binary.
 
 **The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). Until they are published, the SDK comes from its checkout next to this repository, and the fabric package is this repository's own (`../typescript`, `../python`). `make setup` in `reference-agents/` checks that the SDK's checkout is there and on the right branch, builds the TypeScript packages, and installs both agents. The fabric package is a package of its own because the SDK carries no tracing.
 
@@ -26,7 +26,7 @@ The agent is `reference-agents/typescript/` in this repository. It is the refere
 ```sh
 make setup        # in reference-agents/: the packages, then both agents
 cd typescript
-npm test          # 29 tests; they need nats-server on PATH, and nothing else
+npm test          # agent tests; nats-server must be on PATH
 ```
 
 Use npm, not bun, in `reference-agents/typescript`: bun 1.4.0 cannot install this manifest (`docs/findings.md` F2). npm installs the three packages as links into their directories, so a rebuild there is what the agent runs next.
@@ -233,20 +233,22 @@ The assistant's terminal shows its model deciding:
 Agents hand work over by reference, not by pasting it. ScratchPad is the fabric's store for that: an agent commits what it produced to a volume of its own and hands over a reference. The step is optional: it needs ScratchPad in your fabric. It needs no code either. The agent has had the two lines all along, both the fabric package's:
 
 ```ts
-const scratchpad = scratchPadFromEnv(process.env, { creator: address, nats: cfg.nats });
+const scratchpad = await nativeScratchPadFromEnv(process.env, { nc, creator: address });
 const references = scratchpad !== undefined ? scratchPadExtension({ scratchPad: scratchpad, agents: client }) : undefined;
 ```
 
-The first builds the agent's ScratchPad from the environment, and gives nothing while `SCRATCHPAD_VOLUME` is unset, which is why the agent has run without one so far. The second puts the fabric's rules for references on the agent tools. Today the package drives ScratchPad through its command line, `sp`, built from ScratchPad's repository; the intended shape is the SDK talking to ScratchPad over NATS, which waits for ScratchPad's TypeScript and Python clients. `sp` connects with the agent's own credentials file; it reads no NATS context, and an nkey seed alone is not a form it takes. It keeps a small workspace in `SCRATCHPAD_DIR`: keep that directory private and across restarts, since it records the volume and any command still to finish. It refuses to save under a path with a symlink in it, and on macOS both `/tmp` and `$TMPDIR` are symlinks, so the package resolves `SCRATCHPAD_DIR` to its real path and the default works.
+The first creates a native client from the environment and returns no client while `SCRATCHPAD_VOLUME` is unset. It borrows `nc`, the agent's existing authenticated NATS connection, without changing its identity or closing it. The second applies the fabric's reference rules to the agent tools. The native writer requires Node 22.13 or later and a private, persistent `SCRATCHPAD_DIR`; it stores its journal, pending artifact, and grant ledger there.
 
-Ask your deployment operator to provision `AssistantReplies` for the assistant's account and user, and `HelperReplies` for the helper's; a volume name is letters and digits only. Add two lines to `.env`, and the same to `.env.helper` with `HelperReplies`:
+Ask your deployment operator to provision `AssistantReplies` for the assistant's account and user, and `HelperReplies` for the helper's; a volume name is letters and digits only. Add two lines to `.env`. For a TypeScript helper, set `HelperReplies` and a separate persistent directory in `.env.helper`:
 
 ```sh
 SCRATCHPAD_VOLUME=AssistantReplies
-SCRATCHPAD_BIN=/path/to/sp
+SCRATCHPAD_DIR=/var/lib/assistant/scratchpad
 ```
 
-`SCRATCHPAD_BIN` can go when `sp` is on PATH. The other two variables, `SCRATCHPAD_DIR` and `SCRATCHPAD_GRANT_TTL_S`, have defaults (`env.example`).
+The directory must be writable by this agent and survive restarts. There is no temporary-directory default. `SCRATCHPAD_GRANT_TTL_S` defaults to 600 seconds. A Python helper still uses the CLI adapter; follow its `env.example` for `sp` and workspace settings.
+
+A native client cannot automatically adopt a CLI workspace or an existing writer whose journal is missing. Recover pending work with its original client and journal. If you deliberately abandon that recovery promise, stop the old writer and call `resetWriter({ target, expectedGeneration })` with the exact volume incarnation and observed writer generation. See [persistence and recovery](../../../docs/scratchpad-native.md#persistence-and-recovery) for inspection and reset behavior.
 
 Restart both agents. Each now says `scratchpad: <its volume>`. Prompt the assistant:
 
@@ -257,8 +259,8 @@ node --env-file=.env.caller --import tsx src/prompt.ts assistant "Write four lin
 ```
 … four lines …
 
-sp-ref:eyJyZWYiOnsidHlwZSI6…
-reference: sp-ref:eyJyZWYiOnsidHlwZSI6…
+sp-ref:eyJ2ZXJzaW9uIjoy…
+reference: sp-ref:eyJ2ZXJzaW9uIjoy…
 ```
 
 The agent committed its reply, granted you read on it, and only then appended the reference. The reference is a few hundred characters; the last line repeats it for copying. It is data, not a key: holding it opens nothing. What opens the content is the grant, and ScratchPad checks the grant against the identity your connection logged in with.
@@ -276,18 +278,20 @@ The helper counted the text and reports it contains **30 words**.
 26.6 s
 ```
 
-The helper's terminal shows the handoff arriving: `[b445acb9] read sp-ref:eyJyZWYi… (169 chars)`.
+The helper's terminal shows the reference read and the number of characters received.
 
 **In the console.** Open the tree, or either agent's page for its timeline. In order:
 
-1. On the assistant's thread, `read ok`: it read the reference you handed it, and put the content in front of its model. One read shows as four records, the resolve and three for the fetch.
+1. On the assistant's thread, read records: it read the reference you handed it and put the content in front of its model. A native read requests file metadata and bounded content ranges.
 2. Its model calls, then `grant ok` under the tool call: read for the helper, made immediately before the prompt went out.
 3. On the helper's child thread, `read ok`, its model call, then `commit ok` and `grant ok` for its own reply.
 4. Back on the assistant's thread, `commit ok` and `grant ok` for the reply to you.
 
-**The rule behind it: least authority.** Nothing is granted when content is committed. A grant goes to one agent, on the one path the reference names, read only, for ten minutes (`SCRATCHPAD_GRANT_TTL_S`), and to an identity discovery verified, never to a name the model wrote. The package's `scratchpad-cli.ts` makes the grant and says why at each step.
+**The rule behind it: least authority.** Nothing is granted when content is committed. A grant goes to one agent, on the one path the reference names, read only, for ten minutes (`SCRATCHPAD_GRANT_TTL_S`), and to an identity discovery verified, never to a name the model wrote. The fabric extension selects the recipient; the native client sends the grant over NATS.
 
 **Handing on what you were handed.** The assistant could grant here because the text was its own. When an agent hands on content another agent created, it cannot grant: in ScratchPad only a volume's owner grants, and being allowed to read is not being allowed to pass on. So the agent's code asks the creator's code, in one signed request, to grant the final recipient, and the creator's code decides by a fixed rule. The rule is conservative: only an agent the creator handed the reference itself may ask, and the agent granted at its request may read and may not ask for anyone else. No model sees the request. If the creator is gone or refuses, the reference comes out of the prompt and the text goes alone. The fabric package's ScratchPad extension does it inside `prompt_agent`, and its grant request is the exchange (`requestGrant` and `grantRequestEndpoint`); `reference-agents/README.md`, "The rules for references", has the rule.
+
+The native grant ledger survives restart in the workspace. The fabric extension's remembered references remain process-local: it must receive a reference again before its tools can hand it on after a restart.
 
 ## Where next
 
@@ -304,6 +308,8 @@ The helper's terminal shows the handoff arriving: `[b445acb9] read sp-ref:eyJyZW
 | --- | --- |
 | `no agent "assistant" on the fabric; there: nobody` | the agent is not running, or the two `.env` files name different `NATS_URL`s or credentials of different accounts |
 | the caller says `no reply: service error 500: handler error`, and the agent's terminal says `failed: …` | a model call failed, and that line has the proxy's answer. `401 Unauthorized unknown virtual key`: the key is mistyped, expired or revoked. `404 Not Found` with a page of HTML: `MODEL_PROXY_URL` lacks OpenRouter's `/api` |
-| a reply comes without a reference | the agent's terminal says `could not hand the reply over by reference: …`. Usually `SCRATCHPAD_BIN` does not name an `sp`, ScratchPad is not reachable in your account, or the credentials are an nkey seed, which `sp` does not take |
+| startup reports that `SCRATCHPAD_DIR` is required | set a private persistent directory when `SCRATCHPAD_VOLUME` is enabled |
+| a reply comes without a reference | read the agent's `could not hand the reply over by reference: …` message. Check the account's ScratchPad import, provisioned scope, retention capacity, and the caller's verified identity. An unknown mutation requires journal recovery before another mutation |
+| the native writer reports `exists` or a missing journal for an established writer | it will not adopt a CLI workspace or reset another writer automatically. Use the original journal for recovery, or inspect the exact target and generation before an explicit reset; see the native client contract |
 | `prompt_agent` answers "not one you were given" | the model changed a character of the reference, or wrote one. The agent hands on only references it was given, exactly (`docs/findings.md` F11). A capable model does not do this |
 | child threads hang under the wrong parent, or under none | the agent's `Agents` client lacks `interceptors: [tracing.promptInterceptor]`, or the fabric package is not built. The trace scope is on `globalThis`, so two copies of a package do not cause this (`docs/findings.md` F1) |

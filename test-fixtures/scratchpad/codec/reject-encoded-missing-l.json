@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-missing-l",
+  "kind": "tree",
+  "description": "M2: a symlink entry without its required l field: absent required field, so key-missing, never target-invalid.",
+  "mode": "decode",
+  "encoded_hex": "a1616581a2616e616c617402",
+  "id": "4c78c746742cd944dee701ea07847d9b0f8a3fc1ffaee87cf9a0c1effe4486d6",
+  "reject": "key-missing"
+}

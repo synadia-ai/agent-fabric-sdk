@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-nontext-key",
+  "kind": "tree",
+  "description": "M3 (verifier probe a10080): a map key that is an unsigned integer, not a text string: type-mismatch.",
+  "mode": "decode",
+  "encoded_hex": "a10080",
+  "id": "7450dc5dd067db95c2d79b6573c491869d3af1782b3c766d5c2b1ad8acf31c1e",
+  "reject": "type-mismatch"
+}

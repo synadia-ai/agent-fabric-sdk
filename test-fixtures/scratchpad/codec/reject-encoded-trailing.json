@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-trailing",
+  "kind": "tree",
+  "description": "A valid empty tree followed by one extra byte; the id covers the full input so the digest passes and the decoder must reject.",
+  "mode": "decode",
+  "encoded_hex": "a161658000",
+  "id": "4db76d526b159c407f106613dfeed6f10ff782b362e13c65dbce872e3325bbae",
+  "reject": "trailing-bytes"
+}
