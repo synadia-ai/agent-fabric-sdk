@@ -129,13 +129,13 @@ the package's.** The extension runs on the `ScratchPad` port:
 `owns(reference)`, `grantRead(reference, grantee, trace, toolCallId?, kind?)`
 and `granted(reference, grantee)`, each sync or async. The implementation
 keeps the ledger of whom it granted what, and how: `first-hand` or
-`on-request`. There is no ScratchPad client for TypeScript or Python yet, so
-the package's own implementation, `spCliScratchPad` / `SpCliScratchPad`,
-drives ScratchPad's command line `sp`, which must be on the machine; built
-from the environment with `scratchPadFromEnv()` / `scratchpad_from_env()`,
-it needs no ScratchPad code in the agent (the packages' READMEs, "ScratchPad
-without writing ScratchPad code"). The extension itself never talks to
-ScratchPad.
+`on-request`. TypeScript agents can use `nativeScratchPad` on their existing
+authenticated NATS connection, without a shell or `sp`. Its durable writer
+requires Node 22.13+ and a persistent private directory. See the
+[native client contract](docs/scratchpad-native.md) for setup, recovery, and bounds.
+The CLI adapters, `spCliScratchPad` / `SpCliScratchPad`, remain available;
+the Python reference agent uses that path until its native client is added.
+The extension itself runs on either implementation through the same port.
 
 **The grant request.** An agent may read another agent's reference but not
 pass it on: only the creator grants. So the requester sends the creator,
@@ -162,12 +162,12 @@ into a grant or a request only when it is one the edge record would carry.
 import { AgentService } from "@synadia-ai/agent-service";
 import { Agents, AgentSubject, AgentTools } from "@synadia-ai/agents";
 import { activeTrace, fabricTracing, grantRequestEndpoint, READS_REFERENCES_KEY, scratchPadExtension,
-  scratchPadFromEnv } from "@synadia-ai/agent-fabric";
+  nativeScratchPadFromEnv } from "@synadia-ai/agent-fabric";
 
 const address = AgentSubject.new("triage", "acme", "main").prompt;
 const tracing = fabricTracing();
 const agents = new Agents({ nc, identity: { signer }, interceptors: [tracing.promptInterceptor] });
-const scratchPad = scratchPadFromEnv(process.env, { creator: address })!; // or your own port
+const scratchPad = (await nativeScratchPadFromEnv(process.env, { creator: address, nc }))!;
 const references = scratchPadExtension({ scratchPad, agents });
 const tools = new AgentTools({ agents, selfAddress: address, extensions: [references] });
 const svc = new AgentService({ nc, agent: "triage", owner: "acme", name: "main", identity: { signer },
@@ -225,6 +225,9 @@ The same surface in both languages (TypeScript names; Python in snake_case):
 | `TraceOptions`, `TraceScope`, `TraceRecordCounts`, `FabricTracing`, `isThreadId`, `randomThreadId`, `validToolCallId`, the constants | The rest of the vocabulary |
 | `scratchPadExtension({ scratchPad, agents, discoverTimeoutMs?, grantRequestTimeoutMs? })` → `ScratchPadExtension` | The extension for `AgentTools`' `extensions`: the three hooks, plus `remember(text)`, `requestInterceptor` (remembers the references in served prompts) and `grantCaller(reference, sender)` (the reply side: grants a verified sender read first-hand; `false` for any other) |
 | `ScratchPad`, `Grantee`, `GrantKind`, `TraceIds` | The port the extension runs on, and its types |
+| `nativeScratchPad({ nc, volume, dir, creator, ttlSeconds?, timeoutMs? })` | Native TypeScript writer and Fabric port, with durable recovery and byte/stream publication. Node 22.13+. |
+| `scratchPadReader({ nc, timeoutMs? })` | Native authenticated byte, text, and stream reads; no writer workspace. |
+| `nativeScratchPadFromEnv(env, { nc, creator })` | Native TypeScript configuration; requires `SCRATCHPAD_DIR` when a volume is enabled. |
 | `spCliScratchPad({ volume, nats, bin?, dir?, grantTtlS?, creator? })` → `ScratchPadClient` | The port's ready implementation over the sp v2 command line, with the agent's `commit(text, path, trace)` and `read(reference, trace)`; a refusal or failure of `sp` is a `ScratchPadError` with its `code` and whether the outcome is `unknown`. Python: `SpCliScratchPad(...)` |
 | `scratchPadFromEnv(env?, { creator?, nats? })` → `ScratchPadClient \| undefined` | The same from `SCRATCHPAD_VOLUME` (unset: off), `SCRATCHPAD_BIN`, `SCRATCHPAD_DIR`, `SCRATCHPAD_GRANT_TTL_S` and the agent's `NATS_CREDS`/`NATS_URL` (`sp` reads no NATS context). Python: `scratchpad_from_env(env=None, *, creator=None, nats=None)` |
 | `findReferences`, `removeReferences`, `referenceCreator`, `readsReferences`, `granteeFromIdentity`, `READS_REFERENCES_KEY`, `REFERENCE_PREFIX` | The references' vocabulary |

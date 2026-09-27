@@ -1,0 +1,22 @@
+{
+  "source": "synadia-ai/scratchpad@2f59c514c9d8aed39b510eae1abbab8062185ed5",
+  "reference": {
+    "version": 2,
+    "creator": "agent://writer/\u003creply\u003e\u0026\u2028line\u2029end",
+    "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+    "target": {
+      "volume": "Replies",
+      "creation_id": "abababababababababababababababab"
+    },
+    "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "generation": 7,
+    "path": "/replies/1.txt",
+    "retention": {
+      "slot": 2,
+      "generation": 9
+    },
+    "expires_at": 1900000600
+  },
+  "canonical_json": "{\"version\":2,\"creator\":\"agent://writer/\u003creply\u003e\u0026\\u2028line\\u2029end\",\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"generation\":7,\"path\":\"/replies/1.txt\",\"retention\":{\"slot\":2,\"generation\":9},\"expires_at\":1900000600}",
+  "token": "sp-ref:eyJ2ZXJzaW9uIjoyLCJjcmVhdG9yIjoiYWdlbnQ6Ly93cml0ZXIvPHJlcGx5PiZcdTIwMjhsaW5lXHUyMDI5ZW5kIiwiYWNjb3VudCI6IkFDR0FDSFVGUzJHTklPVENMT0Y1QVJYWVFYMlMyRkNETklSVlQyM09aNkQ3S1VFTEtDQjY3VENTIiwidGFyZ2V0Ijp7InZvbHVtZSI6IlJlcGxpZXMiLCJjcmVhdGlvbl9pZCI6ImFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiIn0sInJvb3QiOiJBUUlEQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBIiwiZ2VuZXJhdGlvbiI6NywicGF0aCI6Ii9yZXBsaWVzLzEudHh0IiwicmV0ZW50aW9uIjp7InNsb3QiOjIsImdlbmVyYXRpb24iOjl9LCJleHBpcmVzX2F0IjoxOTAwMDAwNjAwfQ"
+}

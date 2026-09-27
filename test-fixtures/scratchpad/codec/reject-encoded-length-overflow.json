@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-length-overflow",
+  "kind": "file",
+  "description": "m7 (fuzz reproducer): a byte string declaring a 2^64-1 length. The declared length exceeds the input: type-mismatch, never a crash.",
+  "mode": "decode",
+  "encoded_hex": "a361638061645bffffffffffffffff",
+  "id": "f80f4d768ec7cbe5f1603bccb65b7446808eb2a7c2ee26ee95154d3db27702d1",
+  "reject": "type-mismatch"
+}

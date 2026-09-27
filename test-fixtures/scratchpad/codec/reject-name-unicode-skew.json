@@ -1,0 +1,15 @@
+{
+  "name": "reject-name-unicode-skew",
+  "kind": "tree",
+  "description": "Unicode version skew sentinel: U+0301 (combining class 230) followed by U+10EFD (combining class 220, assigned in Unicode 15.0.0). Tables at UNICODE_VERSION 15.0.0 reject the order as non-canonical NFC; tables from 14.0 or older treat U+10EFD as unassigned (class 0) and accept. A build with pre-15.0 tables accepts this name and fails the run.",
+  "object": {
+    "entries": [
+      {
+        "name": "q\u0301\ud803\udefd",
+        "type": "file",
+        "id_hex": "7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    ]
+  },
+  "reject": "not-nfc"
+}

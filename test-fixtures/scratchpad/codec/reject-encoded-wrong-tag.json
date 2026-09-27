@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-wrong-tag",
+  "kind": "tree",
+  "description": "A valid empty tree whose claimed id was computed under the file tag: domain separation must fail closed.",
+  "mode": "decode",
+  "encoded_hex": "a1616580",
+  "id": "8dd6d6fa3994b0df8b5c662c9e817ae6f9b62b2deccf2f98f37ccefc7297dcfc",
+  "reject": "id-mismatch"
+}

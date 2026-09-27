@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-entry-order",
+  "kind": "tree",
+  "description": "m8: two individually valid entries in descending name order (b before a): entry-order.",
+  "mode": "decode",
+  "encoded_hex": "a1616582a3616958200101010101010101010101010101010101010101010101010101010101010101616e6162617400a3616958200101010101010101010101010101010101010101010101010101010101010101616e6161617400",
+  "id": "bfcafe456135df501d0169ba081e8bd8a77a8bb35577c01a1127e8f1b13a8809",
+  "reject": "entry-order"
+}

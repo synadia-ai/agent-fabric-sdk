@@ -1,0 +1,14 @@
+{
+  "name": "file-empty",
+  "kind": "file",
+  "description": "The empty file: size 0, zero chunks, digest of the empty byte sequence (ADR-0004 section 3.1 worked example).",
+  "object": {
+    "content_hex": ""
+  },
+  "expect": {
+    "id": "bbd0a948147562912ae06dd1a2fe5fd104e7a3c651b6309b7d51fab805aa8351",
+    "canonical_hex": "a361638061645820e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855617300",
+    "canonical_sha256": "e5916f29c1c691c9f613bf0c8879aa93f16a0a42043f6c86f09cd0d081c027c8",
+    "canonical_length": 43
+  }
+}

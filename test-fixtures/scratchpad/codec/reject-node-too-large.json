@@ -1,0 +1,13 @@
+{
+  "name": "reject-node-too-large",
+  "kind": "wide_tree",
+  "description": "The same node one byte over MAX_NODE_BYTES (921601 bytes): the byte check on the canonical bytes rejects it.",
+  "object": {
+    "count": 8155,
+    "name_prefix": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+    "pad": 4,
+    "id_hex": "bbd0a948147562912ae06dd1a2fe5fd104e7a3c651b6309b7d51fab805aa8351",
+    "extra_name": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+  },
+  "reject": "node-size"
+}

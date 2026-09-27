@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-forbidden-item",
+  "kind": "tree",
+  "description": "The e field carries the simple value false (major type 7).",
+  "mode": "decode",
+  "encoded_hex": "a16165f4",
+  "id": "4762e608e83da12c9e502473613cb97a10e30efeac88da99aa1a95492690a28a",
+  "reject": "forbidden-item"
+}

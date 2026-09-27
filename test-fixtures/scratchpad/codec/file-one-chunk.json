@@ -1,0 +1,14 @@
+{
+  "name": "file-one-chunk",
+  "kind": "file",
+  "description": "A file below CHUNK_SIZE: exactly one chunk, length equals size.",
+  "object": {
+    "content_hex": "68656c6c6f20736372617463687061640a"
+  },
+  "expect": {
+    "id": "90b5e6a318f0520f483384f8d322cc3f05af0fc80dfcc71d1dfd416bebed149f",
+    "canonical_hex": "a361638182582082dfb003bafdd8d0bfd591d28363774ce2301beebdf6aaaba26f47574e77a08411616458201038d7d9acad588073781be0080e4fff1219827416096aade9d39e89ec2349ee617311",
+    "canonical_sha256": "2933df493646ccb3f3327c740edc28b55ee1e6b96e7fa5c2cf7620b937036aed",
+    "canonical_length": 79
+  }
+}

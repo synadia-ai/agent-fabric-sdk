@@ -1,0 +1,20 @@
+{
+  "name": "tree-deep-limit",
+  "kind": "deep_tree",
+  "description": "A chain of MAX_DEPTH (128) tree nodes; the deepest node holds one file entry.",
+  "object": {
+    "depth": 128,
+    "dir_name": "d",
+    "leaf": {
+      "name": "leaf.txt",
+      "type": "file",
+      "id_hex": "bbd0a948147562912ae06dd1a2fe5fd104e7a3c651b6309b7d51fab805aa8351"
+    }
+  },
+  "expect": {
+    "id": "e4c7a56e1952968bbe3854737c888428526c836ed5c25d4b2e6eb42a322fc20b",
+    "canonical_hex": "a1616581a3616958205f84cd04926b64e0bfdcd8194422fe1ac326f161f0ce8a54fb38557b3f6214d0616e6164617401",
+    "canonical_sha256": "de587e12642aeea31f2936917089a75e6abc5080bf8dfd9976a9d70d76a89711",
+    "canonical_length": 48
+  }
+}

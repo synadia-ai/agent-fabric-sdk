@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-invalid-key-utf8",
+  "kind": "tree",
+  "description": "M3 (verifier probe a161ff80): a text-string map key with invalid UTF-8 can never match a schema key: key-unknown.",
+  "mode": "decode",
+  "encoded_hex": "a161ff80",
+  "id": "833b0cffe9d7c21636efffd0c61939be2bcd0e5dff8bf44f6858d41965d4a887",
+  "reject": "key-unknown"
+}

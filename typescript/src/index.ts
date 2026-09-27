@@ -144,6 +144,22 @@ export {
 
 export { loopGuard, loopGuardDescription, LOOP_GUARD_CODE, type LoopGuard } from "./loop-guard.js";
 
+export {
+  nativeScratchPad,
+  nativeScratchPadFromEnv,
+  NativeScratchPad,
+  scratchPadReader,
+  ScratchPadReader,
+  NativeScratchPadError,
+  DEFAULT_READ_LIMIT_BYTES,
+  type NativeScratchPadOptions,
+  type PublishOptions,
+  type PublishResult,
+  type RecoveryResult,
+  type ScratchPadReaderOptions,
+  type ReadBytesOptions,
+} from "./scratchpad-native.js";
+
 export { EDGE_SUBJECT_OPTION, EDGE_SUBJECT_VAR, resolveEdgeSubject } from "./plugin-settings.js";
 
 export {

@@ -1,0 +1,15 @@
+{
+  "name": "reject-name-dot",
+  "kind": "tree",
+  "description": "The name . is forbidden.",
+  "object": {
+    "entries": [
+      {
+        "name": ".",
+        "type": "file",
+        "id_hex": "0101010101010101010101010101010101010101010101010101010101010101"
+      }
+    ]
+  },
+  "reject": "name-forbidden"
+}

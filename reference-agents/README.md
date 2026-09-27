@@ -19,7 +19,7 @@ Read `typescript/src/agent.ts` or `python/fabric_agent/agent.py`. The file is th
 1. **Receive prompts under a signed identity.** Marker `(1)`: `resolveNatsConnectionBundle` reads the credentials file once and gives both the connection and a signer. `new AgentService({ …, identity: { signer } })` puts the agent at `agents.prompt.<kind>.<owner>.<name>` and signs its registration and every heartbeat, so callers can verify who answers. `service.onPrompt` hands each prompt to `serve`.
 2. **The model through the proxy, with the trace headers.** Marker `(2)` and `src/model.ts` (`fabric_agent/model.py`): `createModelClient` sends the virtual key as the bearer token, and `converse` calls the fabric package's `traceHeaders()` on every model call. The two headers put the call on the thread of the prompt being served. `fabricTracing()` gives the service the interceptor that starts that thread.
 3. **Discover and prompt through the SDK's agent tools.** Marker `(3)`: the `Agents` client with the fabric package's prompt interceptor, and `new AgentTools(…)` over it. `src/tools.ts` (`fabric_agent/tools.py`) shows the model the tools' definitions as chat-completions functions, word for word, and runs each call with the model's tool-call id. A prompt the model sends becomes a child thread under the tool call that sent it.
-4. **ScratchPad by reference.** Marker `(4)`, optional: the agent reads the references it is handed, commits its reply, grants the verified caller read on it and appends the reference. Two lines wire it: `scratchPadFromEnv(process.env, { creator: address, nats })` (`scratchpad_from_env(env, creator=address, nats=...)`) builds the agent's ScratchPad from the environment, and `scratchPadExtension({ scratchPad, agents })` applies the fabric's rules to it when the model hands a reference on. Both are the fabric package's; the agent writes no ScratchPad code. Without `SCRATCHPAD_VOLUME` the first gives nothing, and the agent skips all of it and hands work over as text.
+4. **ScratchPad by reference.** Marker `(4)`, optional: the agent reads the references it is handed, commits its reply, grants the verified caller read on it and appends the reference. TypeScript awaits `nativeScratchPadFromEnv(process.env, { nc, creator: address })` on its existing authenticated connection. Python uses `scratchpad_from_env(env, creator=address, nats=...)` through `sp`. `scratchPadExtension({ scratchPad, agents })` applies the fabric's reference rules to either client. Without `SCRATCHPAD_VOLUME` the factory returns no client, and the agent hands work over as text.
 
 ## Copy and adapt
 
@@ -47,7 +47,7 @@ Keep the four behaviours. An agent without the signer is not verified, and calle
 
 ## Install
 
-On your machine: Node 20 or later with npm, Python 3.11 or later with `uv`, and `nats-server` on PATH for the tests. Until the packages are published, also `bun`, which builds the SDK's TypeScript packages. Then:
+On your machine: Node 22.13 or later with npm for the TypeScript native ScratchPad writer, Python 3.11 or later with `uv`, and `nats-server` on PATH for the tests. Until the packages are published, also `bun`, which builds the SDK's TypeScript packages. Then:
 
 ```sh
 make setup
@@ -128,7 +128,14 @@ The assistant's model called `discover_agents`, read the helper's description, a
 
 ## ScratchPad, if your fabric has it
 
-Agents can hand work over by reference instead of pasting it. Put `sp`, the sp v2 command line (`go build -o sp ./cmd/sp` in ScratchPad's repository), on PATH, ask your deployment to provision a volume for each agent's account and user (`AssistantReplies`, `HelperReplies`: letters and digits only), set `SCRATCHPAD_VOLUME` in each agent's `.env` to it and restart them; each now says `scratchpad: <its volume>`. That is all: the agents write no ScratchPad code, the fabric package drives `sp` for them, and `env.example` lists its other three variables with their defaults. An agent commits its reply to its own volume, retained for ten minutes, grants the verified caller read on it, and ends the reply with a reference. ScratchPad grants only within the reference's account, so the caller gets a reference when its user is in the agents' account, and the reply in words alone otherwise:
+Ask your deployment to provision a volume for each agent's account and user (`AssistantReplies`, `HelperReplies`: letters and digits only). Set `SCRATCHPAD_VOLUME` in each agent's `.env` to that volume.
+
+- **TypeScript:** the native client uses the agent's NATS connection and needs no `sp` binary. Set `SCRATCHPAD_DIR` to a private directory on persistent local storage, such as `/var/lib/my-agent/scratchpad`. This setting is required; there is no temporary-directory default.
+- **Python:** the CLI adapter still needs `sp` on PATH or at `SCRATCHPAD_BIN`. Its `env.example` describes its workspace and connection settings.
+
+Keep one workspace per writer. A native client cannot automatically adopt a CLI workspace or an established writer with a missing journal. Recover pending work with its original client and journal. To abandon that recovery promise deliberately, use `resetWriter({ target, expectedGeneration })` with the exact volume incarnation and observed writer generation. Stop the previous writer first. The [native client contract](../docs/scratchpad-native.md) defines recovery and reset behavior.
+
+Restart the agents; each now says `scratchpad: <its volume>`. An agent commits its reply to its own volume, retained for ten minutes, grants the verified caller read on it, and ends the reply with a reference. ScratchPad grants only within the reference's account, so the caller gets a reference when its user is in the agents' account, and the reply in words alone otherwise:
 
 ```sh
 node --env-file=.env.caller --import tsx src/prompt.ts assistant "Write four lines about the sea."
@@ -137,8 +144,8 @@ node --env-file=.env.caller --import tsx src/prompt.ts assistant "Write four lin
 ```
 … four lines …
 
-sp-ref:eyJyZWYiOnsidHlwZSI6…
-reference: sp-ref:eyJyZWYiOnsidHlwZSI6…
+sp-ref:eyJ2ZXJzaW9uIjoy…
+reference: sp-ref:eyJ2ZXJzaW9uIjoy…
 ```
 
 The reference is data, not a key: holding it opens nothing, a grant does. Hand it on:
@@ -151,7 +158,7 @@ node --env-file=.env.caller --import tsx src/prompt.ts assistant \
 
 The assistant grants the helper read right before `prompt_agent` sends: one agent, the one path the reference names, read only, ten minutes (`SCRATCHPAD_GRANT_TTL_S`). Nothing is granted when content is committed, and never to every agent discovered. The helper reads the text by the reference. In the console the tree shows, in order: the assistant's `read`, its `grant` under the tool call, the helper's `read`, `commit` and `grant` on the child thread, and the assistant's `commit` and `grant` for its reply to you. An agent that hands on content another agent created asks the creator, in code, to grant the recipient; "The rules for references" below has the rule.
 
-**Today the fabric package drives ScratchPad through its command line, `sp`.** Build it from ScratchPad's repository and put it on PATH, or name it in `SCRATCHPAD_BIN`; it connects with the agent's own credentials file. The intended shape is the SDK talking to ScratchPad over NATS directly, which needs ScratchPad's TypeScript and Python clients. Until they exist, `sp`.
+The native TypeScript client and the Python CLI adapter use the same v2 reference format and service API. Delivery and review findings belong in [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19).
 
 ## The agent tools
 
@@ -178,7 +185,7 @@ The agents offer the first three unless told otherwise (`AGENT_TOOLS`, under "Ho
 | What the fabric adds: the trace, the rules for references | the fabric package's README, [`../README.md`](../README.md) |
 | The rules for references, in code; the grant request, both sides | the fabric package: `scratchPadExtension`, `requestGrant`, `grantRequestEndpoint` (`scratch_pad_extension`, `request_grant`, `grant_request_endpoint`) |
 | The grant request's two shapes | [`../test-fixtures/schemas/`](../test-fixtures/schemas/): `sp-grant-request.json` and `sp-grant-reply.json` |
-| The ScratchPad the rules run on | the fabric package: `scratchPadFromEnv` (`scratchpad_from_env`) builds it from `SCRATCHPAD_VOLUME` and the rest, over the `sp` command line; `spCliScratchPad` (`SpCliScratchPad`) the same from code. The agents write none of it |
+| The ScratchPad the rules run on | TypeScript: `await nativeScratchPadFromEnv(env, { nc, creator })`, over NATS. Python: `scratchpad_from_env`, over `sp`. Both implement the fabric package's ScratchPad port |
 | The model loop's side | the agents: `typescript/src/tools.ts`, `python/fabric_agent/tools.py` |
 
 The tests of both agents check the definitions word for word against what the SDK's files derive for the tools offered (the three without their `wait` parameter and with `blocking.json`'s words; the six as they are), the results against the SDK's result schemas, and the grant request against the fabric package's two schemas.
@@ -188,7 +195,7 @@ The tests of both agents check the definitions word for word against what the SD
 `typescript/src/agent.ts` and `python/fabric_agent/agent.py` do this, each step commented where it happens.
 
 1. **One client**, on the agent's own connection and signed as the agent, with the fabric package's prompt interceptor. Every prompt the tools send and every grant request goes over it.
-2. **The extension**, `scratchPadExtension({ scratchPad, agents: client })`, over the ScratchPad `scratchPadFromEnv(process.env, { creator: address, nats })` built. Both are the package's: the agent configures the ScratchPad, the package drives it and holds the rules.
+2. **The extension**, `scratchPadExtension({ scratchPad, agents: client })`, over the client from the language's factory above. The agent configures ScratchPad; the package holds the reference rules.
 3. **The tools**, `new AgentTools({ agents: client, tools: ["discover_agents", "prompt_agent", "answer_agent"], selfAddress, maxWaitMs, extensions: [ext] })`. `tools` is what the model is offered (`AGENT_TOOLS`, below; left out for `all`, which is the SDK's six). `selfAddress` keeps the agent out of its own discovery and refuses a prompt to itself. `maxWaitMs` is how long one prompt to another agent may run (`AGENT_REPLY_TIMEOUT_MS`). No attachment roots are named: the SDK's default is its staging directory alone, which holds only the files other agents sent back, so a file of the agent's own, such as its `.env` with the virtual key, cannot be attached. These agents hand content over through ScratchPad.
 4. **The service**, with its request interceptors in this order: `[tracing.requestInterceptor, tools.requestInterceptor, ext.requestInterceptor]`. Tracing binds the served prompt's thread, so all that runs inside it is on that thread. The tools open the prompt's scope, so the calls the model makes belong to this prompt and end with it, and they learn the verified sender for the loop guard. The extension notes the references the prompt hands over, so the model may hand them on. The service registers `scratchpad_refs_ok: "true"` (`extraMetadata`) and takes grant requests at `agents.sp-grant.<agent>.<owner>.<name>` (`extraEndpoints: [grantRequestEndpoint(…)]`), in both languages.
 5. **The model loop.** The definitions go into the request's `tools` array, each wrapped as `{"type": "function", "function": {name, description, parameters}}`, not a word changed. Each tool call the model makes runs as `tools.execute(name, args, { toolCallId })` (`tool_call_id=` in Python) with the model's own tool-call ID; the result, as JSON text, is the `tool` message's content. `prompt_agent` puts the ID in the prompt's context, where the fabric's tracing writes it on the `edge`, so the child thread hangs under the tool call that spawned it.
@@ -218,7 +225,7 @@ The rules are the fabric package's code; they are stated here once.
 
 **First-hand, and on request** (F13 item 9). A grant is first-hand when the creator handed the reference itself: to the verified caller of its reply, or to the agent it prompted with a reference of its own. A grant made because another agent asked is on request. Only a first-hand grant entitles its holder to ask; a grant made on request lets its holder read and confers no right to ask for anyone. So content travels at most one hop beyond the agents its creator chose. The creator's ledger, in the package's ScratchPad, keeps the two kinds apart, because ScratchPad knows the grants and not how they came about.
 
-**Limits.** The ledger and the set of given references are per process and in memory. After a restart, or in another instance behind the same address, the answer is a refusal and the text goes without the reference, which is the safe failure. A stopgap until ScratchPad has delegation of its own; then the grant request goes.
+**Persistence.** The native TypeScript client keeps its grant ledger in the persistent workspace. The Python CLI adapter's ledger remains in memory. The fabric extension's set of given references is process-local in both languages: after a restart it must receive a reference again before the tools can hand it on. An unknown reference is refused. Separate agent instances do not share this state or a writer workspace.
 
 ### The guards
 
@@ -235,5 +242,6 @@ Every agent runs its model loop differently, so the tools began as reference cod
 - [`docs/getting-started/typescript.md`](docs/getting-started/typescript.md) or [`python.md`](docs/getting-started/python.md): the walkthrough, the same agent grown in six steps, with what the console shows after each and why.
 - [`typescript/README.md`](typescript/README.md), [`python/README.md`](python/README.md): every file, the tests, and how the code reads.
 - This package's READMEs, [`../typescript/README.md`](../typescript/README.md) and [`../python/README.md`](../python/README.md), and the repository's [`../README.md`](../README.md): tracing, the ScratchPad extension, and ScratchPad from the environment.
+- The [native ScratchPad client contract](../docs/scratchpad-native.md): TypeScript runtime, persistent workspaces, recovery, and bounded artifact methods.
 - The SDK's `docs/agent-tools.md`: the tools' contract.
 - Claude Code, OpenClaw and PI join the fabric through their plugins in the SDK repository's `agents/` and this repository's fabric add-ons in [`../plugins/`](../plugins/); nothing about them lives here.

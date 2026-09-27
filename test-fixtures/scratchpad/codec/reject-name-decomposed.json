@@ -1,0 +1,15 @@
+{
+  "name": "reject-name-decomposed",
+  "kind": "tree",
+  "description": "NFD name (e plus combining acute): the NFC policy rejects, never rewrites.",
+  "object": {
+    "entries": [
+      {
+        "name": "cafe\u0301",
+        "type": "file",
+        "id_hex": "6666666666666666666666666666666666666666666666666666666666666666"
+      }
+    ]
+  },
+  "reject": "not-nfc"
+}

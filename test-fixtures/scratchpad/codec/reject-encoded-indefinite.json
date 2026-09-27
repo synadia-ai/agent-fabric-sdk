@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-indefinite",
+  "kind": "tree",
+  "description": "An indefinite-length map (0xBF) around the e field.",
+  "mode": "decode",
+  "encoded_hex": "bf616580ff",
+  "id": "10c71c963abcddd9536b2220445db483fbfecb385956202310d64148d45fd091",
+  "reject": "indefinite-length"
+}

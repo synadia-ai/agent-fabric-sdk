@@ -1,0 +1,14 @@
+{
+  "name": "chunk-small",
+  "kind": "chunk",
+  "description": "A four-byte chunk; id is SHA-256 over the chunk tag, NUL, and the raw bytes.",
+  "object": {
+    "content_hex": "00112233"
+  },
+  "expect": {
+    "id": "87e894d483538a3b8a8898e106e6c32d9c0a4a51c1fcda9f32410d48df6bf4a1",
+    "canonical_hex": "00112233",
+    "canonical_sha256": "aafa373bf008a855815ecb37d8bd52f6a8157cb5833c58edde6d530dbcf3f25d",
+    "canonical_length": 4
+  }
+}

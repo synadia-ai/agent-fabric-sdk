@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-unknown-key",
+  "kind": "tree",
+  "description": "A tree-node map with the unknown key z.",
+  "mode": "decode",
+  "encoded_hex": "a1617a80",
+  "id": "ffb6e08e35e16d566d9c21b4b0362ed1e68ff5a5ec76de5aee4db9b063ae0615",
+  "reject": "key-unknown"
+}

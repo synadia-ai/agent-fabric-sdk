@@ -1,0 +1,17 @@
+{
+  "name": "file-multi-chunk",
+  "kind": "file",
+  "description": "Two full 512 KiB chunks plus a 100-byte final chunk; identical chunk bytes share one id.",
+  "object": {
+    "content_repeat": {
+      "byte_hex": "ab",
+      "count": 1048676
+    }
+  },
+  "expect": {
+    "id": "00aaddeded909d5012921087ea98222a87fec9c9faf0ee1fc1cf1b323164f95e",
+    "canonical_hex": "a3616383825820081fc826222f5bb8c2032674380936bb4b10d6913eb0ff44fa32cf61df7f77af1a00080000825820081fc826222f5bb8c2032674380936bb4b10d6913eb0ff44fa32cf61df7f77af1a00080000825820b014589c115b20b2690e0400e72de1b6b3beffe994ccad046291c70af5f3d85b186461645820d42284ce22ad7926be019879cba3b9441696fb9ed6605214a53a66f06b00ee4861731a00100064",
+    "canonical_sha256": "3bab9f6fa30b4b9ec1522ef0b2168b2972efa66eb53517e67651ba645875c69f",
+    "canonical_length": 164
+  }
+}

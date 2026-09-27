@@ -6,6 +6,7 @@ its source and commit below, never edited — or the fabric's own.
 
 | Path | What | Source |
 | --- | --- | --- |
+| `scratchpad/` | Canonical content bytes, rejection cases, and an exact v2 reference for native clients | Public format data from ScratchPad `2f59c514`; [source and generation details](scratchpad/README.md) |
 | `schemas/edge.json` | The edge record's JSON Schema, the contract every record must validate against (afo-design.md §6.2) | `synadia-agent-fabric` `docs/schemas/edge.json` at `f92ba41` (last changed in `2c93858`, 2026-09-16) |
 | `schemas/served.json` | The served record's JSON Schema: a harness plugin's binding of a thread to the harness's own thread ID, two per received prompt (afo-design.md §8.3) | `synadia-agent-fabric` `docs/schemas/served.json` at `5b13989` (last changed in `235e73f`, 2026-09-17) |
 | `schemas/sp-grant-request.json`, `schemas/sp-grant-reply.json` | The grant request's two shapes: what a requester sends a reference's creator, and what the creator answers | `synadia-agent-fabric` `docs/schemas/` at `d0f4188` (last changed in `9b5a9d3`, 2026-09-22); from the examples repository's `tools/` until 2026-09-22 |

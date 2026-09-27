@@ -1,0 +1,9 @@
+{
+  "name": "reject-encoded-missing-key",
+  "kind": "file",
+  "description": "A file-object map without the required s field.",
+  "mode": "decode",
+  "encoded_hex": "a2616380616458200000000000000000000000000000000000000000000000000000000000000000",
+  "id": "f64b37eb62a8245facba91d4380dc74270da7b6b0cf0890a94dfc7e62380e3b6",
+  "reject": "key-missing"
+}
