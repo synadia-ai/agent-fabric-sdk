@@ -40,7 +40,10 @@ Each commit is a new root that holds only that reply, not every earlier one,
 and the CLI retains it for ten minutes in the same step. The volume has a
 few retention slots and a small content allowance. When they are full, this
 asks the CLI to release expired retention and collect content nothing
-retains any more, then tries the same commit once more. It first reads the
+retains any more, then tries the same commit once more. The refused commit
+leaves its prepared copy (the CLI's spool) in the workspace, and the CLI
+publishes nothing else until that is removed, so this first asks the CLI to
+remove it. It first reads the
 volume: with every retention slot held by a pin that cannot be released now,
 cleanup cannot free one, so the commit fails at once and the volume stays open
 for the agents reading earlier replies. A live handoff is never evicted to
@@ -368,6 +371,40 @@ def decode_describe(reply: Any) -> VolumeView:  # noqa: PLR0912 — one check pe
     return VolumeView(volume["closed"], kind, tuple(pins), tuple(live))
 
 
+@dataclass(frozen=True)
+class SpoolView:
+    """The spool a ``spool-remove`` reply describes: whether one is there, and whether it went."""
+
+    present: bool
+    removable: bool
+    applied: bool
+
+
+def decode_spool(reply: Any) -> SpoolView:
+    """A ``spool-remove`` or ``spool-inspect`` reply, checked field by field:
+    exactly ``present``, ``files``, ``bytes``, ``removable`` and ``applied``,
+    and ``phase`` when, and only when, a spool is present. Anything else is
+    refused."""
+
+    def refuse(why: str) -> ScratchPadError:
+        return ScratchPadError(f"sp spool-remove: {why}", "malformed_reply", False)
+
+    if not isinstance(reply, dict) or type(reply.get("present")) is not bool:
+        raise refuse("the reply says no spool state")
+    present = reply["present"]
+    keys = {"present", "files", "bytes", "removable", "applied"} | ({"phase"} if present else set())
+    if (
+        set(reply) != keys
+        or (present and (not isinstance(reply["phase"], str) or reply["phase"] == ""))
+        or not _count(reply["files"])
+        or not _count(reply["bytes"])
+        or type(reply["removable"]) is not bool
+        or type(reply["applied"]) is not bool
+    ):
+        raise refuse("the spool state is out of shape")
+    return SpoolView(present, reply["removable"], reply["applied"])
+
+
 def cleanup_cannot_help(view: VolumeView, at: int | None = None) -> str | None:
     """Why ``maintain --apply`` cannot make room for a retained commit now, or
     ``None`` when it can: a slot is free, or an expired pin no live grant names
@@ -658,6 +695,26 @@ class SpCliScratchPad:
                 raise
         self._may_have_pending = False
 
+    async def _remove_refused_spool(self, refusal: ScratchPadError, trace: TraceIds | None) -> None:
+        # After a definite refusal of a commit: remove the spool its
+        # preparation left in the workspace, which the CLI requires before
+        # any other publication. The CLI removes only a spool of this
+        # workspace's that no unresolved command protects; one it keeps means
+        # the refused command is still pending, and the next mutation
+        # recovers it first.
+        try:
+            spool = decode_spool(await self._sp("spool-remove", ["--apply"], trace, mutation=True))
+        except ScratchPadError as err:
+            if err.unknown:
+                raise
+            why = f"its spool was not removed: {err}"
+        else:
+            if not spool.present or spool.applied:
+                return
+            why = "the refused publication's spool is protected"
+        self._may_have_pending = True
+        raise ScratchPadError(f"{refusal}; cleanup not started: {why}", refusal.code, False)
+
     async def _volume_view(self, trace: TraceIds | None) -> VolumeView:
         # The volume's current slots and state, as the CLI describes them.
         return decode_describe(await self._sp("describe", [], trace))
@@ -709,6 +766,7 @@ class SpCliScratchPad:
             # Full: release expired retention and collect what nothing retains,
             # then the same commit once more, but only when cleanup can make
             # room. The CLI releases only expired retention; a live handoff stays.
+            await self._remove_refused_spool(err, trace)
             try:
                 reason = cleanup_cannot_help(await self._volume_view(trace))
             except ScratchPadError as inspect:

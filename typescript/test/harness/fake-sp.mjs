@@ -29,6 +29,10 @@
 // volume's owner reads without a grant, anyone else only with a live one on
 // that root and path. It refuses `describe` and `recover` before `init` with
 // `workspace`, and `recover` with nothing pending returns the last receipt.
+// As the CLI at ScratchPad `a28bb49` does, a definite `capacity` refusal of
+// `publish-file` leaves its preparation's spool in the workspace, and
+// `publish-file` and `recover` refuse with `pending` until
+// `spool-remove --apply` removes it.
 //
 // Nothing here talks to NATS. The wrapper's job is to call the CLI with the
 // right commands and flags, one at a time, and to keep its own ledger; that
@@ -53,7 +57,10 @@ const [command, ...rest] = process.argv.slice(2);
 // The lock first, so it covers nearly the whole run: two mutations the
 // wrapper let run side by side then collide here.
 const lock = process.env.FAKE_SP_LOCK;
-if (lock && ["init", "recover", "publish-file", "maintain", "grant"].includes(command)) {
+if (
+  lock &&
+  ["init", "recover", "publish-file", "maintain", "grant", "spool-remove"].includes(command)
+) {
   try {
     closeSync(openSync(lock, "wx"));
   } catch {
@@ -117,7 +124,9 @@ const caller = principal(flags.creds);
 const faults = load(process.env.FAKE_SP_FAULTS, {});
 const fault = faults[command]?.shift();
 if (fault !== undefined) writeFileSync(process.env.FAKE_SP_FAULTS, JSON.stringify(faults));
-if (fault?.code !== undefined && !fault.after && !fault.stage)
+// A publication's capacity refusal comes after its preparation, below.
+const refusedPreparation = command === "publish-file" && fault?.code === "capacity" && !fault.after;
+if (fault?.code !== undefined && !fault.after && !fault.stage && !refusedPreparation)
   fail(fault.code, "injected", fault.unknown);
 
 const now = Math.floor(Date.now() / 1000);
@@ -154,6 +163,16 @@ const state =
 const target = { volume: name, creation_id: CREATION_ID };
 const binding = () => ({ principal: state.owner, target });
 const needInit = () => state.init || fail("workspace", "workspace has no created volume; run init");
+// The spool a refused preparation left: nothing publishes past it.
+const refuseCapacity = (message, unknown = false) => {
+  state.spool = { phase: "preparing", files: 1, bytes: Buffer.byteLength(stdin) };
+  save();
+  fail("capacity", message, unknown);
+};
+const spoolView = (applied) =>
+  state.spool
+    ? { present: true, ...state.spool, removable: true, applied }
+    : { present: false, files: 0, bytes: 0, removable: false, applied: false };
 
 const protectedBy = (slot, i) =>
   state.grants.some(
@@ -252,6 +271,8 @@ switch (command) {
     break;
   case "recover": {
     needInit();
+    if (state.spool)
+      fail("pending", "preparation is incomplete; inspect and remove its spool explicitly");
     let control = null;
     if (state.pending) {
       state.last = state.pending;
@@ -280,9 +301,10 @@ switch (command) {
     if (state.pending && state.pending.operation_id !== flags["operation-id"]) {
       fail("pending", "a different command is pending; run recover");
     }
+    if (state.spool) fail("pending", "saved spool requires recover or spool-remove --apply");
+    if (refusedPreparation) refuseCapacity("injected", fault.unknown);
     const free = state.retention.findIndex((slot) => slot.pin === null);
-    if (free < 0)
-      fail("capacity", "no retention slot is free; live retention is never evicted; run maintain");
+    if (free < 0) refuseCapacity("no retention slot is free");
     if (state.closed) fail("closed", "volume: closed for maintenance");
     state.generation = (state.generation ?? 0) + 1;
     const root = randomBytes(32).toString("base64url");
@@ -335,6 +357,17 @@ switch (command) {
       collection: null,
       volume: view(),
     };
+    break;
+  }
+  case "spool-inspect":
+    needInit();
+    reply = spoolView(false);
+    break;
+  case "spool-remove": {
+    needInit();
+    const applied = Boolean(flags.apply) && state.spool !== undefined;
+    reply = spoolView(applied);
+    if (applied) state.spool = undefined;
     break;
   }
   case "read": {

@@ -996,7 +996,7 @@ informed when Mario says (B6).
 
 ## 9. ScratchPad in the harnesses
 
-**Status:** design; PI (§9.11), OpenClaw (§9.12) and Claude Code (§9.13) built and measured, references in and out; grant requests answered by all three (§9.14) · **Date:** 2026-09-28
+**Status:** design; PI (§9.11), OpenClaw (§9.12) and Claude Code (§9.13) built and measured, references in and out; grant requests answered by all three (§9.14); the skill at ScratchPad `a28bb49` (§9.15) · **Date:** 2026-09-28
 
 Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
@@ -1058,7 +1058,7 @@ The rules come from the command line itself:
 
 | Rule | Why | How known |
 | --- | --- | --- |
-| The wrapper turns variables into flags | sp reads no environment at all: every value is a flag (`internal/volumecli/cli.go:150-158`), and there is no `Getenv` or `LookupEnv` in `cmd/sp` or `internal/volumecli` | read, at `79f8927` |
+| The wrapper turns variables into flags | sp reads no environment at all: every value is a flag (`internal/volumecli/cli.go:150-158`), and there is no `Getenv` or `LookupEnv` in `cmd/sp` or `internal/volumecli` | read, at `79f8927` and `a28bb49` |
 | `--volume` on `init` only | `read` and `hydrate` refuse a `--volume` other than the reference's (`internal/volumecli/share.go:21`), and a harness reads other agents' references; the workspace commands check it only when it is given (`workspace.go:53`); `init` requires it (`workspace.go:101`) | read |
 | `--dir` on every call | `read` accepts it: `sp read --url … --creds … --ref … --dir ws --volume V` parsed and failed on the token, not the flags | measured |
 | The model's own connection flags are refused | Go's flag package keeps the last value of a repeated flag, so a model could otherwise point sp elsewhere; the connection stays out of the model's hands | read (Go `flag`) |
@@ -1202,9 +1202,11 @@ per served prompt, so they cannot be set once at start.
 
 ### 9.8 Packaging the sp command line
 
-Built from ScratchPad at `79f8927` (a clean `git archive`), with
-`CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' ./cmd/sp` and Go 1.27.0.
-All **measured** on 2026-09-27:
+Built from ScratchPad at the commit `build-sp.sh` pins (a clean `git
+archive`), with `CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' ./cmd/sp`
+and Go 1.27.0. The table was **measured** on 2026-09-27 at `79f8927`; at
+`a28bb49`, the pin since 2026-09-28 (§9.15), the four are 7,404,210 B,
+8,047,728 B, 7,274,656 B and 7,864,480 B, in the same order:
 
 | Target | Size | gzip -9 | Notes |
 | --- | --- | --- | --- |
@@ -1626,6 +1628,84 @@ same hand-on against the add-on started through its own `started()`, with
 the fabric package's stand-in sp, and the refusals: no recorded grant to the
 requester, or an expired one. `plugins/pi/test/unit/scripts-sp.test.ts`
 covers the wrapper's record.
+
+### 9.15 The skill at ScratchPad `a28bb49`
+
+On 2026-09-28 the skill moved from ScratchPad `79f8927` to `a28bb49`, the
+commit the native clients speak. The pin is the one line `SP_COMMIT` in
+`plugins/scratchpad-skill/build-sp.sh`; another commit is that line again.
+What changed in the command line between the two (`internal/volumecli`,
+its README, and ScratchPad's own skill), and what it changed here:
+
+| Change in sp | Here |
+| --- | --- |
+| A publication is prepared into a private disk spool in the workspace (`publication.spool`) before upload; a rerun with the same operation id uses the saved bytes and never reads the source again; the intent check compares the flags, not the content | `SKILL.md`: changed content needs a new operation id |
+| `recover` reconciles an accepted receipt first, then uploads the saved spool and submits the same command | `SKILL.md`, "Resolve a failed command" |
+| New `spool-inspect` and `spool-remove [--apply]`; a preparation refused before its command, and a publication abandoned by `reset --apply`, leave a spool that blocks every publication and `recover` (`pending`) until removed | `SKILL.md`; the wrapper adds the connection and workspace to them as to any command, and takes `--help` as a flag without a value; the CLI adapter (below) |
+| `hydrate` reports `symlinks`; sync keeps literal symbolic links and executable modes; `read` returns files up to 16 MiB | `SKILL.md`; nothing parses hydrate's reply |
+| Workspace and journal format 2: a workspace written by `79f8927` is refused | the operator's step below |
+
+**The CLI adapter's capacity path.** `spCliScratchPad` and
+`SpCliScratchPad`, on a `capacity` refusal, clean up and publish the same
+commit once more. Measured at `a28bb49` against `scratchpad serve`: with
+every retention slot pinned, the refusal leaves a `preparing` spool; the
+retry, with the same operation id or another, and `recover` then refuse
+with `pending` ("preparation is incomplete; inspect and remove its spool
+explicitly") until `spool-remove --apply`, after which the same operation
+id publishes. Both adapters now run `spool-remove --apply` right after a
+definite `capacity` refusal, before looking at the slots, so a refusal
+that cleanup cannot help no longer wedges the next commit either. The
+reply is checked in its exact shape: `present`, `files`, `bytes`,
+`removable`, `applied`, and `phase` exactly when a spool is present. A
+spool the CLI keeps (the refused command is still pending) ends the commit
+with the capacity refusal, and the next mutation recovers first. The
+stand-in sp of both packages models the spool.
+
+**Stated honestly: a byte-quota refusal still wedges.** Content beyond
+the volume's encoded-byte allowance is refused at upload, after the
+command was prepared, so the writer stays `pending`: `recover` uploads
+again and is refused again, `spool-remove` refuses ("operation not
+permitted in this status"), and only `reset --apply`, then
+`spool-remove --apply`, frees the workspace. At `79f8927` the same file
+was refused locally before preparation and the writer stayed `ready`. The
+adapters never reset, by design, so this stays for ScratchPad's owners.
+Replies the reference agents commit are far below the allowance.
+
+**The operator's step: workspaces from `79f8927`.** sp at `a28bb49`
+refuses a workspace the earlier sp wrote (`workspace binding is invalid`),
+and a fresh workspace cannot `init` the volume under a new operation id
+(`exists`). Measured: move the old workspace aside, make an empty private
+directory in its place, and run `init` with the volume's original
+creation operation id, which the old `workspace.journal` holds as
+`creation.operation_id`; that attaches the same volume incarnation, and
+publishing works. Grants recorded in `SP_GRANTS_FILE` are the add-on's own
+file and stay valid.
+
+**The run, measured on this machine on 2026-09-28.** A local ScratchPad
+from `a28bb49` (`scratchpad serve`) on `nats-server` in operator mode, one
+tenant account with a caller, PI and a reader, a volume each. PI 0.85.1
+with the public plugin at `sdk-release-rollout` `d333f26` and this add-on,
+its skill built at `a28bb49`, started as §6 step 7 says, the model
+`claude-sonnet-5`. The reader was the TypeScript reference agent with the
+native client. The caller was an SDK client: `AgentTools` with
+`scratchPadExtension` over `spCliScratchPad` and sp at `a28bb49`.
+
+1. The caller published a secret word with the CLI adapter and handed its
+   reference to PI with `prompt_agent`; the extension granted PI read.
+2. PI's model read `SKILL.md`, then `scripts/sp read` (32 bytes, decoded
+   with `base64 -d`); `scripts/sp publish-file` was refused with `run
+   init`; `scripts/sp init`, then `publish-file` again, whose result
+   carried `granted_to_caller`, recorded in the grants file.
+3. PI's `prompt_agent` handed its reference, unchanged, to the reader. The
+   reader's native client read the 24 bytes, committed its reply, granted
+   PI read and appended its own reference.
+4. PI read the reader's reference with `scripts/sp read` and replied in
+   99 s. The caller read PI's file with its own credentials: `PI relays:
+   quince-52943.`
+
+What the reader's model made of it: it declined to vouch for content that
+arrived in its prompt, as in §9.13's and §9.14's runs; the reads, grants
+and references all went through.
 
 ## 10. Appendix: the text for the public repo
 

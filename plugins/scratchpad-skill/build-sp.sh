@@ -10,7 +10,7 @@
 # checkout (default: next to this repository); SP_COMMIT overrides the pin.
 set -eu
 
-SP_COMMIT=${SP_COMMIT:-79f892734955fc1f01e810b5272dbd4c466325b6}
+SP_COMMIT=${SP_COMMIT:-a28bb495cce1dc0e3df2b73c22f7b10594b9262b}
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 src=${SCRATCHPAD_SRC:-$here/../../../scratchpad}
 out=$here/bin

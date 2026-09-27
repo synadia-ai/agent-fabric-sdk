@@ -30,6 +30,10 @@ and grants only to a principal in the token's account; the volume's owner
 reads without a grant, anyone else only with a live one on that root and
 path. It refuses ``describe`` and ``recover`` before ``init`` with
 ``workspace``, and ``recover`` with nothing pending returns the last receipt.
+As the CLI at ScratchPad ``a28bb49`` does, a definite ``capacity`` refusal of
+``publish-file`` leaves its preparation's spool in the workspace, and
+``publish-file`` and ``recover`` refuse with ``pending`` until
+``spool-remove --apply`` removes it.
 
 Nothing here talks to NATS. The wrapper's job is to call the CLI with the
 right commands and flags, one at a time, and to keep its own ledger; that is
@@ -48,7 +52,7 @@ _LOCK = os.environ.get("FAKE_SP_LOCK")
 if (
     _LOCK
     and sys.argv[1:2]
-    and sys.argv[1] in ("init", "recover", "publish-file", "maintain", "grant")
+    and sys.argv[1] in ("init", "recover", "publish-file", "maintain", "grant", "spool-remove")
 ):
     try:
         os.close(os.open(_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
@@ -156,8 +160,21 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — one branch per command, as the
     if fault is not None:
         with open(os.environ["FAKE_SP_FAULTS"], "w", encoding="utf-8") as f:
             json.dump(faults, f)
-        if "code" in fault and not fault.get("after") and not fault.get("stage"):
-            fail(fault["code"], "injected", fault.get("unknown", False))
+    # A publication's capacity refusal comes after its preparation, below.
+    refused_preparation = (
+        command == "publish-file"
+        and fault is not None
+        and fault.get("code") == "capacity"
+        and not fault.get("after")
+    )
+    if (
+        fault is not None
+        and "code" in fault
+        and not fault.get("after")
+        and not fault.get("stage")
+        and not refused_preparation
+    ):
+        fail(fault["code"], "injected", fault.get("unknown", False))
 
     now = int(time.time())
     store.setdefault("volumes", {})
@@ -194,6 +211,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — one branch per command, as the
     def need_init() -> None:
         if not state.get("init"):
             fail("workspace", "workspace has no created volume; run init")
+
+    def refuse_capacity(message: str, unknown: bool = False) -> NoReturn:
+        # The spool a refused preparation left: nothing publishes past it.
+        state["spool"] = {"phase": "preparing", "files": 1, "bytes": len(stdin.encode())}
+        save()
+        fail("capacity", message, unknown)
+
+    def spool_view(applied: bool) -> dict[str, Any]:
+        spool = state.get("spool")
+        if spool:
+            return {"present": True, **spool, "removable": True, "applied": applied}
+        return {"present": False, "files": 0, "bytes": 0, "removable": False, "applied": False}
 
     def protected(slot: dict[str, Any], i: int) -> bool:
         return any(
@@ -291,6 +320,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — one branch per command, as the
         }
     elif command == "recover":
         need_init()
+        if state.get("spool"):
+            fail("pending", "preparation is incomplete; inspect and remove its spool explicitly")
         control = None
         if state.get("pending"):
             state["last"], state["pending"] = state["pending"], None
@@ -316,12 +347,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — one branch per command, as the
         pending = state.get("pending")
         if pending and pending["operation_id"] != flags["operation-id"]:
             fail("pending", "a different command is pending; run recover")
+        if state.get("spool"):
+            fail("pending", "saved spool requires recover or spool-remove --apply")
+        if refused_preparation:
+            assert fault is not None
+            refuse_capacity("injected", fault.get("unknown", False))
         free = next((i for i, s in enumerate(state["retention"]) if s["pin"] is None), None)
         if free is None:
-            fail(
-                "capacity",
-                "no retention slot is free; live retention is never evicted; run maintain",
-            )
+            refuse_capacity("no retention slot is free")
         if state["closed"]:
             fail("closed", "volume: closed for maintenance")
         state["generation"] = state.get("generation", 0) + 1
@@ -375,6 +408,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — one branch per command, as the
             "collection": None,
             "volume": view(),
         }
+    elif command == "spool-inspect":
+        need_init()
+        reply = spool_view(False)
+    elif command == "spool-remove":
+        need_init()
+        applied = bool(flags.get("apply")) and bool(state.get("spool"))
+        reply = spool_view(applied)
+        if applied:
+            state["spool"] = None
     elif command == "read":
         ref = decode(flags["ref"])
         if flags.get("volume") and flags["volume"] != ref["target"]["volume"]:

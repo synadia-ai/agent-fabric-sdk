@@ -41,7 +41,10 @@
 // one, and the CLI retains it for ten minutes in the same step. The volume
 // has a few retention slots and a small content allowance. When they are
 // full, this asks the CLI to release expired retention and collect content
-// nothing retains any more, then tries the same commit once more. It first
+// nothing retains any more, then tries the same commit once more. The
+// refused commit leaves its prepared copy (the CLI's spool) in the
+// workspace, and the CLI publishes nothing else until that is removed, so
+// this first asks the CLI to remove it. It first
 // reads the volume: with every retention slot held by a pin that cannot be
 // released now, cleanup cannot free one, so the commit fails at once and
 // the volume stays open for the agents reading earlier replies. A live
@@ -393,6 +396,40 @@ export function decodeDescribe(reply: unknown): VolumeView {
   return { closed: volume["closed"], control: kind, retentions: pins, grants: live };
 }
 
+/** The spool a `spool-remove` reply describes: whether one is there, and whether it went. */
+export interface SpoolView {
+  readonly present: boolean;
+  readonly removable: boolean;
+  readonly applied: boolean;
+}
+
+/**
+ * A `spool-remove` or `spool-inspect` reply, checked field by field: exactly
+ * `present`, `files`, `bytes`, `removable` and `applied`, and `phase` when,
+ * and only when, a spool is present. Anything else is refused.
+ */
+export function decodeSpool(reply: unknown): SpoolView {
+  const refuse = (why: string): never => {
+    throw new ScratchPadError(`sp spool-remove: ${why}`, "malformed_reply", false);
+  };
+  if (!isObject(reply) || typeof reply["present"] !== "boolean")
+    return refuse("the reply says no spool state");
+  const present = reply["present"];
+  const keys = ["present", "files", "bytes", "removable", "applied"];
+  if (present) keys.push("phase");
+  if (
+    !hasKeys(reply, keys) ||
+    (present && (typeof reply["phase"] !== "string" || reply["phase"] === "")) ||
+    !count(reply["files"]) ||
+    !count(reply["bytes"]) ||
+    typeof reply["removable"] !== "boolean" ||
+    typeof reply["applied"] !== "boolean"
+  ) {
+    return refuse("the spool state is out of shape");
+  }
+  return { present, removable: reply["removable"], applied: reply["applied"] };
+}
+
 /**
  * Why `maintain --apply` cannot make room for a retained commit now, or
  * `undefined` when it can: a slot is free, or an expired pin no live grant
@@ -677,6 +714,32 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
     mayHavePending = false;
   }
 
+  // After a definite refusal of a commit: remove the spool its preparation
+  // left in the workspace, which the CLI requires before any other
+  // publication. The CLI removes only a spool of this workspace's that no
+  // unresolved command protects; one it keeps means the refused command is
+  // still pending, and the next mutation recovers it first.
+  async function removeRefusedSpool(
+    refusal: ScratchPadError,
+    trace: TraceIds | undefined,
+  ): Promise<void> {
+    let why: string;
+    try {
+      const spool = decodeSpool(await sp("spool-remove", ["--apply"], { trace, mutation: true }));
+      if (!spool.present || spool.applied) return;
+      why = "the refused publication's spool is protected";
+    } catch (err) {
+      if (err instanceof ScratchPadError && err.unknown) throw err;
+      why = `its spool was not removed: ${(err as Error).message}`;
+    }
+    mayHavePending = true;
+    throw new ScratchPadError(
+      `${refusal.message}; cleanup not started: ${why}`,
+      refusal.code,
+      false,
+    );
+  }
+
   // The volume's current slots and state, as the CLI describes them.
   async function volumeView(trace: TraceIds | undefined): Promise<VolumeView> {
     return decodeDescribe(await sp("describe", [], { trace }));
@@ -700,6 +763,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
       // Full: release expired retention and collect what nothing retains,
       // then the same commit once more, but only when cleanup can make room.
       // The CLI releases only expired retention; a live handoff stays.
+      await removeRefusedSpool(err, trace);
       let reason: string | undefined;
       try {
         reason = cleanupCannotHelp(await volumeView(trace));
