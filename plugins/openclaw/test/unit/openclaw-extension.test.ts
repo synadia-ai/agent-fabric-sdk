@@ -15,7 +15,8 @@ import {
   traceRecordCounts,
   validHarnessThreadId,
 } from "@synadia-ai/agent-fabric";
-import createExtension, {
+import defaultExport, {
+  fabricExtension,
   createFabricExtension,
   EXTENSION_NAME,
   IDENTITY_OFF_WARNING,
@@ -40,7 +41,7 @@ const ROOT = "b".repeat(32);
 const CALLER = "ACME.coordinator";
 const NO_ENV: NodeJS.ProcessEnv = {};
 
-type Extension = ReturnType<typeof createExtension>;
+type Extension = ReturnType<typeof createFabricExtension>;
 
 /** A started extension over a fake client, with what it logged and published. */
 async function started(
@@ -52,7 +53,7 @@ async function started(
   lines: ReturnType<typeof recordingLogger>["lines"];
 }> {
   const { logger, lines } = recordingLogger();
-  const ext = createExtension(extensionContext({ ...overrides, logger }), env);
+  const ext = createFabricExtension(extensionContext({ ...overrides, logger }), env);
   const { agents, published } = fakeClient(overrides.senderIdentity !== "off");
   await ext.started!({ agents, service: fakeService() });
   return { ext, published, lines };
@@ -60,11 +61,11 @@ async function started(
 
 describe("the factory", () => {
   it("is the default export, and the named one", () => {
-    expect(createExtension).toBe(createFabricExtension);
+    expect(defaultExport).toBe(fabricExtension);
   });
 
   it("returns the extension of the contract: tracing's hooks, the guard, no tool extensions", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     expect(ext.name).toBe(EXTENSION_NAME);
     expect(ext.requestInterceptors).toHaveLength(2);
     expect(ext.promptInterceptors).toHaveLength(2);
@@ -81,7 +82,7 @@ describe("the factory", () => {
   });
 
   it("reports the process-wide record counts on the heartbeat", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const counts = traceRecordCounts();
     expect(ext.heartbeatExtras!()).toEqual({
       records_published: counts.published,
@@ -91,7 +92,7 @@ describe("the factory", () => {
 
   it("refuses an edge subject that can never be published to", () => {
     expect(() =>
-      createExtension(extensionContext({ options: { edgeSubject: "TRACE.>" } }), NO_ENV),
+      createFabricExtension(extensionContext({ options: { edgeSubject: "TRACE.>" } }), NO_ENV),
     ).toThrow(NatsAgentError);
   });
 
@@ -215,7 +216,7 @@ describe("the served pair", () => {
   });
 
   it("gives a prompt accepted before started no pair, and still serves it", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT });
     await prompt.dispatched;
     const { agents, published } = fakeClient();
@@ -248,7 +249,7 @@ describe("the dispatch", () => {
   });
 
   it("calls run once, synchronously, and returns its own promise", () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const request = { id: "never-seen", extras: {} };
     const own = Promise.resolve("dispatched");
     let calls = 0;
@@ -261,7 +262,7 @@ describe("the dispatch", () => {
   });
 
   it("leaves a request it never saw alone", async () => {
-    const ext = createExtension(extensionContext(), NO_ENV);
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
     const request = { id: "never-seen", extras: {} };
     const inside = await ext.events!.aroundDispatch!(request, () =>
       Promise.resolve({ openclaw: openClawTraceScope()?.getStore(), fabric: activeTrace() }),

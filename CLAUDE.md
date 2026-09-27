@@ -30,6 +30,7 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   src/plugin-contract.ts          the harness plugins' extension contract, as types — TypeScript only
   src/loop-guard.ts               loopGuard(): the 409 guard every add-on returns — TypeScript only
   src/plugin-settings.ts          resolveEdgeSubject(): the add-ons' one setting — TypeScript only
+  src/plugin-scratchpad.ts        ScratchPad for a harness: settings, the variables scripts/sp reads, ScratchPadHandOn — TypeScript only
   test/unit/         no server
   test/integration/  a nats-server per file; the e2e and the interop with Python
   test/harness/      nats-server launcher (adapted from the protocol SDK's); fake-sp.mjs, a stand-in `sp`
@@ -44,12 +45,14 @@ test-fixtures/       shared by both suites — see its README for every file's s
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
+  scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, build-sp.sh, install.sh
   pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
     src/extension.ts the factory: tracing's hooks, the guard, the scope bound at PI's events, the headers
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, edge.json
   openclaw/          @synadia-ai/agent-fabric-openclaw — built the same way
     src/extension.ts the factory: tracing's hooks, the guard, the served pair, the scope at OpenClaw's events
     src/trace-scope.ts the traceparent seed: OpenClaw's trace scope store, feature-checked (from fbd16ab)
+    src/scratchpad.ts  ScratchPad: the shared pieces with this package's skill/scratchpad (npm run build:sp)
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
   claude-code/       @synadia-ai/agent-fabric-claude-code — built the same way
     src/extension.ts the factory: tracing's hooks, the guard, the served pair on the session, end at the Stop
@@ -86,9 +89,9 @@ reference-agents/    the two reference agents, the package's worked example — 
   update `test-fixtures/README.md`. The same for `served.json` and the grant
   request's `sp-grant-{request,reply}.json`, also from `docs/schemas/`.
 - **What the add-ons share lives in the fabric package, TypeScript only.**
-  The plugins' extension contract as types, the `409` loop guard and the
-  edge subject setting are in `typescript/src/` and exported from the
-  package's index; an add-on imports them and never copies them. The
+  The plugins' extension contract as types, the `409` loop guard, the
+  edge subject setting and ScratchPad's pieces (`plugin-scratchpad.ts`) are
+  in `typescript/src/` and exported from the package's index; an add-on imports them and never copies them. The
   plugins are TypeScript, none of this is wire, so there is no Python twin
   and the parity rule does not reach it. An add-on imports nothing of its
   harness, not even its types.

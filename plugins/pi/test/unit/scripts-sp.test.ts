@@ -10,12 +10,16 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
+// The one skill the add-ons share, and this add-on's installed copy of it
+// (`npm run build:sp`), which carries the binaries.
+const SOURCE = resolve(__dirname, "../../../scratchpad-skill");
 const SKILL = resolve(__dirname, "../../skill/scratchpad");
 const PLATFORMS = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64"] as const;
 
@@ -28,7 +32,7 @@ beforeAll(() => {
   mkdirSync(join(root, "skill", "scripts"), { recursive: true });
   mkdirSync(join(root, "skill", "bin"));
   script = join(root, "skill", "scripts", "sp");
-  copyFileSync(join(SKILL, "scripts", "sp"), script);
+  copyFileSync(join(SOURCE, "scripts", "sp"), script);
   chmodSync(script, 0o755);
   for (const p of PLATFORMS) executable(join(root, "skill", "bin", `sp-${p}`), FAKE_SP);
   fakes = join(root, "fakes");
@@ -36,7 +40,22 @@ beforeAll(() => {
   executable(join(fakes, "uname"), FAKE_UNAME);
 });
 
+// Prints its name and arguments; with FAKE_JSON, answers publish-file and
+// grant the way sp does; with FAKE_LOG, appends every call's arguments there.
 const FAKE_SP = `#!/bin/sh
+[ -n "\${FAKE_LOG:-}" ] && printf '%s\\n' "$*" >> "$FAKE_LOG"
+if [ -n "\${FAKE_JSON:-}" ]; then
+  for a in "$@"; do
+    case $a in
+      publish-file) echo '{"receipt":{"head":1},"reference":"sp-ref:abc123"}'; exit "\${FAKE_EXIT:-0}" ;;
+      grant)
+        if [ -n "\${FAKE_GRANT_FAIL:-}" ]; then
+          echo '{"error":{"code":"denied","message":"refused","unknown":false}}' >&2; exit 1
+        fi
+        echo '{"handle":{"slot":0,"generation":4},"expires_at":99}'; exit 0 ;;
+    esac
+  done
+fi
 echo "$(basename "$0")"
 for a in "$@"; do printf '%s\\n' "$a"; done
 exit "\${FAKE_EXIT:-0}"
@@ -55,8 +74,8 @@ function executable(path: string, body: string): void {
 }
 
 const CONNECTION = {
-  NATS_URL: "nats://127.0.0.1:4333",
-  NATS_CREDS: "/keys/pi.creds",
+  SP_NATS_URL: "nats://127.0.0.1:4333",
+  SP_NATS_CREDS: "/keys/pi.creds",
   SCRATCHPAD_DIR: "/state/scratchpad",
   SCRATCHPAD_VOLUME: "pi-vol",
 };
@@ -238,7 +257,7 @@ describe("the flags from the environment", () => {
     const r = run(["describe"], { SCRATCHPAD_VOLUME: "v" });
     expect(r.status).toBe(2);
     expect(r.error?.message).toBe(
-      "scripts/sp: ScratchPad is not configured for this agent: NATS_URL and NATS_CREDS are unset",
+      "scripts/sp: ScratchPad is not configured for this agent: SP_NATS_URL and SP_NATS_CREDS are unset",
     );
   });
 
@@ -275,12 +294,93 @@ describe.skipIf(!built)("the packaged binary (npm run build:sp)", () => {
     writeFileSync(creds, "");
     const r = spawnSync(join(SKILL, "scripts", "sp"), ["read", "--ref", "sp-ref:e30"], {
       encoding: "utf8",
-      env: { PATH: "/usr/bin:/bin", NATS_URL: "nats://127.0.0.1:1", NATS_CREDS: creds },
+      env: { PATH: "/usr/bin:/bin", SP_NATS_URL: "nats://127.0.0.1:1", SP_NATS_CREDS: creds },
     });
     expect(r.status).toBe(1);
     expect((JSON.parse(r.stderr) as { error: unknown }).error).toMatchObject({
       code: "invalid",
       unknown: false,
     });
+  });
+});
+
+describe("a publication while a prompt with a verified caller is served", () => {
+  const CALLER = { SP_CALLER_ACCOUNT: "ACALLER", SP_CALLER_USER: "UCALLER" };
+  const PUBLISH = [
+    "publish-file",
+    "--source",
+    "-",
+    "--path",
+    "/r.txt",
+    "--operation-id",
+    "p1",
+    "--ttl-seconds",
+    "900",
+  ];
+
+  function publish(env: Record<string, string>): {
+    status: number | null;
+    out: unknown;
+    calls: string[];
+  } {
+    const log = join(root, `calls-${Math.random().toString(36).slice(2)}.log`);
+    const r = spawnSync(script, PUBLISH, {
+      encoding: "utf8",
+      env: {
+        PATH: `${fakes}:/usr/bin:/bin`,
+        FAKE_UNAME_S: "Darwin",
+        FAKE_UNAME_M: "arm64",
+        FAKE_JSON: "1",
+        FAKE_LOG: log,
+        ...CONNECTION,
+        ...env,
+      },
+    });
+    const calls = existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : [];
+    return {
+      status: r.status,
+      out: r.stdout.trim() === "" ? undefined : JSON.parse(r.stdout),
+      calls,
+    };
+  }
+
+  it("also grants the caller read on what it published, and says so", () => {
+    const r = publish({ ...CALLER, SP_THREAD_ID: "a".repeat(32), SP_ROOT_ID: "b".repeat(32) });
+    expect(r.status).toBe(0);
+    expect(r.out).toEqual({
+      receipt: { head: 1 },
+      reference: "sp-ref:abc123",
+      granted_to_caller: { handle: { slot: 0, generation: 4 }, expires_at: 99 },
+    });
+    expect(r.calls).toHaveLength(2);
+    expect(r.calls[1]).toBe(
+      `--url nats://127.0.0.1:4333 --creds /keys/pi.creds --dir /state/scratchpad ` +
+        `--thread-id ${"a".repeat(32)} --root-id ${"b".repeat(32)} ` +
+        "grant --ref sp-ref:abc123 --grantee-account ACALLER --grantee-user UCALLER " +
+        "--operation-id p1-caller --ttl-seconds 900",
+    );
+  });
+
+  it("reports a grant that failed next to the publication, which stands", () => {
+    const r = publish({ ...CALLER, FAKE_GRANT_FAIL: "1" });
+    expect(r.status).toBe(0);
+    expect(r.out).toEqual({
+      receipt: { head: 1 },
+      reference: "sp-ref:abc123",
+      caller_grant_error: { error: { code: "denied", message: "refused", unknown: false } },
+    });
+  });
+
+  it("grants nothing when the publication failed, and passes its exit code through", () => {
+    const r = publish({ ...CALLER, FAKE_EXIT: "3" });
+    expect(r.status).toBe(3);
+    expect(r.calls).toHaveLength(1);
+  });
+
+  it("grants nothing, in one call, when no prompt with a verified caller is served", () => {
+    const r = publish({});
+    expect(r.status).toBe(0);
+    expect(r.out).toEqual({ receipt: { head: 1 }, reference: "sp-ref:abc123" });
+    expect(r.calls).toHaveLength(1);
   });
 });

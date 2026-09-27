@@ -8,9 +8,12 @@ extension module in the shape the plugin loads: named in
 plugin's service and on the client its agent tools prompt through, seeds
 each served prompt's OpenClaw turn with a trace id of its own and binds it
 to the served thread with the signed `served` pair, and puts the `409` loop
-guard in front of the gateway's handler. Without it the plugin is the plain
-plugin. The contract it fills is the plugin's `agents/EXTENSIONS.md`; the
-spec is [`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1 and §3.3.
+guard in front of the gateway's handler. It also ships ScratchPad's skill
+with the sp command line, so OpenClaw's model reads, publishes and shares
+ScratchPad content through its exec tool. Without it the plugin is the
+plain plugin. The contract it fills is the plugin's `agents/EXTENSIONS.md`;
+the spec is [`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1, §3.3
+and §9.
 
 ## What it does
 
@@ -69,9 +72,8 @@ with `409` instead of queueing behind the wait it is part of. The guard is
 the fabric package's `loopGuard()`, two more interceptors after tracing's;
 the PI add-on returns the same.
 
-**What it does not do.** No `toolExtensions`: a harness reads no ScratchPad
-reference in the MVP. No header on OpenClaw's calls: the plugin cannot add
-one, which is why the pair exists.
+**What it does not do.** No header on OpenClaw's calls: the plugin cannot
+add one, which is why the pair exists.
 
 ## Naming it
 
@@ -138,13 +140,89 @@ OpenClaw queues; the trace id, not the window, tells their calls apart.
 - **Any well-formed `traceparent` files as OpenClaw** at the proxy until the
   virtual key names its harness (`docs/plugins.md` §3.3).
 
+## ScratchPad
+
+The package carries ScratchPad's skill, the one every add-on ships, in
+`skill/scratchpad/`: `SKILL.md`, `scripts/sp`, and `bin/` with the sp
+command line for darwin and linux on arm64 and amd64, installed from
+`../scratchpad-skill` by `npm run build:sp`. The model reads `SKILL.md`
+with OpenClaw's `read` tool and runs `scripts/sp` through its `exec` tool.
+Nothing restricts either: the harness's tools stay as the operator
+configured them, and OpenClaw's default exec mode asks nothing.
+
+**The operator's step.** Three entries in `openclaw.json`, and a volume:
+
+```json
+{
+  "skills": { "load": { "extraDirs": ["<add-on>/skill"] } },
+  "agents": { "defaults": { "skills": ["scratchpad"] } },
+  "tools": { "allow": ["exec", "read", "discover_agents", "prompt_agent", "answer_agent"] }
+}
+```
+
+- `skills.load.extraDirs` names the directory that holds the skill's
+  directory, `<add-on>/skill`.
+- `agents.defaults.skills` is needed only where the agent has a skill
+  allowlist: an empty one (`[]`) hides every skill. Without an allowlist,
+  every skill OpenClaw finds is shown.
+- `exec` and `read` join `tools.allow` when it lists tools: OpenClaw shows
+  the skills only while `read` is visible, and runs `scripts/sp` through
+  `exec`.
+- The volume, reserved for OpenClaw's identity by the ScratchPad operator,
+  in the account's extension entry, or as `SCRATCHPAD_VOLUME` in the
+  gateway's environment:
+
+```json
+"extensions": [{ "module": "<add-on>", "options": { "scratchpad": { "volume": "OcVol" } } }]
+```
+
+**Where the settings come from.** The factory resolves each from the entry's
+`options.scratchpad` (`volume`, `dir`, `url`, `creds`), else the variable
+(`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, `NATS_URL`, `NATS_CREDS`), else, for
+the URL and the credentials file, the account's own `url` and
+`credentials`, which is how OpenClaw's plugin connects. The workspace
+defaults to `scratchpad/` in OpenClaw's state directory
+(`$OPENCLAW_STATE_DIR/scratchpad`), created if missing; keep it across
+restarts. Without a volume ScratchPad is off.
+
+**What `scripts/sp` gets.** The add-on sets these in the gateway's process,
+before the plugin connects; OpenClaw's exec tool builds each command's
+environment from it on the gateway host, its default with the sandbox off:
+
+| Variable                              | Set                                             | `scripts/sp` adds                                                          |
+| ------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| `SP_NATS_URL`, `SP_NATS_CREDS`        | at start                                        | `--url`, `--creds`, every call                                             |
+| `SCRATCHPAD_DIR`                      | at start                                        | `--dir`, every call                                                        |
+| `SCRATCHPAD_VOLUME`                   | at start                                        | `--volume`, on `init` only                                                 |
+| `SP_CREATOR`                          | at start: OpenClaw's prompt address             | `--creator`, on `publish-file`                                             |
+| `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its dispatch to its end | `--thread-id`, `--root-id`, every call                                     |
+| `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                 | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file` |
+
+The connection has names of its own because OpenClaw's plugin reads
+`NATS_URL` and `NATS_CREDS` in its environment as overrides of the
+account's; the add-on never sets those. A `publish-file` during a served
+prompt with a verified caller also grants that caller read on what it
+published; a `grant` goes to that caller and no other. The variables are
+process-wide: the plugin dispatches one turn at a time, and with ScratchPad
+configured on two accounts of one gateway the last one set wins, so
+configure it on one.
+
+**References in and out.** With ScratchPad on, the add-on registers OpenClaw
+as reading references (`scratchpad_refs_ok: "true"` through the extension's
+`metadata`), and the references its model puts into `prompt_agent` go
+through the fabric package's ScratchPad extension, as an SDK-built agent's
+do: granted to a receiver that reads references, removed with a note for
+any other.
+
 ## Public API
 
-|                                                                                                                                                      |                                                                                                 |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `default`, `createFabricExtension(ctx, env?)`                                                                                                        | the factory of the contract; `env` is where the variable is read from, `process.env` by default |
-| `EXTENSION_NAME`, `IDENTITY_OFF_WARNING`, `SERVED_HARNESS`                                                                                           | the constants                                                                                   |
-| `newTraceId()`, `validTraceId(v)`, `runWithTraceId(id, fn, scope?)`, `openClawTraceScope(root?)`, `OPENCLAW_TRACE_SCOPE_KEY`, `OpenClawTraceContext` | the trace scope seed on its own                                                                 |
+|                                                                                                                                                      |                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`, `fabricExtension(ctx, env?)`                                                                                                              | the factory of the contract: resolves ScratchPad, then builds the extension; `env` is where the variables are read and ScratchPad's are set, `process.env` by default |
+| `createFabricExtension(ctx, env?, scratchPad?)`                                                                                                      | the same, synchronous, from settings already resolved                                                                                                                 |
+| `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                  | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the packaged sp's path                                                                 |
+| `EXTENSION_NAME`, `IDENTITY_OFF_WARNING`, `SERVED_HARNESS`                                                                                           | the constants                                                                                                                                                         |
+| `newTraceId()`, `validTraceId(v)`, `runWithTraceId(id, fn, scope?)`, `openClawTraceScope(root?)`, `OPENCLAW_TRACE_SCOPE_KEY`, `OpenClawTraceContext` | the trace scope seed on its own                                                                                                                                       |
 
 The contract's types, the setting's precedence (`resolveEdgeSubject`) and
 the loop guard (`loopGuard`) are `@synadia-ai/agent-fabric`'s, shared by
@@ -165,9 +243,15 @@ the pair and the edges on the wire validated against
 `test-fixtures/schemas/served.json` and `edge.json`, signed, one id three
 ways.
 
+`npm run build:sp` installs the skill from `../scratchpad-skill` into
+`skill/scratchpad`, building the sp binaries first (Go on `PATH`, a
+ScratchPad checkout next to this repository); `npm pack` runs it too.
+`skill/` is gitignored.
+
 ```sh
 (cd ../../typescript && npm install && npm run build)
 npm install
+npm run build:sp
 npm run typecheck && npm run lint && npm run format:check
 npm test
 npm run build

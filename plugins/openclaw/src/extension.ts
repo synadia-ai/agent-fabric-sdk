@@ -28,6 +28,15 @@
 // makes anyway; on 2026.5.4 the plugin puts a tool call back into the
 // oldest pending request's context itself. The `409` loop guard is the
 // fabric package's two interceptors, after tracing's.
+//
+// ScratchPad (§9): when a volume is configured, the add-on sets the
+// environment the package's skill (`skill/scratchpad`, named to OpenClaw in
+// `skills.load.extraDirs`) reads through `scripts/sp`: the connection, the
+// workspace and the volume before the plugin connects, the served prompt's
+// trace and caller around its dispatch until its end. It registers OpenClaw
+// as reading references, and hands the references OpenClaw's model puts
+// into `prompt_agent` to the fabric package's ScratchPad extension
+// (`scratchpad.ts`).
 
 import {
   activeTrace,
@@ -42,7 +51,17 @@ import {
   type ServedRequest,
   type ServedTurn,
   type TraceScope,
+  READS_REFERENCES_KEY,
 } from "@synadia-ai/agent-fabric";
+import {
+  exportScratchPad,
+  resolveScratchPad,
+  ScratchPadHandOn,
+  ServedPromptEnv,
+  SP_VARS,
+  spPort,
+  type ScratchPadSettings,
+} from "./scratchpad.js";
 import { newTraceId, runWithTraceId } from "./trace-scope.js";
 
 /** The extension's name, as the plugin's status output lists it. */
@@ -68,14 +87,29 @@ interface Served {
 
 /**
  * The factory: the module's default export. Called once by the plugin per
- * account, before it connects, with what it knows then. Throws
- * `NatsAgentError` for an edge subject that can never be published to.
+ * account, before it connects, with what it knows then. Resolves
+ * ScratchPad's settings (which may read the plugin's NATS context) and
+ * builds the extension with them. Throws `NatsAgentError` for an edge
+ * subject that can never be published to.
  *
- * `env` is where the variable is read from; a test passes its own.
+ * `env` is where the variables are read from, and where ScratchPad's are
+ * set for OpenClaw's exec tool; a test passes its own.
+ */
+export async function fabricExtension(
+  ctx: AgentExtensionContext,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<AgentExtension> {
+  return createFabricExtension(ctx, env, await resolveScratchPad(ctx, env));
+}
+
+/**
+ * The extension, built synchronously from settings already resolved:
+ * without `scratchPad`, tracing, the `served` pair and the guard alone.
  */
 export function createFabricExtension(
   ctx: AgentExtensionContext,
   env: NodeJS.ProcessEnv = process.env,
+  scratchPad?: ScratchPadSettings,
 ): AgentExtension {
   const edgeSubject = resolveEdgeSubject(ctx.options, env);
   const tracing = fabricTracing({ edgeSubject });
@@ -93,20 +127,37 @@ export function createFabricExtension(
     request === undefined ? undefined : served.get(request.id)?.scope;
 
   let warnedIdentityOff = false;
+  // Set before the plugin connects, so a command OpenClaw runs at any time finds them.
+  if (scratchPad !== undefined) exportScratchPad(scratchPad, env);
+  const promptEnv = new ServedPromptEnv(env);
+  const handOn = scratchPad !== undefined ? new ScratchPadHandOn() : undefined;
 
   return {
     name: EXTENSION_NAME,
     // The service: tracing first, so the guard runs inside the scope tracing
     // bound and a malformed pair is refused with 400 before the guard
     // looks; the plugin appends its own (the tools' scope) after these.
-    requestInterceptors: [tracing.requestInterceptor, guard.requestInterceptor],
+    // The ScratchPad extension's, last, remembers the references each
+    // served prompt brings, which OpenClaw may hand on.
+    requestInterceptors: [
+      tracing.requestInterceptor,
+      guard.requestInterceptor,
+      ...(handOn !== undefined ? [handOn.requestInterceptor] : []),
+    ],
     // The client OpenClaw's agent tools prompt through: the edge and the
     // pair, then the waiting mark. Both read the ambient scope, so the
     // order between them does not matter.
     promptInterceptors: [tracing.promptInterceptor, guard.promptInterceptor],
     heartbeatExtras: tracing.heartbeatExtras,
-    // No `toolExtensions`: a harness reads no ScratchPad reference in the
-    // MVP (level D, Phase III; `docs/plugins.md` §3.1).
+    ...(handOn !== undefined
+      ? {
+          // References in OpenClaw's `prompt_agent`: granted to a receiver
+          // that reads them, removed with a note for any other.
+          toolExtensions: [handOn],
+          // So a caller's `prompt_agent` hands references to OpenClaw.
+          metadata: { [READS_REFERENCES_KEY]: "true" },
+        }
+      : {}),
 
     started({ agents, service }) {
       if (ctx.settings.senderIdentity !== "signed" && !warnedIdentityOff) {
@@ -122,6 +173,21 @@ export function createFabricExtension(
             ? " (propagate-only: lineage forwarded, no edge or served record published)"
             : `, edge and served records on ${edgeSubject}`),
       );
+      if (scratchPad !== undefined && handOn !== undefined) {
+        env[SP_VARS.creator] = service.subject.prompt;
+        const port = spPort(scratchPad, service.subject.prompt, env);
+        if (port !== undefined) handOn.start({ scratchPad: port, agents });
+        else
+          log.warn(
+            `${EXTENSION_NAME}: no sp for this platform (set SCRATCHPAD_BIN); ` +
+              "references in prompt_agent are not handed on",
+          );
+        log.info(
+          `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +
+            (scratchPad.dir !== undefined ? `, workspace ${scratchPad.dir}` : ", no workspace") +
+            ", for the skill's scripts/sp",
+        );
+      }
     },
 
     async stopping() {
@@ -145,12 +211,16 @@ export function createFabricExtension(
         if (entry === undefined) return;
         served.delete(request.id);
         entry.turn?.settle(outcome, atMs);
+        promptEnv.leave(request);
       },
       aroundDispatch(request, run) {
         // `run` is called synchronously inside both bindings and its own
         // promise returned: the plugin takes `run`'s promise, and nothing
         // here awaits before it.
         const entry = served.get(request.id);
+        // From here to its end this prompt is the one OpenClaw works on,
+        // and the one `scripts/sp` works for.
+        if (handOn !== undefined) promptEnv.enter(request, entry?.scope);
         if (entry === undefined) return run();
         return runWithTraceId(entry.traceId, () => bindActiveTrace(entry.scope, run));
       },

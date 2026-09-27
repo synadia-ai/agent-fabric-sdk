@@ -18,7 +18,8 @@
 
 export {
   createFabricExtension,
-  createFabricExtension as default,
+  fabricExtension,
+  fabricExtension as default,
   EXTENSION_NAME,
   IDENTITY_OFF_WARNING,
   SERVED_HARNESS,
@@ -32,3 +33,8 @@ export {
   validTraceId,
   type OpenClawTraceContext,
 } from "./trace-scope.js";
+
+// ScratchPad for OpenClaw's model: the option, the variables the skill's
+// `scripts/sp` reads, the tool extension and this package's sp
+// (`docs/plugins.md` §9).
+export { SCRATCHPAD_OPTION, SP_VARS, ScratchPadHandOn, spBinary } from "./scratchpad.js";
