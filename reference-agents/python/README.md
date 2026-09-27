@@ -19,17 +19,17 @@
 | `tests/test_interop.py` | the TypeScript agent (a subprocess) and this one prompt each other; each child thread under the delegating agent's served thread. And a reference crosses the languages: over the package's stand-in `sp`, one store, the TypeScript agent commits and grants the Python agent read on the one path, and only then does the Python agent read it |
 | `env.example` | the one file per agent; copy to `.env` |
 
-ScratchPad comes from the fabric package: `scratchpad_from_env` in `fabric_agent/agent.py` builds it from `SCRATCHPAD_VOLUME` and the package's other three variables, over the `sp` command line, and gives `None` when the volume is unset. `__main__.py` passes it the environment it read, `.env` included. The package tests it against a stand-in `sp`.
+ScratchPad comes from the fabric package: `await native_scratchpad_from_env(env, nc=nc, creator=address)` in `fabric_agent/agent.py` borrows the agent's authenticated connection and gives `None` when `SCRATCHPAD_VOLUME` is unset. A configured volume requires a persistent private `SCRATCHPAD_DIR`; it needs no shell or `sp`. `__main__.py` passes the environment it read, `.env` included. Reference-policy tests explicitly inject the CLI adapter with a stand-in `sp`. The SDK's separate native tests use the real ScratchPad service.
 
 New here? `../docs/getting-started/python.md` walks through this agent in six steps, from an echo to a handoff through ScratchPad.
 
 ## Prerequisites
 
-- Python 3.11 or later and `uv`.
+- Python 3.12 or later and `uv`.
 - `nats-server` on PATH for the tests (`brew install nats-server`); without it the fabric tests skip themselves.
 - Until the packages are published: `make setup` in `reference-agents/`, which checks the SDK checkout `../../../synadia-agents` is there and on its branch (the `Makefile` names it) and installs both agents. The two SDK packages from that checkout and `synadia-ai-agent-fabric` from this repository's `../../python` are path dependencies (`pyproject.toml`, `[tool.uv.sources]`), installed editable by `uv sync`; nothing has to be built for Python. The SDK carries the agent tools (`AgentTools`). The fabric package is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratch_pad_extension`, the grant request), and the ScratchPad they run on (`scratchpad_from_env`). The agent wires them in `fabric_agent/agent.py`: `fabric_tracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, the grant endpoint (`extra_endpoints`), and `max_concurrent_prompts=4`.
 - For the interop test: `../typescript` installed (`make setup` does it) and `node` on PATH.
-- For ScratchPad, which is optional: the `sp` binary, ScratchPad's command line, built from ScratchPad's repository, and a credentials file (an nkey seed alone is not a form `sp` takes).
+- For ScratchPad, which is optional: a service import in the agent's NATS account, an allocated volume, and a private persistent workspace.
 
 ## Install and test
 

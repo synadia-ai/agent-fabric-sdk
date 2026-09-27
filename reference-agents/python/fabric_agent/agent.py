@@ -44,8 +44,8 @@ from synadia_ai.agent_fabric import (
     fabric_tracing,
     find_references,
     grant_request_endpoint,
+    native_scratchpad_from_env,
     scratch_pad_extension,
-    scratchpad_from_env,
     trace_headers,
 )
 from synadia_ai.agent_service import AgentService, PromptStream, RequestRejectedError, ServiceIdentity
@@ -129,8 +129,10 @@ async def start_agent(
     # agent does. Unset, there is none: the agent still does (1) to (3) and is
     # a participant, just one that pastes. Every reference it makes names this
     # agent as its creator.
-    if scratchpad is None:
-        scratchpad = scratchpad_from_env(env, creator=address, nats=cfg.nats)
+    native_scratchpad = (
+        await native_scratchpad_from_env(env, creator=address, nc=nc) if scratchpad is None else None
+    )
+    scratchpad = scratchpad or native_scratchpad
 
     # Tracing, from the fabric package: three hooks the SDK takes. The
     # service's two adopt or mint each prompt's thread, run the handler inside
@@ -316,6 +318,8 @@ async def start_agent(
         await tools.aclose()
         await client.close()
         await service.stop()
+        if native_scratchpad is not None:
+            await native_scratchpad.close()
         await nc.close()
         bundle.wipe()
 

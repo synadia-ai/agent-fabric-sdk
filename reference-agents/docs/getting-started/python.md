@@ -17,7 +17,7 @@ The agent is `reference-agents/python/` in this repository. It is the reference 
 
 ## Before you start
 
-**The tools.** Python 3.11 or later and `uv`, Node 20 or later with npm for `make setup`; `nats-server` on PATH for the tests; until the packages are published, `bun`, with which `make setup` builds the SDK's TypeScript packages. For step 6, if your fabric has ScratchPad, its command line `sp`, built from ScratchPad's repository.
+**The tools.** Python 3.12 or later and `uv`, Node 22.13 or later with npm for `make setup`; `nats-server` on PATH for the tests; until the packages are published, `bun`, with which `make setup` builds the SDK's TypeScript packages. Step 6 uses the native Python client and needs ScratchPad's service import in your account.
 
 **The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). Until they are published, the SDK comes from its checkout next to this repository, and the fabric package is this repository's own (`../typescript`, `../python`). `make setup` in `reference-agents/` checks that the SDK's checkout is there and on the right branch, builds the TypeScript packages, and installs both agents. For Python nothing is built: `uv` installs the three packages editable from their directories (`pyproject.toml`, `[tool.uv.sources]`).
 
@@ -233,20 +233,20 @@ The assistant's terminal shows its model deciding:
 Agents hand work over by reference, not by pasting it. ScratchPad is the fabric's store for that: an agent commits what it produced to a volume of its own and hands over a reference. The step is optional: it needs ScratchPad in your fabric. It needs no code either. The agent has had the two lines all along, both the fabric package's:
 
 ```python
-scratchpad = scratchpad_from_env(env, creator=address, nats=cfg.nats)
+scratchpad = await native_scratchpad_from_env(env, creator=address, nc=nc)
 references = scratch_pad_extension(scratch_pad=scratchpad, agents=client) if scratchpad is not None else None
 ```
 
-The first builds the agent's ScratchPad from the environment, and gives nothing while `SCRATCHPAD_VOLUME` is unset, which is why the agent has run without one so far. The second puts the fabric's rules for references on the agent tools. Today the package drives ScratchPad through its command line, `sp`, built from ScratchPad's repository; the intended shape is the SDK talking to ScratchPad over NATS, which waits for ScratchPad's TypeScript and Python clients. `sp` connects with the agent's own credentials file; it reads no NATS context, and an nkey seed alone is not a form it takes. It keeps a small workspace in `SCRATCHPAD_DIR`: keep that directory private and across restarts, since it records the volume and any command still to finish. It refuses to save under a path with a symlink in it, and on macOS both `/tmp` and `$TMPDIR` are symlinks, so the package resolves `SCRATCHPAD_DIR` to its real path and the default works.
+The first builds the native client on the agent's existing authenticated connection and gives nothing while `SCRATCHPAD_VOLUME` is unset. The second puts the fabric's rules for references on the agent tools. The client requires `SCRATCHPAD_DIR`: keep that directory private and across restarts, since it records the volume and the one operation still to finish. On Unix, the directory must have mode 0700. The client creates a new directory with that mode when needed. Do not share this workspace with `sp` or another writer. The native contract in the repository's `docs/scratchpad-native.md` explains explicit recovery and reset.
 
 Ask your deployment operator to provision `AssistantReplies` for the assistant's account and user, and `HelperReplies` for the helper's; a volume name is letters and digits only. Add two lines to `.env`, and the same to `.env.helper` with `HelperReplies`:
 
 ```sh
 SCRATCHPAD_VOLUME=AssistantReplies
-SCRATCHPAD_BIN=/path/to/sp
+SCRATCHPAD_DIR=/var/lib/my-agent/scratchpad
 ```
 
-`SCRATCHPAD_BIN` can go when `sp` is on PATH. The other two variables, `SCRATCHPAD_DIR` and `SCRATCHPAD_GRANT_TTL_S`, have defaults (`env.example`).
+Use a separate private directory for each agent. `SCRATCHPAD_GRANT_TTL_S` defaults to 600 seconds (`env.example`).
 
 Restart both agents. Each now says `scratchpad: <its volume>`. Prompt the assistant:
 

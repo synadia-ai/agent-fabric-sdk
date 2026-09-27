@@ -32,9 +32,9 @@ environment, then hand the object to the extension (and the grant request's
 endpoint) and commit and read with it yourself.
 
 ```python
-from synadia_ai.agent_fabric import scratch_pad_extension, scratchpad_from_env
+from synadia_ai.agent_fabric import scratch_pad_extension, native_scratchpad_from_env
 
-scratch_pad = scratchpad_from_env(creator=address)  # None: ScratchPad off
+scratch_pad = await native_scratchpad_from_env(nc=nc, creator=address)  # None: ScratchPad off
 references = scratch_pad and scratch_pad_extension(scratch_pad=scratch_pad, agents=agents)
 # in the handler: ref = await scratch_pad.commit(answer, f"/replies/{thread_id}.md", trace)
 #                 text = await scratch_pad.read(ref, trace)
@@ -43,22 +43,27 @@ references = scratch_pad and scratch_pad_extension(scratch_pad=scratch_pad, agen
 | Variable | Default | |
 | --- | --- | --- |
 | `SCRATCHPAD_VOLUME` | unset: ScratchPad off | the volume the agent commits to, by name: letters and digits only, provisioned for the agent's account and user; created on first commit |
-| `SCRATCHPAD_BIN` | `sp` on PATH | the `sp` binary |
-| `SCRATCHPAD_DIR` | `scratchpad-<volume>` under the temp directory | a private directory for the CLI's workspace, used by its real path; keep it across restarts |
-| `SCRATCHPAD_GRANT_TTL_S` | `600` | how long a read grant lasts, in seconds; at most ten minutes, and never past the reference |
+| `SCRATCHPAD_DIR` | required when a volume is set | a private persistent directory, owned by one native writer; keep it across restarts |
+| `SCRATCHPAD_GRANT_TTL_S` | `600` | publication retention and maximum grant duration, in seconds; at most 3600, and never past the reference |
 
-`sp` connects as the agent does, with `NATS_CREDS` and `NATS_URL` (or pass
+The native client needs Python 3.12+, the agent's existing authenticated NATS connection,
+and a private workspace. It needs no shell or binary. Use `native_scratchpad` for explicit
+options and `scratchpad_reader` for a reader without a workspace. `publish_bytes` and
+`publish_stream` accept binary content; `read_bytes` verifies content before return.
+`read_stream` requires an explicit byte limit, and its bytes remain provisional until EOF.
+Close the writer with `await scratch_pad.close()` before shutdown; this leaves NATS open.
+See the [native contract](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-native.md)
+for recovery, bounds, and test instructions. Other Fabric features still support Python 3.11.
+
+### Optional CLI adapter
+
+`scratchpad_from_env` and `SpCliScratchPad` remain available when an agent uses `sp`.
+`SCRATCHPAD_BIN` selects that binary. `sp` connects as the agent does, with `NATS_CREDS` and `NATS_URL` (or pass
 `nats=`, any object with `context`, `url` and `creds`, `SpCliConnection`); it
 reads no NATS context, so a `NATS_CONTEXT` without `NATS_CREDS` is refused. The same from code:
 `SpCliScratchPad(volume=..., nats=..., bin="sp", dir=None, grant_ttl_s=600, creator=None)`,
 a `ScratchPadClient` — the `ScratchPad` port plus `commit(text, path, trace)`
 and `read(reference, trace)`.
 
-Today the implementation drives the sp v2 command line, `sp`, which must
-be on the machine (`go build -o sp ./cmd/sp` in ScratchPad's repository) and
-connects with the agent's own credentials. Each commit publishes the reply
-retained for ten minutes, and its reference is valid as long; a grant goes
-only to an agent in the reference's own account, as `sp` refuses any other; ScratchPad must be reachable in the tenant's
-account, and it is not on NGS yet. `ScratchPadClient` is the interface a later implementation speaking
-NATS directly will satisfy, once a Python ScratchPad client exists; nothing
-above it changes then.
+The CLI adapter and native client implement the same `ScratchPadClient` port.
+Both require ScratchPad's service import in the tenant's NATS account.

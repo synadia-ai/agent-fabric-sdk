@@ -19,7 +19,7 @@ Read `typescript/src/agent.ts` or `python/fabric_agent/agent.py`. The file is th
 1. **Receive prompts under a signed identity.** Marker `(1)`: `resolveNatsConnectionBundle` reads the credentials file once and gives both the connection and a signer. `new AgentService({ …, identity: { signer } })` puts the agent at `agents.prompt.<kind>.<owner>.<name>` and signs its registration and every heartbeat, so callers can verify who answers. `service.onPrompt` hands each prompt to `serve`.
 2. **The model through the proxy, with the trace headers.** Marker `(2)` and `src/model.ts` (`fabric_agent/model.py`): `createModelClient` sends the virtual key as the bearer token, and `converse` calls the fabric package's `traceHeaders()` on every model call. The two headers put the call on the thread of the prompt being served. `fabricTracing()` gives the service the interceptor that starts that thread.
 3. **Discover and prompt through the SDK's agent tools.** Marker `(3)`: the `Agents` client with the fabric package's prompt interceptor, and `new AgentTools(…)` over it. `src/tools.ts` (`fabric_agent/tools.py`) shows the model the tools' definitions as chat-completions functions, word for word, and runs each call with the model's tool-call id. A prompt the model sends becomes a child thread under the tool call that sent it.
-4. **ScratchPad by reference.** Marker `(4)`, optional: the agent reads the references it is handed, commits its reply, grants the verified caller read on it and appends the reference. TypeScript awaits `nativeScratchPadFromEnv(process.env, { nc, creator: address })` on its existing authenticated connection. Python uses `scratchpad_from_env(env, creator=address, nats=...)` through `sp`. `scratchPadExtension({ scratchPad, agents })` applies the fabric's reference rules to either client. Without `SCRATCHPAD_VOLUME` the factory returns no client, and the agent hands work over as text.
+4. **ScratchPad by reference.** Marker `(4)`, optional: the agent reads the references it is handed, commits its reply, grants the verified caller read on it and appends the reference. TypeScript awaits `nativeScratchPadFromEnv(process.env, { nc, creator: address })`; Python awaits `native_scratchpad_from_env(env, nc=nc, creator=address)`. Both borrow their existing authenticated connection. `scratchPadExtension({ scratchPad, agents })` applies the fabric's reference rules to either client. Without `SCRATCHPAD_VOLUME` the factory returns no client, and the agent hands work over as text.
 
 ## Copy and adapt
 
@@ -47,7 +47,7 @@ Keep the four behaviours. An agent without the signer is not verified, and calle
 
 ## Install
 
-On your machine: Node 22.13 or later with npm for the TypeScript native ScratchPad writer, Python 3.11 or later with `uv`, and `nats-server` on PATH for the tests. Until the packages are published, also `bun`, which builds the SDK's TypeScript packages. Then:
+On your machine: Node 22.13 or later with npm for the TypeScript native ScratchPad writer, Python 3.12 or later with `uv`, and `nats-server` on PATH for the tests. Until the packages are published, also `bun`, which builds the SDK's TypeScript packages. Then:
 
 ```sh
 make setup
@@ -185,7 +185,7 @@ The agents offer the first three unless told otherwise (`AGENT_TOOLS`, under "Ho
 | What the fabric adds: the trace, the rules for references | the fabric package's README, [`../README.md`](../README.md) |
 | The rules for references, in code; the grant request, both sides | the fabric package: `scratchPadExtension`, `requestGrant`, `grantRequestEndpoint` (`scratch_pad_extension`, `request_grant`, `grant_request_endpoint`) |
 | The grant request's two shapes | [`../test-fixtures/schemas/`](../test-fixtures/schemas/): `sp-grant-request.json` and `sp-grant-reply.json` |
-| The ScratchPad the rules run on | TypeScript: `await nativeScratchPadFromEnv(env, { nc, creator })`, over NATS. Python: `scratchpad_from_env`, over `sp`. Both implement the fabric package's ScratchPad port |
+| The ScratchPad the rules run on | TypeScript: `await nativeScratchPadFromEnv(env, { nc, creator })`. Python: `await native_scratchpad_from_env(env, nc=nc, creator=creator)`. Both use NATS and implement the fabric package's ScratchPad port |
 | The model loop's side | the agents: `typescript/src/tools.ts`, `python/fabric_agent/tools.py` |
 
 The tests of both agents check the definitions word for word against what the SDK's files derive for the tools offered (the three without their `wait` parameter and with `blocking.json`'s words; the six as they are), the results against the SDK's result schemas, and the grant request against the fabric package's two schemas.
