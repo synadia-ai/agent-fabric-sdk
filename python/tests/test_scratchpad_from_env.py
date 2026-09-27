@@ -9,18 +9,17 @@ and the agent's own connection become the ``sp`` calls
 
 from __future__ import annotations
 
-import base64
 import json
-import time
 from pathlib import Path
 
 import pytest
 
-from synadia_ai.agent_fabric import Grantee, TraceIds, scratchpad_from_env
+from synadia_ai.agent_fabric import Grantee, TraceIds, reference_creator, scratchpad_from_env
 
 FAKE_SP = Path(__file__).resolve().parent / "harness" / "fake_sp.py"
 TRACE = TraceIds("1" * 32, "2" * 32)
-GRANTEE = Grantee(account="A" + "B" * 55, user="U" + "C" * 55)
+# In the stand-in's own account: ``sp`` grants only within the reference's account.
+GRANTEE = Grantee(account="A" + "O" * 55, user="U" + "C" * 55)
 
 
 @pytest.fixture
@@ -29,7 +28,6 @@ def log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path.write_text("")
     monkeypatch.setenv("FAKE_SP_LOG", str(path))
     monkeypatch.setenv("FAKE_SP_STATE", str(tmp_path / "state.json"))
-    monkeypatch.setenv("FAKE_SP_VOLUME", "env-replies")
     return path
 
 
@@ -38,7 +36,7 @@ def argvs(log: Path) -> list[list[str]]:
 
 
 def flag(argv: list[str], name: str) -> str | None:
-    return argv[argv.index(f"-{name}") + 1] if f"-{name}" in argv else None
+    return argv[argv.index(f"--{name}") + 1] if f"--{name}" in argv else None
 
 
 def test_off_when_the_volume_is_unset_or_empty() -> None:
@@ -53,7 +51,7 @@ async def test_reads_the_four_variables_and_the_agents_credentials(
 ) -> None:
     pad = scratchpad_from_env(
         {
-            "SCRATCHPAD_VOLUME": "env-replies",
+            "SCRATCHPAD_VOLUME": "EnvReplies",
             "SCRATCHPAD_BIN": str(FAKE_SP),
             "SCRATCHPAD_DIR": str(tmp_path / "work"),
             "SCRATCHPAD_GRANT_TTL_S": "42",
@@ -63,45 +61,54 @@ async def test_reads_the_four_variables_and_the_agents_credentials(
         creator="agents.prompt.assistant.test.main",
     )
     assert pad is not None
-    before = int(time.time())
     reference = await pad.commit("hello", "/replies/env.md", TRACE)
     await pad.grant_read(reference, GRANTEE, TRACE)
     calls = argvs(log)
-    # SCRATCHPAD_BIN: the calls reached the stand-in. The volume by name, the
-    # credentials the agent connects with, on every call.
-    assert [a[0] for a in calls] == ["volume", "session", "put", "commit", "ref", "grant"]
+    # SCRATCHPAD_BIN: the calls reached the stand-in. The credentials the agent
+    # connects with and its workspace, on every call; the volume by name.
+    assert [a[0] for a in calls] == ["init", "recover", "publish-file", "grant"]
     for argv in calls:
         assert flag(argv, "url") == "nats://10.0.0.1:4222"
         assert flag(argv, "creds") == "/nowhere/agent.creds"
-    # SCRATCHPAD_DIR, by its real path.
-    assert str(flag(calls[1], "save")).startswith(str((tmp_path / "work").resolve()) + "/")
+        assert flag(argv, "volume") == "EnvReplies"
+        # SCRATCHPAD_DIR, by its real path.
+        assert flag(argv, "dir") == str((tmp_path / "work").resolve())
     # SCRATCHPAD_GRANT_TTL_S.
-    assert before + 42 <= int(str(flag(calls[5], "expires-at"))) <= before + 44
+    assert flag(calls[3], "ttl-seconds") == "42"
     # The creator went into the token.
-    body = reference[len("sp-ref:") :]
-    made = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
-    assert made["creator"] == "agents.prompt.assistant.test.main"
+    assert flag(calls[2], "creator") == "agents.prompt.assistant.test.main"
+    assert reference_creator(reference) == "agents.prompt.assistant.test.main"
 
 
-async def test_connects_by_nats_context_when_one_is_named(tmp_path: Path, log: Path) -> None:
+async def test_uses_the_credentials_file_when_a_nats_context_is_named_beside_it(
+    tmp_path: Path, log: Path
+) -> None:
     pad = scratchpad_from_env(
         {
-            "SCRATCHPAD_VOLUME": "env-replies",
+            "SCRATCHPAD_VOLUME": "EnvReplies",
             "SCRATCHPAD_BIN": str(FAKE_SP),
             "SCRATCHPAD_DIR": str(tmp_path / "work-context"),
             "NATS_CONTEXT": "fabric",
             "NATS_CREDS": "/nowhere/agent.creds",
-        }
+        },
+        creator="agents.prompt.assistant.test.main",
     )
     assert pad is not None
-    body = base64.urlsafe_b64encode(b'{"ref":{"volume_id":"v"}}').decode().rstrip("=")
-    await pad.owns(f"sp-ref:{body}")
-    assert argvs(log) == [["volume", "list", "-context", "fabric", "-json"]]
+    await pad.commit("x", "/replies/x.md", TRACE)
+    argv = argvs(log)[0]
+    assert flag(argv, "url") == "nats://127.0.0.1:4222"
+    assert flag(argv, "creds") == "/nowhere/agent.creds"
+    assert "--context" not in argv
 
 
 def test_refuses_a_connection_sp_cannot_use_and_a_ttl_that_is_not_positive() -> None:
-    with pytest.raises(ValueError, match="NATS_CREDS or NATS_CONTEXT"):
-        scratchpad_from_env({"SCRATCHPAD_VOLUME": "v"})
+    # sp v2 reads no NATS context, and takes no nkey seed alone.
+    for env in ({"SCRATCHPAD_VOLUME": "v"}, {"SCRATCHPAD_VOLUME": "v", "NATS_CONTEXT": "fabric"}):
+        with pytest.raises(
+            ValueError,
+            match="needs NATS_URL and NATS_CREDS; a NATS context or an nkey seed alone",
+        ):
+            scratchpad_from_env(env)
     with pytest.raises(ValueError, match="SCRATCHPAD_GRANT_TTL_S must be a positive number"):
         scratchpad_from_env(
             {"SCRATCHPAD_VOLUME": "v", "NATS_CREDS": "/c", "SCRATCHPAD_GRANT_TTL_S": "0"}

@@ -50,6 +50,7 @@ PUBLIC = {
     "READS_REFERENCES_KEY",
     # The port's implementation over the sp CLI, and from the environment.
     "ScratchPadClient",
+    "ScratchPadError",
     "SpCliScratchPad",
     "SpCliConnection",
     "scratchpad_from_env",
