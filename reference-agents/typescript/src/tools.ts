@@ -67,17 +67,19 @@ export interface ChatTool {
     readonly name: string;
     readonly description: string;
     readonly parameters: Readonly<Record<string, unknown>>;
+    readonly strict: false;
   };
 }
 
 /**
  * The SDK's definitions in the chat-completions shape: each one wrapped as
- * a `function`, not a word changed.
+ * a `function` with explicit non-strict argument generation. The SDK's
+ * names, descriptions and parameter schemas are preserved.
  */
 export function chatTools(tools: AgentTools): ChatTool[] {
   return tools.definitions.map((d) => ({
     type: "function",
-    function: { name: d.name, description: d.description, parameters: d.parameters },
+    function: { name: d.name, description: d.description, parameters: d.parameters, strict: false },
   }));
 }
 

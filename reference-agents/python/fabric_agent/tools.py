@@ -67,9 +67,13 @@ def offered_tools(setting: ToolsSetting) -> list[str] | None:
 
 def chat_tools(tools: AgentTools) -> list[dict[str, Any]]:
     """The SDK's definitions in the chat-completions shape: each one wrapped
-    as a ``function``, not a word changed."""
+    as a ``function`` with explicit non-strict argument generation. The SDK's
+    names, descriptions and parameter schemas are preserved."""
     return [
-        {"type": "function", "function": {"name": d["name"], "description": d["description"], "parameters": d["parameters"]}}
+        {
+            "type": "function",
+            "function": {"name": d["name"], "description": d["description"], "parameters": d["parameters"], "strict": False},
+        }
         for d in tools.definitions
     ]
 

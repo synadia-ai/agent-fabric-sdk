@@ -63,7 +63,9 @@ from synadia_ai.agents import (
     signer_from_seed,
 )
 
+from fabric_agent.model import ModelClient
 from fabric_agent.tools import BLOCKING_TOOLS, chat_tools, offered_tools, tool_runner
+from tests.harness.fake_model import FakeModel
 from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_user
 
 # Tracing as every agent here wires it: the request interceptor on each
@@ -144,6 +146,23 @@ def offered_by(setting: str) -> list[dict[str, Any]]:
     return chat_tools(AgentTools(None, tools=offered_tools(setting)))  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("setting", ["blocking", "all"])
+async def test_serialized_chat_tools_are_explicitly_non_strict(setting: str) -> None:
+    tools = AgentTools(None, tools=offered_tools(setting))  # type: ignore[arg-type]
+    original = tools.definitions
+    fake = FakeModel().start()
+    try:
+        model = ModelClient(proxy_url=fake.url + "/api", virtual_key="test-key", model="test-model", timeout_s=3)
+        await model.complete([{"role": "user", "content": "hello"}], tool_runner(tools).definitions, {})
+        assert len(fake.requests) == 1
+        assert fake.requests[0].body["tools"] == [
+            {"type": "function", "function": {**definition, "strict": False}} for definition in original
+        ]
+        assert tools.definitions == original
+    finally:
+        fake.stop()
+
+
 def test_definitions_are_by_default_the_sdks_three_blocking_ones_not_a_word_changed() -> None:
     offered = offered_by("blocking")
     assert [t["function"]["name"] for t in offered] == ["discover_agents", "prompt_agent", "answer_agent"]
@@ -151,7 +170,7 @@ def test_definitions_are_by_default_the_sdks_three_blocking_ones_not_a_word_chan
     assert all(t["type"] == "function" for t in offered)
     # Word for word what the contract derives for the three: nothing to detach
     # with, so no ``wait``, and no word of a tool not offered.
-    assert [t["function"] for t in offered] == derived(BLOCKING_TOOLS)
+    assert [t["function"] for t in offered] == [{**d, "strict": False} for d in derived(BLOCKING_TOOLS)]
     text = json.dumps(offered)
     assert not any(word in text for word in ("wait_agent", "cancel_agent", "list_agent_calls", '"wait"'))
     tools = AgentTools(None, tools=offered_tools("blocking"))  # type: ignore[arg-type]
@@ -163,8 +182,9 @@ def test_definitions_are_the_sdks_six_with_all_word_for_word_the_contracts_files
     assert [t["function"]["name"] for t in offered] == TOOL_NAMES
     for tool in offered:
         assert tool["type"] == "function"
-        assert tool["function"] == contract(f"{tool['function']['name']}.json")
-    assert [t["function"] for t in offered] == derived(TOOL_NAMES)
+        assert tool["function"] == {**contract(f"{tool['function']['name']}.json"), "strict": False}
+        assert tool["function"]["strict"] is False
+    assert [t["function"] for t in offered] == [{**d, "strict": False} for d in derived(TOOL_NAMES)]
 
 
 def test_parameter_schemas_compile_and_admit_nothing_unknown() -> None:
@@ -177,6 +197,10 @@ def test_parameter_schemas_compile_and_admit_nothing_unknown() -> None:
             assert params["additionalProperties"] is False
             assert not Draft202012Validator(params).is_valid({"unknown": 1})
         prompt = Draft202012Validator(next(t for t in offered if t["function"]["name"] == "prompt_agent")["function"]["parameters"])
+        discover = Draft202012Validator(next(t for t in offered if t["function"]["name"] == "discover_agents")["function"]["parameters"])
+        assert discover.is_valid({})
+        assert discover.is_valid({"agent": "researcher"})
+        assert not discover.is_valid({"agent": None})
         assert prompt.is_valid({"address": "agents.prompt.echo.test.target", "prompt": "hi"})
         assert not prompt.is_valid({"address": "agents.prompt.echo.test.target"})
         assert not prompt.is_valid({"address": "agents.prompt.echo.test.target", "prompt": ""})
