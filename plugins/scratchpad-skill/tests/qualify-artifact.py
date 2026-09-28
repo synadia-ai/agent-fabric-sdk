@@ -226,6 +226,57 @@ async def workflow(args: argparse.Namespace) -> None:
         assert (destination / "answer-link").is_symlink()
         assert os.readlink(destination / "answer-link") == "nested/answer.txt"
         assert hydrated["files"] == 2 and hydrated["symlinks"] == 1
+
+        # Each 512 KiB chunk is distinct. Repeated equal chunks would test
+        # logical size, not the fixture's eight-MiB encoded-byte allowance.
+        oversized = work / "oversized.bin"
+        oversized.write_bytes(b"".join(bytes([index]) * (512 << 10) for index in range(18)))
+        before_quota = await sp("describe")
+        quota = await sp(
+            "publish-file",
+            "--source",
+            str(oversized),
+            "--path",
+            "/too-large.bin",
+            "--operation-id",
+            "artifact-quota",
+            "--creator",
+            "agent://artifact-test",
+            expected=1,
+        )
+        assert quota["error"]["code"] == "capacity" and quota["error"]["unknown"] is False
+        quota_retry = await sp("recover", expected=1)
+        assert quota_retry["error"]["code"] == "capacity"
+        after_quota = await sp("describe")
+        assert after_quota["writer"] == before_quota["writer"]
+        assert after_quota["writer"]["status"] == "ready"
+        assert after_quota["pending_command"] is None
+        assert after_quota["volume"] == before_quota["volume"]
+        removal = await sp("spool-remove")
+        assert removal["removable"] is True and removal["applied"] is False
+        removed = await sp("spool-remove", "--apply")
+        assert removed["applied"] is True
+        next_bytes = b"valid publication after explicit quota abandonment"
+        source.write_bytes(next_bytes)
+        next_publication = await sp(
+            "publish-file",
+            "--source",
+            str(source),
+            "--path",
+            "/after-quota.bin",
+            "--operation-id",
+            "artifact-after-quota",
+            "--creator",
+            "agent://artifact-test",
+        )
+        next_command = next_publication["receipt"]["command"]
+        assert next_command["writer"] == before_quota["writer"]["writer"]
+        assert next_command["number"] == before_quota["writer"]["next"]
+        await grant(next_publication["reference"], "after-quota-grant")
+        read = await sp("read", "--ref", next_publication["reference"], user="reader", writer=False)
+        assert base64.b64decode(read["data_base64"]) == next_bytes
+        previous = await sp("read", "--ref", reference, user="reader", writer=False)
+        assert base64.b64decode(previous["data_base64"]) == content
         counts = await fixture.close()
         assert counts["accepted_receipts"] == 1 and counts["dropped_replies"] == 1
         assert counts["go_reads"] == 1 and counts["service_restarts"] == 1
@@ -245,6 +296,13 @@ async def workflow(args: argparse.Namespace) -> None:
             "hydrated_files": 2,
             "hydrated_symlinks": 1,
             "executable_mode_preserved": True,
+            "quota_refusals": 2,
+            "quota_payload_bytes": oversized.stat().st_size,
+            "quota_remote_state_unchanged": True,
+            "quota_writer_unchanged": True,
+            "quota_explicit_abandonment": True,
+            "publication_after_quota_number": next_command["number"],
+            "retained_content_after_quota_verified": True,
             "fixture": counts,
             "commands": commands,
             "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",

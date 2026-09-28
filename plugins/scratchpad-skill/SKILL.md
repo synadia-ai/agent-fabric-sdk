@@ -151,8 +151,8 @@ Reset fences the previous writer generation.
 It does not release retention from an earlier unknown publication.
 An unresolved grant can block further control operations until acceptance, a positive observation, or expiry settles it.
 
-A publication refused before its command was prepared, such as a `capacity` refusal for want of a free retention slot, leaves its spool, and so does a publication abandoned by reset.
-Further publications and recovery refuse with `pending` until it is removed.
+A publication refused before its checkpoint was prepared leaves its spool, and so does a publication abandoned by reset.
+A later publication requires recovery or explicit removal of that saved upload.
 Inspect the spool before attempting removal:
 
 ```sh
@@ -161,7 +161,15 @@ scripts/sp spool-remove
 scripts/sp spool-remove --apply
 ```
 
-Removal is a dry run without `--apply` and refuses unresolved publication intent.
+### Remove an unprepared upload
+
+Removal is a dry run without `--apply` and refuses a pending checkpoint.
+A refused upload can be removed without reset when its writer remains ready at the saved command position.
+Inspect the removal report before applying it.
+Removal abandons the saved upload, including bytes read from standard input.
+Remote reservations remain charged until maintenance collects them.
+An older workspace can already have a pending checkpoint after an upload refusal.
+Do not automatically reset it because a response says `capacity`; recover or inspect an explicit reset first.
 A new publication reclaims a completed previous spool only after its exact receipt is saved.
 
 ## Reclaim expired content

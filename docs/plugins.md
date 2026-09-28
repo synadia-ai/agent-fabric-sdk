@@ -996,7 +996,9 @@ informed when Mario says (B6).
 
 ## 9. ScratchPad in the harnesses
 
-**Status:** design; PI (§9.11), OpenClaw (§9.12) and Claude Code (§9.13) built and measured, references in and out; grant requests answered by all three (§9.14); the skill at ScratchPad `a28bb49` (§9.15) · **Date:** 2026-09-28
+The design and measured harness workflows follow. The current binary and
+skill pin is `plugins/scratchpad-skill/release.json` (§9.8). Sections 9.11–9.15
+record earlier runs; §9.16 defines the upload-quota recovery update.
 
 Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
@@ -1211,7 +1213,7 @@ explicit onboarding or image creation. Tool calls use the packaged binary.
 The following historical measurements used clean source archives,
 `CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' ./cmd/sp`, and Go 1.27.0.
 The table was **measured** on 2026-09-27 at `79f8927`; at
-`a28bb49`, the pin since 2026-09-28 (§9.15), the four are 7,404,210 B,
+`a28bb49`, the pin used in §9.15, the four were 7,404,210 B,
 8,047,728 B, 7,274,656 B and 7,864,480 B, in the same order:
 
 | Target | Size | gzip -9 | Notes |
@@ -1677,15 +1679,15 @@ spool the CLI keeps (the refused command is still pending) ends the commit
 with the capacity refusal, and the next mutation recovers first. The
 stand-in sp of both packages models the spool.
 
-**Stated honestly: a byte-quota refusal still wedges.** Content beyond
+**Byte-quota defect observed at `a28bb49`.** Content beyond
 the volume's encoded-byte allowance is refused at upload, after the
 command was prepared, so the writer stays `pending`: `recover` uploads
 again and is refused again, `spool-remove` refuses ("operation not
 permitted in this status"), and only `reset --apply`, then
 `spool-remove --apply`, frees the workspace. At `79f8927` the same file
 was refused locally before preparation and the writer stayed `ready`. The
-adapters never reset, by design, so this stays for ScratchPad's owners.
-Replies the reference agents commit are far below the allowance.
+adapters never reset, by design. Section 9.16 describes the correction for
+new uploads and the recovery boundary for existing pending workspaces.
 
 **The operator's step: workspaces from `79f8927`.** sp at `a28bb49`
 refuses a workspace the earlier sp wrote (`workspace binding is invalid`),
@@ -1722,6 +1724,28 @@ native client. The caller was an SDK client: `AgentTools` with
 What the reader's model made of it: it declined to vouch for content that
 arrived in its prompt, as in §9.13's and §9.14's runs; the reads, grants
 and references all went through.
+
+### 9.16 Upload-quota recovery from sp-v0.1.1
+
+The shared release pin selects the correction for ScratchPad issue #1160.
+A new upload checks its complete encoded graph against the volume's quota
+before sending content. It prepares the journal's checkpoint only after
+upload succeeds. A quota refusal during upload therefore preserves a
+previously ready writer. Inspect the saved spool with `scripts/sp spool-remove`,
+then use `scripts/sp spool-remove --apply` to abandon it. This preserves the
+writer and its next command number. Partial remote reservations remain
+charged until explicit maintenance collects them.
+
+An existing pending checkpoint stays protected, including one saved by the
+earlier CLI after an upload refusal. Recover it first. Never automatically
+reset a writer merely because a response says `capacity`.
+
+PI, OpenClaw, and Claude Code copy the same maintained Fabric skill during
+`npm run build:sp` and `prepack`. The standalone archives derive their
+generic skill from the pinned ScratchPad source. The
+[distribution checks](scratchpad-binaries.md#checks-and-release-boundary)
+compare their shared recovery instructions and inspect all three npm
+archives for the exact generated skill and executable hashes.
 
 ## 10. Appendix: the text for the public repo
 

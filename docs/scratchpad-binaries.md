@@ -5,7 +5,7 @@ install an executable. Native TypeScript and Python agents can use the
 [native client](scratchpad-native.md) instead.
 
 The release channel is `synadia-ai/agent-fabric-sdk`, under tags such as
-`sp-v0.1.0`. This private preview requires authenticated access to that
+`sp-v0.1.1`. This private preview requires authenticated access to that
 repository. Installation needs no private ScratchPad checkout or Go compiler.
 The [delivery issue](https://github.com/synadia-ai/agent-fabric-sdk/issues/29)
 records qualification and publication.
@@ -23,7 +23,7 @@ accepts an explicit `--target` for an image build. The destination must be a
 new absolute directory; installation preserves existing directories.
 
 ```sh
-sh plugins/scratchpad-skill/get-sp.sh --version sp-v0.1.0 --dest "$HOME/.local/share/scratchpad/sp-v0.1.0"
+sh plugins/scratchpad-skill/get-sp.sh --version sp-v0.1.1 --dest "$HOME/.local/share/scratchpad/sp-v0.1.1"
 ```
 
 For an agent with no checkout, download `get-sp.sh` and `SHA256SUMS` from the
@@ -49,10 +49,18 @@ spool directory identity check; the same Linux arm64 executable passed on
 a Docker volume. Preserve that volume across process and container restarts.
 The identity check protects recovery state and must remain enabled.
 
-The pinned CLI can retain a pending operation after an upload exceeds its
-byte quota. See [the recorded limitation](https://github.com/synadia-ai/scratchpad/issues/1160)
-and the skill's explicit recovery procedure. Adapters do not reset uncertain
-operations automatically.
+From `sp-v0.1.1`, an upload quota refusal leaves a previously ready writer
+ready. The CLI checks the saved graph against its provisioned quota before
+upload and prepares the checkpoint only after upload succeeds. Use
+`spool-remove` to inspect an unprepared upload, then `spool-remove --apply`
+to abandon it. This does not reset the writer. Remote reservations from a
+partial upload remain charged until maintenance collects them.
+
+A workspace left pending by an earlier CLI remains pending after upgrade.
+An uncertain checkpoint also stays pending. Follow the skill's recovery
+procedure; do not automatically reset an operation because its response
+says `capacity`. [Issue #1160](https://github.com/synadia-ai/scratchpad/issues/1160)
+records the defect and its regression evidence.
 
 ## One build supplies both channels
 
@@ -69,7 +77,7 @@ build inputs come only from `git archive` of the selected commit.
 ```sh
 SCRATCHPAD_SRC=/absolute/private/scratchpad sh plugins/scratchpad-skill/build-sp.sh
 SCRATCHPAD_SRC=/absolute/private/scratchpad sh plugins/scratchpad-skill/release-sp.sh
-python3.12 plugins/scratchpad-skill/release.py verify
+uv run --python 3.12 python plugins/scratchpad-skill/release.py verify
 ```
 
 The shared `bin/` cache contains the four executables, hashes, source/build
@@ -78,13 +86,13 @@ checks all cached bytes and settings before reuse. Each harness's existing
 `npm run build:sp` copies the same executable bytes and notices.
 Run shared builds serially; a concurrent build refuses the occupied cache lock.
 
-Standalone output is `plugins/scratchpad-skill/dist/sp-v0.1.0/`:
+Standalone output is `plugins/scratchpad-skill/dist/sp-v0.1.1/`:
 
 ```text
-sp-v0.1.0-darwin-arm64.tar.gz
-sp-v0.1.0-darwin-amd64.tar.gz
-sp-v0.1.0-linux-arm64.tar.gz
-sp-v0.1.0-linux-amd64.tar.gz
+sp-v0.1.1-darwin-arm64.tar.gz
+sp-v0.1.1-darwin-amd64.tar.gz
+sp-v0.1.1-linux-arm64.tar.gz
+sp-v0.1.1-linux-amd64.tar.gz
 release.json
 SHA256SUMS
 get-sp.sh
@@ -102,15 +110,32 @@ runtime license. They include the owned nats.go replacement notice.
 They do not assign a license to the private ScratchPad code. The SDK
 repository's source license does not determine the executable's license.
 
+## Skill sources and generated copies
+
+| Distribution | Maintained source | Generated copy |
+| --- | --- | --- |
+| Standalone archives | ScratchPad `skills/scratchpad/SKILL.md` at the pinned commit | Archive `SKILL.md`, with local links |
+| PI | SDK `plugins/scratchpad-skill/SKILL.md` | `plugins/pi/skill/scratchpad/SKILL.md` |
+| OpenClaw | Same SDK source | `plugins/openclaw/skill/scratchpad/SKILL.md` |
+| Claude Code | Same SDK source | `plugins/claude-code/skills/scratchpad/SKILL.md`, with its permission field |
+
+Change the maintained sources. Run each add-on's `npm run build:sp` to
+regenerate its ignored copy; `prepack` also runs this step. Do not edit
+generated copies. The packaging tests compare their complete text and
+executables inside actual npm archives. They also compare the shared
+upload-abandonment instructions with the pinned generic skill and reject
+a deliberately changed pending-operation rule.
+
 ## Checks and release boundary
 
 These commands index the packaging checks:
 
 ```sh
-python3.12 -m unittest discover -s plugins/scratchpad-skill/tests -p test_release.py -v
-python3.12 plugins/scratchpad-skill/release.py verify
+uv run --python 3.12 python -m unittest discover -s plugins/scratchpad-skill/tests -p test_release.py -v
+uv run --python 3.12 python plugins/scratchpad-skill/release.py verify
 ```
 
+Build the TypeScript SDK and all three harness add-ons before these checks.
 The tests corrupt cache bytes, archive checksums, provenance, and archive
 membership and require refusal. They exercise installation through a test
 double for the external GitHub CLI and compare installed executables with
@@ -121,17 +146,36 @@ The real-service artifact check is indexed here:
 ```sh
 uv run --script plugins/scratchpad-skill/tests/qualify-artifact.py run \
   --core-root /absolute/clean/scratchpad \
-  --archive plugins/scratchpad-skill/dist/sp-v0.1.0/sp-v0.1.0-darwin-arm64.tar.gz \
+  --archive plugins/scratchpad-skill/dist/sp-v0.1.1/sp-v0.1.1-darwin-arm64.tar.gz \
   --target darwin-arm64 --evidence /absolute/new/evidence-directory
 ```
 
+The workflow also exceeds the fixture's quota, inspects and abandons the
+saved upload, and publishes again without a writer reset. It checks exact
+new and retained bytes through the reader's own credentials.
 The core checkout must be clean and match the binary's source commit.
 The controller builds a separate real-service fixture. Each CLI invocation
 runs with no tools on PATH. Linux workflows use Docker-managed workspaces.
 The `workflow` subcommand also accepts an already built fixture, executable,
 and SDK test adapter for qualification on a native Linux host.
 
-### Recorded artifact qualification
+### Recorded artifact qualification: sp-v0.1.1
+
+The [sp-v0.1.1 report](evidence/sp-v0.1.1-qualification.json) binds four
+observed executable hashes to their release archives and source commit.
+Each target completed 22 CLI commands, for 88 total. Each run exercised an
+actual lost publication reply, service restart, exact recovery, granted and
+denied reads, and directory hydration. It then refused a 9 MiB upload and
+its recovery attempt, checked unchanged writer and volume state, explicitly
+removed the spool, and published valid content at the same writer position.
+The reader verified both the new result and the earlier retained result.
+
+Execution used native macOS arm64, Rosetta for macOS amd64, native Linux
+arm64 Docker, and native Linux amd64 on `omarx1`. These are real
+single-server service checks. They do not measure sustained capacity or
+establish a new run of the six-agent Fabric team.
+
+### Earlier artifact qualification: sp-v0.1.0
 
 The [public report](evidence/sp-v0.1.0-qualification.json) binds all four
 observed executable hashes to the exact release archives. It records 48

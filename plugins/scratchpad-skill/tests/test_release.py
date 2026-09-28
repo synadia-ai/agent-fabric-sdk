@@ -29,7 +29,7 @@ QUALIFICATION_SPEC.loader.exec_module(qualification)
 FAKE_GH = """#!/bin/sh
 set -eu
 printf '%s\\n' "$@" >"$SP_TEST_CALL_LOG"
-[ "$1" = release ] && [ "$2" = download ] && [ "$3" = sp-v0.1.0 ]
+[ "$1" = release ] && [ "$2" = download ] && [ "$3" = "$SP_TEST_RELEASE_VERSION" ]
 shift 3
 repository=
 archive=
@@ -97,6 +97,7 @@ class DistributionTests(unittest.TestCase):
             **os.environ,
             "PATH": str(self.commands),
             "SP_TEST_RELEASE_DIR": str(self.downloads),
+            "SP_TEST_RELEASE_VERSION": self.config["release"],
             "SP_TEST_CALL_LOG": str(self.directory / "gh.log"),
         }
         self.target = "linux/amd64"
@@ -172,6 +173,116 @@ class DistributionTests(unittest.TestCase):
         release.write_archive(second, contents)
         self.assertEqual(first.read_bytes(), second.read_bytes())
         self.assertEqual(first.read_bytes(), (self.assets / self.asset).read_bytes())
+
+    @staticmethod
+    def recovery_contract(text: str) -> str:
+        heading = "### Remove an unprepared upload\n"
+        if text.count(heading) != 1:
+            raise RuntimeError("skill must contain one upload-abandonment contract")
+        return text.split(heading, 1)[1].split("\n## ", 1)[0].strip()
+
+    def require_recovery_parity(self, adapted: str) -> None:
+        generic = (release.CACHE / "SKILL.md").read_text()
+        if self.recovery_contract(generic) != self.recovery_contract(adapted):
+            raise RuntimeError("harness recovery instructions differ from the pinned generic skill")
+
+    def test_harness_recovery_matches_the_pinned_generic_skill(self) -> None:
+        self.require_recovery_parity((HERE / "SKILL.md").read_text())
+
+    def test_recovery_parity_refuses_an_unsafe_pending_rule(self) -> None:
+        text = (HERE / "SKILL.md").read_text()
+        guard = "refuses a pending checkpoint"
+        self.assertEqual(text.count(guard), 1)
+        with self.assertRaisesRegex(RuntimeError, "recovery instructions differ"):
+            self.require_recovery_parity(text.replace(guard, "permits a pending checkpoint"))
+
+    @staticmethod
+    def normalized_packaged_skill(text: str, harness: str) -> str:
+        if harness != "claude-code":
+            return text
+        permission = "allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/sp *)\n"
+        lines = text.splitlines(keepends=True)
+        if lines.count(permission) != 1:
+            raise RuntimeError("Claude skill permission differs from the exact wrapper rule")
+        lines.remove(permission)
+        return "".join(lines)
+
+    def test_packaged_skill_refuses_expanded_claude_permissions(self) -> None:
+        source = (HERE / "SKILL.md").read_text()
+        permission = "allowed-tools: Bash(${CLAUDE_SKILL_DIR}/scripts/sp *)\n"
+        installed = source.replace("---\n", "---\n" + permission, 1)
+        self.assertEqual(self.normalized_packaged_skill(installed, "claude-code"), source)
+        with self.assertRaisesRegex(RuntimeError, "permission differs"):
+            self.normalized_packaged_skill(
+                installed.replace(permission, permission.rstrip() + " Bash(*)\n"),
+                "claude-code",
+            )
+
+    def test_all_harness_archives_embed_the_current_skill_and_binaries(self) -> None:
+        source = (HERE / "SKILL.md").read_text()
+        env = {
+            **os.environ,
+            "SP_BUILD_PYTHON": sys.executable,
+            "SCRATCHPAD_SRC": str(self.directory / "no-private-source-needed"),
+        }
+        for harness in ("pi", "openclaw", "claude-code"):
+            with self.subTest(harness=harness):
+                addon = HERE.parent / harness
+                installed = subprocess.run(
+                    ["npm", "run", "build:sp"],
+                    cwd=addon,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(installed.returncode, 0, installed.stderr)
+                packed = subprocess.run(
+                    [
+                        "npm",
+                        "pack",
+                        "--ignore-scripts",
+                        "--json",
+                        "--pack-destination",
+                        str(self.directory),
+                    ],
+                    cwd=addon,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(packed.returncode, 0, packed.stderr)
+                archive = self.directory / json.loads(packed.stdout)[0]["filename"]
+                skill = "skills/scratchpad" if harness == "claude-code" else "skill/scratchpad"
+                with tarfile.open(archive) as package:
+
+                    def member(name: str) -> bytes:
+                        value = package.extractfile("package/" + name)
+                        self.assertIsNotNone(value, name)
+                        return value.read()
+
+                    installed_skill = member(skill + "/SKILL.md").decode()
+                    normalized = self.normalized_packaged_skill(installed_skill, harness)
+                    self.assertEqual(normalized, source)
+                    self.require_recovery_parity(normalized)
+                    self.assertEqual(
+                        member(skill + "/scripts/sp"),
+                        (HERE / "scripts/sp").read_bytes(),
+                    )
+                    self.assertEqual(json.loads(member(skill + "/bin/BUILD.json")), self.build)
+                    for target in self.config["targets"]:
+                        name = release.binary_name(target)
+                        self.assertEqual(
+                            release.digest(member(skill + "/bin/" + name)),
+                            self.build["files"][name]["sha256"],
+                        )
+                    manifest = json.loads(member("package.json"))
+                    self.assertGreater(len(member(manifest["main"].removeprefix("./"))), 0)
+                    self.assertEqual(
+                        member(skill + "/THIRD_PARTY_NOTICES"),
+                        (release.CACHE / "THIRD_PARTY_NOTICES").read_bytes(),
+                    )
 
     def test_qualification_labels_use_the_actual_execution_host(self) -> None:
         self.assertEqual(

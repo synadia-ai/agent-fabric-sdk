@@ -240,7 +240,7 @@ the edges on the wire validated against `test-fixtures/schemas/edge.json`.
 `npm run build:sp` installs the skill from `../scratchpad-skill` into
 `skill/scratchpad`, building the sp binaries first from ScratchPad's
 repository, a checkout next to this one (`SCRATCHPAD_SRC` names another),
-at the commit pinned in `../scratchpad-skill/build-sp.sh`, with Go on
+at the commit pinned in `../scratchpad-skill/release.json`, with Go on
 `PATH`; `npm pack` runs it too (`prepack`). `skill/` is gitignored.
 `test/unit/scripts-sp.test.ts` drives the shared `scripts/sp` with fake
 binaries and a fake `uname`, and runs the real binary for this machine
