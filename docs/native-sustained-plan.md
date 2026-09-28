@@ -3,6 +3,7 @@
 Work issue: [SDK #22](https://github.com/synadia-ai/agent-fabric-sdk/issues/22).
 This qualification extends the short Linux window in SDK #39.
 The runtime sources remain unchanged. Live deployment and integration pins remain separate.
+The [September 29 report](runs/2026-09-29-native-sustained.md) records the measured result.
 
 ## Fixed workload
 
@@ -14,9 +15,9 @@ The runtime sources remain unchanged. Live deployment and integration pins remai
 - Keep handoffs for three cycles. Grants last 20 seconds; publication references last 3,600 seconds.
 - Release an older handoff only after observing its grant deadline. Collect after each cycle.
 - Keep a separate retained 4 KiB canary per volume. Read it through the opposite language every second.
-- Keep workspaces open between fault checkpoints. Sample database and WAL sizes without checkpointing them.
+- Keep workspaces open between fault checkpoints. Sample database, journal, and WAL sizes without checkpointing them.
 - At cycle 60, withhold the TypeScript publication receipt after acceptance. At cycle 120, withhold Python's.
-- At each fault, prove the stored receipt matches the dropped reply, kill that writer process, and restart the service.
+- At each fault, prove the stored receipt matches the dropped reply, kill that writer process, and restart the service instance.
 - Reopen the same workspace and require recovery of that exact receipt before proceeding.
 - Pause canary reads only for these explicit restart intervals. Record their duration.
 
@@ -65,11 +66,13 @@ The final run requires passed control evidence with the exact same source manife
 ## Scope
 
 This is one Linux arm64 container with four CPUs and 4 GiB memory on local Docker storage.
-It qualifies sustained native client work and service restart, not broker restart or R3 failover.
+It qualifies sustained native client work and service-instance restart, not broker restart or R3 failover.
 It does not qualify an independent operator maintenance controller or public npm/PyPI installation.
 The previous real Live run and its six agents remain separate evidence.
 
 ## Worker protocol
+
+See the commands below to run the controller. The remaining section specifies its worker interface.
 
 The controller sends JSON lines with `id` and `command`; workers return one line with the same `id`.
 Success contains `value`; failure contains `error` with `code` and `message`. Diagnostics go to stderr.
@@ -100,3 +103,47 @@ Artifact chunks contain 524,288 bytes. Their first twelve bytes are three unsign
 language ID, cycle, and chunk index. The remaining bytes equal `(languageId * 67 + cycle * 17 + index) % 256`.
 Every worker uses `agents.native.sustained.<language>` as its creator.
 Publication operation IDs are `sustained-<language>-<cycle>`.
+
+## Reproduce the workload
+
+Use the [Linux build instructions](../scripts/native-linux/README.md#build-inputs) to inventory the three checkouts
+and build `scratchpad-native-qualification:local`. The core needs the `sustained-128m` profile and `observe_storage`
+from ScratchPad #1172. The build uses the selected Live images' locked dependencies; it does not prove a public package install.
+Set `qualification_evidence` to a new absolute directory. Save the source inventory there as `expected-sources.json`.
+Use unused container and volume names. The example leaves containers and volumes available for inspection.
+
+Run the real controls first:
+
+```sh
+docker volume create native-sustained-controls
+docker run --name native-sustained-controls --network none --cpus 4 --memory 4g --memory-swap 4g \
+  --mount type=volume,src=native-sustained-controls,dst=/qualification \
+  --mount type=bind,src="${qualification_evidence}/expected-sources.json",dst=/expected-sources.json,readonly \
+  --entrypoint uv scratchpad-native-qualification:local \
+  run --no-sync python ../scripts/native-sustained.py --mode controls \
+  --output /qualification/evidence --expected-sources /expected-sources.json
+docker cp native-sustained-controls:/qualification/evidence "${qualification_evidence}/controls"
+```
+
+Run a rehearsal with the same command shape, mode `rehearsal`, and fresh container and volume names.
+It takes two minutes. Inspect its `summary.json`, both fault receipts, and cleanup evidence before the final run.
+Keep the same image and source inventory for the controls and qualification:
+
+```sh
+docker volume create native-sustained-final
+docker run --name native-sustained-final --network none --cpus 4 --memory 4g --memory-swap 4g \
+  --mount type=volume,src=native-sustained-final,dst=/qualification \
+  --mount type=volume,src=native-sustained-controls,dst=/controls,readonly \
+  --mount type=bind,src="${qualification_evidence}/expected-sources.json",dst=/expected-sources.json,readonly \
+  --entrypoint uv scratchpad-native-qualification:local \
+  run --no-sync python ../scripts/native-sustained.py --mode qualification \
+  --output /qualification/evidence --expected-sources /expected-sources.json \
+  --controls-evidence /controls/evidence
+docker cp native-sustained-final:/qualification/evidence "${qualification_evidence}/qualification"
+```
+
+Inspect every time quarter in `summary.json`, the complete `result.json`, and `controls-proof.json`.
+Retain the image ID, container resource configuration, source inventory, and runtime environment with the results.
+Export only the evidence subtree; credentials live in separate private fixture scratch space.
+The controller refuses mismatched sources, missing controls, incomplete results, and cleanup failures.
+The ordinary Python suite discovers its 11 checker controls in `tests/test_native_sustained_report.py`.

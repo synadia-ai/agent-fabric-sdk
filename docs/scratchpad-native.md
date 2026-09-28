@@ -270,6 +270,8 @@ The [Linux preparation report](runs/2026-09-28-linux-native-preparation.md) reco
 
 The [sustained workload contract](native-sustained-plan.md) defines a separate 30-minute native-client run.
 It keeps both workspaces open between explicit writer deaths and uses independent cross-language readers.
-The run measures the SQLite database and rollback journal separately, plus their combined disk allocation.
+The run measures the SQLite database and rollback journal separately, plus their combined file size.
 Its canary checks require progress throughout each active interval, not only a final successful read.
 Use the contract's controls and rehearsal before its fixed qualification workload.
+The [September 29 sustained report](runs/2026-09-29-native-sustained.md) records the full window,
+exact recovery events, storage reuse, measured latency, and qualification limits.
