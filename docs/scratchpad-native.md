@@ -145,6 +145,28 @@ and replace malformed header text before this client receives it. The client val
 headers and strict body JSON; it cannot prove the original raw header bytes or multiplicity.
 That upstream limitation is recorded for friendly-user qualification, without a private parser hook.
 
+### A closed volume without a saved continuation
+
+Native maintenance resumes only its saved interval.
+If another operation closed the volume, `maintain()` refuses with `closed`, including after reopening the workspace.
+A `recover()` result of `ready` means the journal has no pending work. It does not mean the remote volume is open.
+The refusal preserves the head, writers, retained roots, and closed revision.
+
+An operator must finish that interval through the authenticated public service API:
+
+1. Quiesce the volume's mutation actors. Identify its owner, volume, and incarnation from `describe()`.
+2. Read the current volume with `volume.get`. Confirm that it is closed and record its exact revision.
+3. Inspect `maintenance.plan` for that target and revision. Check the live roots and proposed deletions.
+4. Apply `maintenance.apply` with that same target and revision, then read the volume again.
+   A changed revision requires a fresh inspection; do not silently adopt a different interval.
+5. Confirm the volume is open and retained references are readable before resuming the writer.
+
+The Go client's `GetVolume`, `PlanCollection`, and `ApplyCollection` expose these operations.
+Do not reset a writer or discard its journal merely to reopen a closed volume.
+Do not attach a new CLI workspace to the native writer slot.
+The service fences maintenance by revision; it does not record a separate maintenance-owner identity.
+This procedure requires coordinated operators. Independent concurrent maintenance actors remain outside the qualified scope.
+
 ### Bounds and friendly-user test scope
 
 Each publication replaces the head with one file at the selected path. It does not merge previous files into the new head.
@@ -162,7 +184,10 @@ Admission conservatively allows space for existing content plus the new artifact
 All eight occupied retention slots produce an explicit capacity refusal; live handoffs are never evicted to make space.
 
 The first milestone qualifies the local Node runtime and actual service workflow.
-Synchronous SQLite flush latency, other operating systems, synchronized clocks, the full disconnect matrix, and sustained workload sizing remain friendly-test risks.
+Synchronous work can delay the caller's event loop during larger publications.
+Use the bounded spool probe below to measure that delay on the selected runtime and local filesystem.
+It covers encoding, database writes, and network work together; it does not isolate SQLite flush time.
+Other operating systems, synchronized clocks, the full disconnect matrix, and sustained workload sizing remain friendly-test risks.
 No Windows or network-filesystem qualification is implied.
 Full directory sync/hydrate remains the `sp` client path.
 Track TypeScript delivery in [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19),
@@ -189,10 +214,12 @@ cd ../python
 uv sync --python 3.12 --frozen
 SCRATCHPAD_CORE_ROOT=/path/to/private/scratchpad \
 SCRATCHPAD_TYPESCRIPT_PACKAGE=/path/to/agent-fabric-sdk/typescript \
-  uv run --no-sync pytest -s tests/test_scratchpad_native.py tests/test_scratchpad_native_expiry.py
+  uv run --no-sync pytest -s tests/test_scratchpad_native.py tests/test_scratchpad_native_expiry.py \
+    tests/test_scratchpad_native_controls.py
 ```
 
 The core checkout is a test-only dependency. Shipped clients and their callers do not need it.
+The control suite requires the core's `native_client_control_test.go` fixture extension.
 The launcher creates temporary test credentials, uses the real broker identity imports, and records actual dropped receipts.
 The process-restart test runs the built package with no executables on PATH, kills its writer after an unknown result, and compares the recovered receipt and bytes.
 The Python suite also exchanges exact bytes and digests with the built TypeScript package:
@@ -200,3 +227,32 @@ more than one MiB from Python to TypeScript, and 4097 bytes in the reverse direc
 within the fixture's smaller spare volume.
 Agent reference-policy tests use an explicit CLI adapter and fake `sp` to check policy in isolation.
 Those tests do not qualify ScratchPad storage, identity imports, or native recovery.
+
+The control cases withhold actual accepted grant, close, and collection replies plus their next volume observations.
+They reopen the workspace and compare the complete replayed request, stored state, and live bytes.
+Other cases observe a real disconnect/reconnect, operator recovery, fixed-slot pressure, and byte/object quota headroom.
+Overlapping handoffs use one writer's queue; they do not establish support for competing writer workspaces.
+The reconnect case follows an accepted publication whose reply was lost.
+Delayed delivery of an earlier buffered control and the full disconnect matrix remain separate qualification work.
+
+The following optional checks require both packages' development environments.
+Run them from `python/`; select new output directories for each run:
+
+```sh
+uv run --no-sync ../scripts/check-native-control-recovery.py \
+  --core-root /path/to/private/scratchpad --output /path/to/evidence/control-mutations
+uv run --no-sync ../scripts/measure-native-spool.py \
+  --core-root /path/to/private/scratchpad --output /path/to/evidence/spool-probe --cycles 3
+```
+
+The mutation check omits durable grant-intent storage in isolated source copies.
+Both language tests must fail at the reopened-workspace assertion; setup failures do not count.
+The original checkout remains unchanged.
+
+The spool probe publishes a distinct 7 MiB stream, verifies its complete digest, and releases and collects the previous content.
+It closes and reopens the same workspace on every cycle.
+Records include publication time, worst observed event-loop gap, sample count/window, verified bytes, and closed database size.
+TypeScript records sampled RSS; Python records process-lifetime maximum RSS. Those measurements have different scopes.
+The default three cycles are a bounded diagnostic, not a soak or a latency guarantee.
+No timing threshold is used as a correctness assertion.
+The [September 28 qualification report](runs/2026-09-28-native-friendly-qualification.md) records exact case counts, measured pauses, and remaining boundaries.

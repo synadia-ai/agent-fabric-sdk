@@ -14,6 +14,7 @@ export default tseslint.config(
       "test/harness/*.mjs",
       // Standalone JavaScript qualification runner; no TypeScript project context.
       "scripts/run-native-tests.mjs",
+      "scripts/measure-native-spool.mjs",
     ],
   },
   ...tseslint.configs.recommendedTypeChecked,
