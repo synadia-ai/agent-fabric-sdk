@@ -1,0 +1,598 @@
+{
+  "release": "sp-v0.1.2",
+  "source_commit": "75662e979bee01177770f9181fc2fd8200a2763c",
+  "go_version": "go1.26.7",
+  "qualified_targets": 4,
+  "observed_cli_commands": 88,
+  "scope": "Real single-server service fixture; platform correctness, not R3 or sustained performance.",
+  "results": [
+    {
+      "target": "darwin-arm64",
+      "execution": "native macOS arm64",
+      "binary_sha256": "de4226850e5f12f1584da32c9bcc82966fa570f467f47a116a6917ce7e5028f1",
+      "platform": "macOS-26.6.2-arm64-arm-64bit",
+      "machine": "arm64",
+      "published_bytes": 1048713,
+      "published_sha256": "4eb85990ae06c6e674331fe5dcfed1aacaed44520a05130e63ec2aa07e645f99",
+      "recovered_bytes": 1048733,
+      "recovered_sha256": "3b4bf3ec7d1eb50f91eab1d7bcc3a3a56352a39ca73e1ff2910999cec7227ca8",
+      "exact_receipt_recovered": true,
+      "changed_source_ignored": true,
+      "denied_reads": 1,
+      "hydrated_files": 2,
+      "hydrated_symlinks": 1,
+      "executable_mode_preserved": true,
+      "quota_refusals": 2,
+      "quota_payload_bytes": 9437184,
+      "quota_remote_state_unchanged": true,
+      "quota_writer_unchanged": true,
+      "quota_explicit_abandonment": true,
+      "publication_after_quota_number": 4,
+      "retained_content_after_quota_verified": true,
+      "fixture": {
+        "accepted_receipts": 1,
+        "commands": 5,
+        "dropped_replies": 1,
+        "go_publications": 0,
+        "go_reads": 1,
+        "service_restarts": 1
+      },
+      "commands": [
+        {
+          "command": "init",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "intruder",
+          "exit": 1
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 3
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "sync",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "hydrate",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        }
+      ],
+      "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
+      "archive_sha256": "064da39e69ae339b1914492befb3ccb5106e1e769d8a12e5fc0238e5cd9b0116",
+      "source_commit": "75662e979bee01177770f9181fc2fd8200a2763c"
+    },
+    {
+      "target": "darwin-amd64",
+      "execution": "Rosetta on macOS arm64",
+      "binary_sha256": "1dc2fb9581005a42a474fe6af6f07198705d271631c3c29a2f690ca6a0a89e82",
+      "platform": "macOS-26.6.2-arm64-arm-64bit",
+      "machine": "arm64",
+      "published_bytes": 1048713,
+      "published_sha256": "4eb85990ae06c6e674331fe5dcfed1aacaed44520a05130e63ec2aa07e645f99",
+      "recovered_bytes": 1048733,
+      "recovered_sha256": "3b4bf3ec7d1eb50f91eab1d7bcc3a3a56352a39ca73e1ff2910999cec7227ca8",
+      "exact_receipt_recovered": true,
+      "changed_source_ignored": true,
+      "denied_reads": 1,
+      "hydrated_files": 2,
+      "hydrated_symlinks": 1,
+      "executable_mode_preserved": true,
+      "quota_refusals": 2,
+      "quota_payload_bytes": 9437184,
+      "quota_remote_state_unchanged": true,
+      "quota_writer_unchanged": true,
+      "quota_explicit_abandonment": true,
+      "publication_after_quota_number": 4,
+      "retained_content_after_quota_verified": true,
+      "fixture": {
+        "accepted_receipts": 1,
+        "commands": 5,
+        "dropped_replies": 1,
+        "go_publications": 0,
+        "go_reads": 1,
+        "service_restarts": 1
+      },
+      "commands": [
+        {
+          "command": "init",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "intruder",
+          "exit": 1
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 3
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "sync",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "hydrate",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        }
+      ],
+      "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
+      "archive_sha256": "d9fe0ae7e0bc4b9aebffbb47084c50ff568c5026b37f8097e9c9b3ad18e75ed8",
+      "source_commit": "75662e979bee01177770f9181fc2fd8200a2763c"
+    },
+    {
+      "target": "linux-arm64",
+      "execution": "native Linux arm64 Docker",
+      "binary_sha256": "502eb0ccae1f775d314e89e1d6fe5f1d13da66f45b66a7a1f4ab2fc757b9d548",
+      "platform": "Linux-6.8.0-117-generic-aarch64-with-glibc2.41",
+      "machine": "aarch64",
+      "published_bytes": 1048713,
+      "published_sha256": "4eb85990ae06c6e674331fe5dcfed1aacaed44520a05130e63ec2aa07e645f99",
+      "recovered_bytes": 1048733,
+      "recovered_sha256": "3b4bf3ec7d1eb50f91eab1d7bcc3a3a56352a39ca73e1ff2910999cec7227ca8",
+      "exact_receipt_recovered": true,
+      "changed_source_ignored": true,
+      "denied_reads": 1,
+      "hydrated_files": 2,
+      "hydrated_symlinks": 1,
+      "executable_mode_preserved": true,
+      "quota_refusals": 2,
+      "quota_payload_bytes": 9437184,
+      "quota_remote_state_unchanged": true,
+      "quota_writer_unchanged": true,
+      "quota_explicit_abandonment": true,
+      "publication_after_quota_number": 4,
+      "retained_content_after_quota_verified": true,
+      "fixture": {
+        "accepted_receipts": 1,
+        "commands": 5,
+        "dropped_replies": 1,
+        "go_publications": 0,
+        "go_reads": 1,
+        "service_restarts": 1
+      },
+      "commands": [
+        {
+          "command": "init",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "intruder",
+          "exit": 1
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 3
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "sync",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "hydrate",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        }
+      ],
+      "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
+      "archive_sha256": "39cc67e75967bf8321270d5914f09fa066b2fae0b67427aa0cd3c2d588efc5cb",
+      "source_commit": "75662e979bee01177770f9181fc2fd8200a2763c"
+    },
+    {
+      "target": "linux-amd64",
+      "execution": "native Linux amd64 on omarx1",
+      "binary_sha256": "21f19ff428c9f5a85eaac0409cbfddc76765718bf19f6308b1b87553462f7138",
+      "platform": "Linux-7.2.5-3-omarchy-x86_64-with-glibc2.44",
+      "machine": "x86_64",
+      "published_bytes": 1048713,
+      "published_sha256": "4eb85990ae06c6e674331fe5dcfed1aacaed44520a05130e63ec2aa07e645f99",
+      "recovered_bytes": 1048733,
+      "recovered_sha256": "3b4bf3ec7d1eb50f91eab1d7bcc3a3a56352a39ca73e1ff2910999cec7227ca8",
+      "exact_receipt_recovered": true,
+      "changed_source_ignored": true,
+      "denied_reads": 1,
+      "hydrated_files": 2,
+      "hydrated_symlinks": 1,
+      "executable_mode_preserved": true,
+      "quota_refusals": 2,
+      "quota_payload_bytes": 9437184,
+      "quota_remote_state_unchanged": true,
+      "quota_writer_unchanged": true,
+      "quota_explicit_abandonment": true,
+      "publication_after_quota_number": 4,
+      "retained_content_after_quota_verified": true,
+      "fixture": {
+        "accepted_receipts": 1,
+        "commands": 5,
+        "dropped_replies": 1,
+        "go_publications": 0,
+        "go_reads": 1,
+        "service_restarts": 1
+      },
+      "commands": [
+        {
+          "command": "init",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "intruder",
+          "exit": 1
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 3
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "sync",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "hydrate",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "recover",
+          "principal": "owner",
+          "exit": 1
+        },
+        {
+          "command": "describe",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "spool-remove",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "publish-file",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "grant",
+          "principal": "owner",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        },
+        {
+          "command": "read",
+          "principal": "reader",
+          "exit": 0
+        }
+      ],
+      "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
+      "archive_sha256": "7e1cf45eca35f8e209f38f595a81412b2c39123c71414928593b65777cc8e1c8",
+      "source_commit": "75662e979bee01177770f9181fc2fd8200a2763c"
+    }
+  ]
+}

@@ -5,7 +5,7 @@ install an executable. Native TypeScript and Python agents can use the
 [native client](scratchpad-native.md) instead.
 
 The release channel is `synadia-ai/agent-fabric-sdk`, under tags such as
-`sp-v0.1.1`. This private preview requires authenticated access to that
+`sp-v0.1.2`. This private preview requires authenticated access to that
 repository. Installation needs no private ScratchPad checkout or Go compiler.
 The [delivery issue](https://github.com/synadia-ai/agent-fabric-sdk/issues/29)
 records qualification and publication.
@@ -23,7 +23,7 @@ accepts an explicit `--target` for an image build. The destination must be a
 new absolute directory; installation preserves existing directories.
 
 ```sh
-sh plugins/scratchpad-skill/get-sp.sh --version sp-v0.1.1 --dest "$HOME/.local/share/scratchpad/sp-v0.1.1"
+sh plugins/scratchpad-skill/get-sp.sh --version sp-v0.1.2 --dest "$HOME/.local/share/scratchpad/sp-v0.1.2"
 ```
 
 For an agent with no checkout, download `get-sp.sh` and `SHA256SUMS` from the
@@ -86,13 +86,13 @@ checks all cached bytes and settings before reuse. Each harness's existing
 `npm run build:sp` copies the same executable bytes and notices.
 Run shared builds serially; a concurrent build refuses the occupied cache lock.
 
-Standalone output is `plugins/scratchpad-skill/dist/sp-v0.1.1/`:
+Standalone output is `plugins/scratchpad-skill/dist/sp-v0.1.2/`:
 
 ```text
-sp-v0.1.1-darwin-arm64.tar.gz
-sp-v0.1.1-darwin-amd64.tar.gz
-sp-v0.1.1-linux-arm64.tar.gz
-sp-v0.1.1-linux-amd64.tar.gz
+sp-v0.1.2-darwin-arm64.tar.gz
+sp-v0.1.2-darwin-amd64.tar.gz
+sp-v0.1.2-linux-arm64.tar.gz
+sp-v0.1.2-linux-amd64.tar.gz
 release.json
 SHA256SUMS
 get-sp.sh
@@ -146,7 +146,7 @@ The real-service artifact check is indexed here:
 ```sh
 uv run --script plugins/scratchpad-skill/tests/qualify-artifact.py run \
   --core-root /absolute/clean/scratchpad \
-  --archive plugins/scratchpad-skill/dist/sp-v0.1.1/sp-v0.1.1-darwin-arm64.tar.gz \
+  --archive plugins/scratchpad-skill/dist/sp-v0.1.2/sp-v0.1.2-darwin-arm64.tar.gz \
   --target darwin-arm64 --evidence /absolute/new/evidence-directory
 ```
 
@@ -159,7 +159,28 @@ runs with no tools on PATH. Linux workflows use Docker-managed workspaces.
 The `workflow` subcommand also accepts an already built fixture, executable,
 and SDK test adapter for qualification on a native Linux host.
 
-### Recorded artifact qualification: sp-v0.1.1
+### Recorded artifact qualification: sp-v0.1.2
+
+The [sp-v0.1.2 report](evidence/sp-v0.1.2-qualification.json) binds four
+observed executable hashes to source `75662e979bee01177770f9181fc2fd8200a2763c`
+and their release archives. Each target completed 22 CLI commands, for 88 total.
+The workflow checks publication, granted and denied reads, a lost reply,
+service restart, exact receipt recovery, directory hydration, and quota recovery.
+It preserves executable modes, literal symbolic links, and the earlier retained result.
+
+The new Go client reuses the first bounded read when hydrating listed files.
+It also reuses the initial metadata lookup for direct file hydration.
+The separate [three-NATS measurement](https://github.com/synadia-ai/scratchpad/blob/75662e979bee01177770f9181fc2fd8200a2763c/docs/research/2026-09-28--first-read-hydration.md)
+records 44.8–48.5% lower worst observed times across three shapes, with two samples per build.
+Those timings are not platform-wide latency guarantees.
+This Go client change does not change the native TypeScript or Python clients.
+
+Execution used native macOS arm64, Rosetta for macOS amd64, native Linux
+arm64 Docker, and native Linux amd64 on `omarx1`.
+The artifact checks use a real single-server service and establish platform correctness.
+Live deployment and sustained capacity remain separate checks.
+
+### Earlier artifact qualification: sp-v0.1.1
 
 The [sp-v0.1.1 report](evidence/sp-v0.1.1-qualification.json) binds four
 observed executable hashes to their release archives and source commit.
