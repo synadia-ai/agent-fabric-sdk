@@ -124,7 +124,7 @@ class NativeService:
 
     async def close(self) -> dict[str, int]:
         try:
-            counts = await self.command("stop")
+            counts: dict[str, int] = await self.command("stop")
             code = await asyncio.wait_for(self.process.wait(), 15)
             if code != 0:
                 raise RuntimeError(f"fixture exit {code}: {self.diagnostics}")
@@ -180,7 +180,8 @@ class NativeWorker:
         line = await asyncio.wait_for(self.process.stdout.readline(), 20)
         if not line:
             raise RuntimeError(f"native worker exited: {await self.errors}")
-        return json.loads(line)
+        event: dict[str, Any] = json.loads(line)
+        return event
 
     async def exited(self) -> int:
         result = await asyncio.wait_for(self.process.wait(), 10)
