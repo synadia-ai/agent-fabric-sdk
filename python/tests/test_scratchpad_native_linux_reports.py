@@ -34,13 +34,15 @@ def test_native_report_counts(tmp_path: Path, language: str, defect: str) -> Non
         read = qualification.passed_typescript
     else:
         count = qualification.MIN_PYTHON_CASES
-        cases = ["<testcase/>" for _ in range(count)]
+        xml_cases = ["<testcase/>" for _ in range(count)]
         if defect == "empty":
-            cases = []
+            xml_cases = []
         elif defect != "none":
             marker = "skipped" if defect == "skip" else "failure"
-            cases[0] = f"<testcase><{marker}/></testcase>"
-        report.write_text("<testsuites><testsuite>" + "".join(cases) + "</testsuite></testsuites>")
+            xml_cases[0] = f"<testcase><{marker}/></testcase>"
+        report.write_text(
+            "<testsuites><testsuite>" + "".join(xml_cases) + "</testsuite></testsuites>"
+        )
         read = qualification.passed_python
     if defect == "none":
         assert read(report) == count

@@ -266,3 +266,4 @@ The default three cycles are a bounded diagnostic, not a soak or a latency guara
 No timing threshold is used as a correctness assertion.
 The [September 28 qualification report](runs/2026-09-28-native-friendly-qualification.md) records exact case counts, measured pauses, and remaining boundaries.
 The [Linux command](../scripts/native-linux/README.md) records source hashes, runtimes, mount details, counts, and measurement scope.
+The [Linux preparation report](runs/2026-09-28-linux-native-preparation.md) records the delayed-grant, workspace lifecycle, and larger-spool results.
