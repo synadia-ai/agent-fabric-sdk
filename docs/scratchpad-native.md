@@ -255,3 +255,4 @@ Records include publication time, worst observed event-loop gap, sample count/wi
 TypeScript records sampled RSS; Python records process-lifetime maximum RSS. Those measurements have different scopes.
 The default three cycles are a bounded diagnostic, not a soak or a latency guarantee.
 No timing threshold is used as a correctness assertion.
+The [September 28 qualification report](runs/2026-09-28-native-friendly-qualification.md) records exact case counts, measured pauses, and remaining boundaries.
