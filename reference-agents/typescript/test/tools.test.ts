@@ -30,6 +30,8 @@
 // here they are tested through the agent's wiring.
 
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { Msg, NatsConnection } from "@nats-io/nats-core";
 import { connect, nkeyAuthenticator } from "@nats-io/transport-node";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -49,8 +51,8 @@ import {
 import { AgentService } from "@synadia-ai/agent-service";
 import { Agents, AgentSubject, AgentTools, signerFromSeed } from "@synadia-ai/agents";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { BLOCKING_TOOLS, chatTools, offeredTools, toolRunner } from "../src/tools.js";
-import type { ToolRunner } from "../src/model.js";
+import { BLOCKING_TOOLS, chatTools, offeredTools, toolRunner, type ChatTool } from "../src/tools.js";
+import { createModelClient, type ToolRunner } from "../src/model.js";
 import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server.js";
 
 // The contract's own files, in the SDK checkout this repository links: the
@@ -89,6 +91,37 @@ describe("the tool definitions", () => {
   const byDefault = new AgentTools({ agents: {} as Agents, tools: offeredTools("blocking") });
   const all = new AgentTools({ agents: {} as Agents, tools: offeredTools("all") });
 
+  it.each(["blocking", "all"] as const)("serializes explicit non-strict Chat Completions tools for %s", async (setting) => {
+    const tools = new AgentTools({ agents: {} as Agents, tools: offeredTools(setting) });
+    const original = structuredClone(tools.definitions);
+    const requests: { url: string | undefined; body: { tools: ChatTool[] } }[] = [];
+    const proxy = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      requests.push({ url: request.url, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) });
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "ok" } }] }));
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+    try {
+      const model = createModelClient({
+        proxyUrl: `http://127.0.0.1:${(proxy.address() as AddressInfo).port}/api`,
+        virtualKey: "test-key",
+        model: "test-model",
+        timeoutMs: 3000,
+      });
+      await model.complete([{ role: "user", content: "hello" }], toolRunner(tools).definitions, {});
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.url).toBe("/api/v1/chat/completions");
+      expect(requests[0]!.body.tools).toEqual(
+        original.map((definition) => ({ type: "function", function: { ...definition, strict: false } })),
+      );
+      expect(tools.definitions).toEqual(original);
+    } finally {
+      await new Promise<void>((resolve, reject) => proxy.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
+
   it("are by default the SDK's three blocking ones, in the shape a chat-completions request carries, not a word changed", () => {
     const offered = chatTools(byDefault);
     expect(offered.map((t) => t.function.name)).toEqual(["discover_agents", "prompt_agent", "answer_agent"]);
@@ -96,7 +129,7 @@ describe("the tool definitions", () => {
     expect(offered.every((t) => t.type === "function")).toBe(true);
     // Word for word what the contract derives for the three: nothing to
     // detach with, so no `wait`, and no word of a tool not offered.
-    expect(offered.map((t) => t.function)).toEqual(derived(BLOCKING_TOOLS));
+    expect(offered.map((t) => t.function)).toEqual(derived(BLOCKING_TOOLS).map((d) => ({ ...d, strict: false })));
     expect(JSON.stringify(offered)).not.toMatch(/wait_agent|cancel_agent|list_agent_calls|"wait"/);
     expect(toolRunner(byDefault).definitions).toEqual(offered);
   });
@@ -106,9 +139,9 @@ describe("the tool definitions", () => {
     expect(offered.map((t) => t.function.name)).toEqual(TOOL_NAMES);
     for (const tool of offered) {
       expect(tool.type).toBe("function");
-      expect(tool.function).toEqual(contract(`${tool.function.name}.json`));
+      expect(tool.function).toEqual({ ...contract(`${tool.function.name}.json`), strict: false });
     }
-    expect(offered.map((t) => t.function)).toEqual(derived(TOOL_NAMES));
+    expect(offered.map((t) => t.function)).toEqual(derived(TOOL_NAMES).map((d) => ({ ...d, strict: false })));
   });
 
   it("have parameter schemas that compile under draft 2020-12 and admit nothing unknown", () => {
@@ -119,6 +152,10 @@ describe("the tool definitions", () => {
         expect(validate({ unknown: 1 })).toBe(false);
       }
       const prompt = ajv.compile(chatTools(tools).find((t) => t.function.name === "prompt_agent")!.function.parameters);
+      const discover = ajv.compile(chatTools(tools).find((t) => t.function.name === "discover_agents")!.function.parameters);
+      expect(discover({})).toBe(true);
+      expect(discover({ agent: "researcher" })).toBe(true);
+      expect(discover({ agent: null })).toBe(false);
       expect(prompt({ address: "agents.prompt.echo.test.target", prompt: "hi" })).toBe(true);
       expect(prompt({ address: "agents.prompt.echo.test.target" })).toBe(false);
       expect(prompt({ address: "agents.prompt.echo.test.target", prompt: "" })).toBe(false);
