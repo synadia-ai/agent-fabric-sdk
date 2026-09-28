@@ -228,23 +228,19 @@ class DistributionTests(unittest.TestCase):
         for harness in ("pi", "openclaw", "claude-code"):
             with self.subTest(harness=harness):
                 addon = HERE.parent / harness
-                installed = subprocess.run(
-                    ["npm", "run", "build:sp"],
-                    cwd=addon,
-                    env=env,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(installed.returncode, 0, installed.stderr)
+                skill = "skills/scratchpad" if harness == "claude-code" else "skill/scratchpad"
+                generated = addon / skill
+                if generated.exists():
+                    shutil.rmtree(generated)
+                destination = self.directory / harness
+                destination.mkdir()
                 packed = subprocess.run(
                     [
                         "npm",
                         "pack",
-                        "--ignore-scripts",
                         "--json",
                         "--pack-destination",
-                        str(self.directory),
+                        str(destination),
                     ],
                     cwd=addon,
                     env=env,
@@ -253,8 +249,9 @@ class DistributionTests(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(packed.returncode, 0, packed.stderr)
-                archive = self.directory / json.loads(packed.stdout)[0]["filename"]
-                skill = "skills/scratchpad" if harness == "claude-code" else "skill/scratchpad"
+                archives = list(destination.iterdir())
+                self.assertEqual(len(archives), 1, packed.stdout)
+                archive = archives[0]
                 with tarfile.open(archive) as package:
 
                     def member(name: str) -> bytes:
