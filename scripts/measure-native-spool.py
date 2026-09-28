@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import platform
 import resource
 import sys
@@ -24,12 +25,14 @@ import nats
 from synadia_ai.agent_fabric import native_scratchpad, scratchpad_reader
 
 ROOT = Path(__file__).resolve().parents[1]
+LARGE_ARTIFACT_MIB = 32
+LARGE_SCOPE_OBJECTS = 512
 sys.path.insert(0, str(ROOT / "python"))
 from tests.harness.native_service import NativeService  # noqa: E402 -- checkout test harness
 
 
 async def python_probe(  # noqa: PLR0915 -- one complete measured lifecycle
-    fixture: NativeService, directory: Path, cycles: int
+    fixture: NativeService, directory: Path, cycles: int, artifact_mib: int
 ) -> list[dict]:
     config = fixture.config
     nc = await nats.connect(
@@ -52,8 +55,12 @@ async def python_probe(  # noqa: PLR0915 -- one complete measured lifecycle
 
             def chunks(cycle=cycle, expected=expected):
                 nonlocal input_bytes
-                for index in range(14):
-                    data = bytes([cycle * 16 + index]) * (512 * 1024)
+                for index in range(2 * artifact_mib):
+                    data = (
+                        cycle.to_bytes(4, "big")
+                        + index.to_bytes(4, "big")
+                        + bytes([(cycle * 16 + index) % 256]) * (512 * 1024 - 8)
+                    )
                     expected.update(data)
                     input_bytes += len(data)
                     yield data
@@ -86,7 +93,7 @@ async def python_probe(  # noqa: PLR0915 -- one complete measured lifecycle
                 await sampling
                 sample_end = time.perf_counter()
             assert samples >= 2  # noqa: PLR2004 -- one observation on each side
-            assert input_bytes == 7 * 1024 * 1024
+            assert input_bytes == artifact_mib * 1024 * 1024
             actual, read_bytes = hashlib.sha256(), 0
             async for chunk in reader.read_stream(
                 publication["reference"], limit_bytes=input_bytes
@@ -115,6 +122,7 @@ async def python_probe(  # noqa: PLR0915 -- one complete measured lifecycle
                     arch=platform.machine(),
                     cycle=cycle,
                     artifactBytes=input_bytes,
+                    generator="cycle-index-prefix-v1",
                     verifiedBytes=read_bytes,
                     sha256=expected.hexdigest(),
                     publishMs=publish_ms,
@@ -145,13 +153,22 @@ async def python_probe(  # noqa: PLR0915 -- one complete measured lifecycle
 
 async def run(args) -> None:
     args.output.mkdir(parents=True, exist_ok=False)
+    os.environ["SP_NATIVE_CLIENT_PROFILE"] = (
+        "spool-32m" if args.artifact_mib == LARGE_ARTIFACT_MIB else ""
+    )
     records = []
     for language in ("typescript", "python"):
         fixture = await NativeService.start(args.core_root)
         try:
+            if args.artifact_mib == LARGE_ARTIFACT_MIB:
+                assert fixture.config["profile"] == "spool-32m"
+                assert fixture.config["scope_bytes"] == 128 * 1024 * 1024
+                assert fixture.config["scope_objects"] == LARGE_SCOPE_OBJECTS
             directory = args.output / language / "workspace"
             if language == "python":
-                part = await asyncio.wait_for(python_probe(fixture, directory, args.cycles), 120)
+                part = await asyncio.wait_for(
+                    python_probe(fixture, directory, args.cycles, args.artifact_mib), 150
+                )
             else:
                 process = await asyncio.create_subprocess_exec(
                     "node",
@@ -168,10 +185,11 @@ async def run(args) -> None:
                                     config=fixture.config,
                                     directory=str(directory),
                                     cycles=args.cycles,
+                                    artifactMiB=args.artifact_mib,
                                 )
                             ).encode()
                         ),
-                        120,
+                        150,
                     )
                 finally:
                     if process.returncode is None:
@@ -228,6 +246,7 @@ def main() -> None:
     parser.add_argument("--core-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--cycles", type=int, choices=range(1, 11), default=3)
+    parser.add_argument("--artifact-mib", type=int, choices=(7, LARGE_ARTIFACT_MIB), default=7)
     args = parser.parse_args()
     args.core_root, args.output = args.core_root.resolve(), args.output.resolve()
     asyncio.run(run(args))

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove that both real-service tests reject a missing durable grant intent.
+"""Prove that both real-service suites reject lost or prematurely cleared grant intent.
 
 Run each mutation in a fresh copy. Never modify the source checkout or use a
 private NATS API. An expected assertion must fail; setup failures do not count.
@@ -25,6 +25,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--case", choices=("durable-grant", "delayed-refusal"), default="durable-grant"
+    )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     core = args.core_root.resolve()
@@ -83,6 +86,23 @@ def main() -> None:
             ],
         },
     ]
+    expected = "reopened workspace retains its control"
+    if args.case == "delayed-refusal":
+        expected = "a later refusal cannot clear an earlier unknown grant"
+        mutations[0].update(
+            before='(fresh ||\n          control.kind === "release"',
+            after='(true ||\n          control.kind === "release"',
+        )
+        mutations[0]["command"][-2] = "keeps a delayed grant pending"
+        mutations[1].update(
+            before=(
+                'and (fresh or kind == "release" or (kind == "grant" and error.code == "expired"))'
+            ),
+            after=(
+                'and (True or kind == "release" or (kind == "grant" and error.code == "expired"))'
+            ),
+        )
+        mutations[1]["command"][-1] = "delayed_grant_after_definite_refusal"
     records = []
     for mutation in mutations:
         language = mutation["language"]
@@ -127,7 +147,6 @@ def main() -> None:
         )
         log = run.stdout + run.stderr
         (output / f"{language}.log").write_text(log)
-        expected = "reopened workspace retains its control"
         assertion = "AssertionError" in log
         rejected = run.returncode == 1 and expected in log and assertion
         if digest(original) != before_hash:

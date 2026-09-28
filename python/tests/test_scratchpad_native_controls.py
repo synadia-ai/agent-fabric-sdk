@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -35,6 +36,201 @@ def options(fixture: NativeService, connection: Any, directory: Path) -> dict[st
         "dir": directory / "writer",
         "timeout_s": 1,
     }
+
+
+async def test_delayed_grant_after_definite_refusal(  # noqa: PLR0915
+    service: NativeService, tmp_path: Path
+) -> None:
+    from synadia_ai.agent_fabric import NativeScratchPadError, native_scratchpad, scratchpad_reader
+    from synadia_ai.agent_fabric._scratchpad_native.codec import decode_reference
+
+    original = await connect_as(service, "owner", fault=True)
+    direct = await connect_as(service, "owner")
+    pad = None
+    try:
+        pad = await native_scratchpad(**options(service, original, tmp_path))
+        data = b"delivered after the refusal"
+        publication = await pad.publish_bytes(data, "/late.txt", operation_id="late-grant")
+        grantee = Grantee(
+            account=service.config["users"]["reader"]["account"],
+            user=service.config["users"]["reader"]["user"],
+        )
+        assert await service.command("delay_grant") == {"armed": "grant.issue"}
+        with pytest.raises(NativeScratchPadError) as failure:
+            await pad.grant_read(publication["reference"], grantee)
+        assert failure.value.unknown
+        held = await service.command("delayed_grant_status")
+        assert held["held_requests"] == 1 and held["released_requests"] == 0
+        assert held["accepted"] is False
+        reference = decode_reference(publication["reference"])
+        assert reference["target"]["volume"] == service.config["volume"]
+        assert held["request"]["principal"] == {"account": grantee.account, "user": grantee.user}
+        for field in ("target", "root", "path", "retention"):
+            assert held["request"][field] == reference[field]
+        await pad.close()
+        pad = await native_scratchpad(**options(service, direct, tmp_path))
+        assert (await pad.describe())["pending"] == "grant"
+        closed = await service.command("operator_close", reference=publication["reference"])
+        with pytest.raises(NativeScratchPadError) as refusal:
+            await pad.recover()
+        assert refusal.value.code == "closed" and refusal.value.unknown, (
+            "a later refusal cannot clear an earlier unknown grant"
+        )
+        cause = refusal.value.__cause__
+        assert isinstance(cause, NativeScratchPadError)
+        assert cause.code == "closed" and not cause.local and not cause.unknown
+        refused = await pad.describe()
+        assert refused.get("pending") == "grant", (
+            "a later refusal cannot clear an earlier unknown grant"
+        )
+        assert refused["volume"] == closed["view"]
+        await pad.close()
+        pad = await native_scratchpad(**options(service, direct, tmp_path))
+        assert (await pad.describe())["pending"] == "grant"
+        await service.command("operator_collect", reference=publication["reference"])
+        delivered = await service.command("release_delayed_grant")
+        assert delivered["held_requests"] == delivered["released_requests"] == 1
+        assert delivered["accepted"] is True
+        assert delivered["request"] == held["request"]
+        assert (await pad.recover())["kind"] == "grant"
+        assert "pending" not in await pad.describe()
+        assert pad.granted(publication["reference"], grantee) == "first-hand"
+        read = await service.command("go_read", user="reader", reference=publication["reference"])
+        assert read["bytes"] == len(data)
+        with pytest.raises(RuntimeError, match="denied"):
+            await service.command("go_read", user="intruder", reference=publication["reference"])
+        reader = await scratchpad_reader(nc=direct)
+        assert await reader.read_bytes(publication["reference"]) == data
+        print(
+            "NATIVE_DELAYED_RESULT",
+            json.dumps(
+                {
+                    "language": "python",
+                    "held": 1,
+                    "released": 1,
+                    "recoveredGrants": 1,
+                    "verifiedBytes": len(data),
+                }
+            ),
+        )
+    finally:
+        try:
+            if pad:
+                await pad.close()
+        finally:
+            await original.close()
+            await direct.close()
+
+
+async def test_failed_constructor_binding_releases_workspace(
+    service: NativeService, tmp_path: Path
+) -> None:
+    from synadia_ai.agent_fabric import NativeScratchPadError, native_scratchpad, scratchpad_reader
+
+    connection = await connect_as(service, "owner")
+    pad = None
+    try:
+        opts = options(service, connection, tmp_path)
+        pad = await native_scratchpad(**opts)
+        data = b"preserved across failed startup"
+        publication = await pad.publish_bytes(data, "/startup.txt", operation_id="startup")
+        await pad.close()
+        with pytest.raises(NativeScratchPadError, match="workspace is bound"):
+            await native_scratchpad(**{**opts, "creator": "agents.another.creator"})
+        pad = await native_scratchpad(**opts)
+        replay = await pad.publish_bytes(b"", "/startup.txt", operation_id="startup")
+        assert replay == publication
+        reader = await scratchpad_reader(nc=connection)
+        assert await reader.read_bytes(replay["reference"]) == data
+    finally:
+        try:
+            if pad:
+                await pad.close()
+        finally:
+            await connection.close()
+
+
+@pytest.mark.parametrize(
+    ("fail_input", "cancel_close"),
+    [(False, False), (True, False), (False, True)],
+    ids=["completes", "input-fails", "cancel-close"],
+)
+async def test_close_joins_active_publication(  # noqa: PLR0915
+    service: NativeService, tmp_path: Path, fail_input: bool, cancel_close: bool
+) -> None:
+    from synadia_ai.agent_fabric import NativeScratchPadError, native_scratchpad, scratchpad_reader
+
+    connection = await connect_as(service, "owner")
+    pad = None
+    publishing = closing = None
+    entered, proceed, close_started = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    data = bytes([37]) * (512 * 1024)
+
+    async def source() -> AsyncIterator[bytes]:
+        yield data
+        entered.set()
+        await proceed.wait()
+        if fail_input:
+            raise RuntimeError("controlled input failure")
+
+    async def close_client() -> None:
+        close_started.set()
+        assert pad is not None
+        await pad.close()
+
+    try:
+        opts = options(service, connection, tmp_path)
+        pad = await native_scratchpad(**opts)
+        publishing = asyncio.create_task(
+            pad.publish_stream(source(), "/close.bin", operation_id="close-active")
+        )
+        await asyncio.wait_for(entered.wait(), 5)
+        closing = asyncio.create_task(close_client())
+        await asyncio.wait_for(close_started.wait(), 5)
+        with pytest.raises(NativeScratchPadError) as closed:
+            await pad.describe()
+        assert closed.value.code == "closed" and closed.value.local
+        with pytest.raises(NativeScratchPadError) as busy:
+            await native_scratchpad(**opts)
+        assert busy.value.code == "busy" and busy.value.local
+        assert not closing.done()
+        if cancel_close:
+            closing.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await closing
+            close_started.clear()
+            closing = asyncio.create_task(close_client())
+            await asyncio.wait_for(close_started.wait(), 5)
+            with pytest.raises(NativeScratchPadError) as still_busy:
+                await native_scratchpad(**opts)
+            assert still_busy.value.code == "busy"
+            assert not closing.done()
+        proceed.set()
+        completed = None
+        if fail_input:
+            with pytest.raises(RuntimeError, match="controlled input failure"):
+                await publishing
+        else:
+            completed = await publishing
+        await closing
+        pad = await native_scratchpad(**opts)
+        assert "pending" not in await pad.describe()
+        published = await pad.publish_bytes(data, "/close.bin", operation_id="close-active")
+        assert published["receipt"]["command"]["number"] == 1
+        if not fail_input:
+            assert published == completed
+        reader = await scratchpad_reader(nc=connection)
+        assert await reader.read_bytes(published["reference"]) == data
+    finally:
+        proceed.set()
+        await asyncio.gather(
+            *(task for task in (publishing, closing) if task), return_exceptions=True
+        )
+        try:
+            if pad:
+                await pad.close()
+        finally:
+            await connection.close()
 
 
 @pytest.mark.parametrize(
