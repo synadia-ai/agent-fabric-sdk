@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "release": "sp-v0.1.1",
+  "release": "sp-v0.1.2",
   "source_repository": "synadia-ai/scratchpad",
-  "source_commit": "50dadec6d68f6b546f85566e5f6a5fe718331763",
+  "source_commit": "75662e979bee01177770f9181fc2fd8200a2763c",
   "go_version": "go1.26.7",
   "targets": ["darwin/arm64", "darwin/amd64", "linux/arm64", "linux/amd64"],
   "build_flags": ["-trimpath", "-buildvcs=false", "-ldflags=-s -w"],
