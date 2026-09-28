@@ -15,6 +15,7 @@ export default tseslint.config(
       // Standalone JavaScript qualification runner; no TypeScript project context.
       "scripts/run-native-tests.mjs",
       "scripts/measure-native-spool.mjs",
+      "scripts/native-sustained-worker.mjs",
     ],
   },
   ...tseslint.configs.recommendedTypeChecked,

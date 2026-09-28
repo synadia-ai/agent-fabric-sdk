@@ -267,3 +267,9 @@ No timing threshold is used as a correctness assertion.
 The [September 28 qualification report](runs/2026-09-28-native-friendly-qualification.md) records exact case counts, measured pauses, and remaining boundaries.
 The [Linux command](../scripts/native-linux/README.md) records source hashes, runtimes, mount details, counts, and measurement scope.
 The [Linux preparation report](runs/2026-09-28-linux-native-preparation.md) records the delayed-grant, workspace lifecycle, and larger-spool results.
+
+The [sustained workload contract](native-sustained-plan.md) defines a separate 30-minute native-client run.
+It keeps both workspaces open between explicit writer deaths and uses independent cross-language readers.
+The run measures the SQLite database and rollback journal separately, plus their combined disk allocation.
+Its canary checks require progress throughout each active interval, not only a final successful read.
+Use the contract's controls and rehearsal before its fixed qualification workload.
