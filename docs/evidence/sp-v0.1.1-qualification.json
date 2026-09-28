@@ -1,6 +1,6 @@
 {
   "release": "sp-v0.1.1",
-  "source_commit": "7f596e78a80a9cfb2ada94d879f9c0016d1e885c",
+  "source_commit": "50dadec6d68f6b546f85566e5f6a5fe718331763",
   "go_version": "go1.26.7",
   "qualified_targets": 4,
   "observed_cli_commands": 88,
@@ -150,8 +150,8 @@
         }
       ],
       "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
-      "archive_sha256": "9b408489ecac07bc8d8667539e5d05878769c1a30fc4c7e449dd4b45575ae426",
-      "source_commit": "7f596e78a80a9cfb2ada94d879f9c0016d1e885c"
+      "archive_sha256": "cb937d5507eaa326a72c77cf123abca1418e9a564bd52cba97d9f26df9fed540",
+      "source_commit": "50dadec6d68f6b546f85566e5f6a5fe718331763"
     },
     {
       "target": "darwin-amd64",
@@ -297,8 +297,8 @@
         }
       ],
       "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
-      "archive_sha256": "cf9b0f7d232f0d732c1d0a9e3dd43d6697da9e1340bbd0e5b52749de70bd89e9",
-      "source_commit": "7f596e78a80a9cfb2ada94d879f9c0016d1e885c"
+      "archive_sha256": "ce7e6940644de1a79b6836cff357a717d0815e731de781db47d1b35904b771ac",
+      "source_commit": "50dadec6d68f6b546f85566e5f6a5fe718331763"
     },
     {
       "target": "linux-arm64",
@@ -444,8 +444,8 @@
         }
       ],
       "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
-      "archive_sha256": "877f5740465a78d733ba8d5e9ac96c330be60f7b7810e0b724b52f9c1bb48b2d",
-      "source_commit": "7f596e78a80a9cfb2ada94d879f9c0016d1e885c"
+      "archive_sha256": "d2ca6717dc6e4616fbb93e35f24d8d8afbfc4274a46ce7038e38540e27c1a349",
+      "source_commit": "50dadec6d68f6b546f85566e5f6a5fe718331763"
     },
     {
       "target": "linux-amd64",
@@ -591,8 +591,8 @@
         }
       ],
       "scope": "installed CLI on a real single-server service fixture; not R3 or performance qualification",
-      "archive_sha256": "0235bb0bf7fa1ec61e333fe3db1d993f6c95f886fff039818151f34b3e52ac3d",
-      "source_commit": "7f596e78a80a9cfb2ada94d879f9c0016d1e885c"
+      "archive_sha256": "ba26ad2cfa01dd6844d29720d63b7525e7abdf354f92033b9125b3d7cd3fa1c2",
+      "source_commit": "50dadec6d68f6b546f85566e5f6a5fe718331763"
     }
   ]
 }

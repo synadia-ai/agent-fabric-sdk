@@ -157,6 +157,8 @@ class DistributionTests(unittest.TestCase):
                     self.build["files"][release.binary_name(target)]["sha256"],
                 )
                 self.assertNotIn(b"../../", files["SKILL.md"])
+                self.assertNotIn(b"VERSION=sp-v", files["SKILL.md"])
+                self.assertIn(b"${VERSION:?", files["SKILL.md"])
                 self.assertIn(b"literal symbolic links without following links", files["SKILL.md"])
                 for module in self.config["dependencies"]:
                     self.assertIn(module.encode(), files["THIRD_PARTY_NOTICES"])
