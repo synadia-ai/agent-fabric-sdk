@@ -34,5 +34,9 @@ so a harness's model uses ScratchPad through its shell tool:
 
 The tests of `scripts/sp` are in `plugins/pi/test/unit/scripts-sp.test.ts`.
 Packaging and installer checks are in `tests/test_release.py`.
+They compare the shared recovery guidance with the generic skill from the pinned source.
+They also inspect actual PI, OpenClaw, and Claude Code package archives.
+Each generated skill must match this source, apart from Claude Code's added permission field.
+Every packaged executable must match the release cache.
 The [binary distribution guide](../../docs/scratchpad-binaries.md) indexes
 their commands, release contents, and qualification requirements.
