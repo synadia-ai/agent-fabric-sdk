@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://synadia.io/agent-fabric/schemas/served.json",
   "title": "Served record",
-  "description": "A harness plugin's binding of a thread to the harness's own thread ID, two per received prompt; on TRACE.{account}.edges, signed (afo-design.md §8.3). Written by the OpenClaw plugin since 2026-09-15, expected from Claude Code's; PI stamps the SDK's headers on its own calls and writes none.",
+  "description": "A harness plugin's binding of a thread to the harness's own thread ID, two per received prompt; on TRACE.{account}.edges, signed. Written by the plugins of the harnesses that cannot put the SDK's headers on their own model calls, OpenClaw and Claude Code; PI stamps the SDK's headers on its own calls and writes none.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -51,7 +51,7 @@
     "harness_thread_id": {
       "type": "string",
       "minLength": 1,
-      "description": "the harness's own thread ID, bare, the same string the proxy writes as harness_thread_id on the calls it files under it (afo-design.md §8.1): claude — {session}; openclaw — the 32-hex trace ID. Proposed 2026-09-17; until then claude:{session}, openclaw:{trace id}, with the prefix"
+      "description": "the harness's own thread ID, bare, the same string the proxy writes as harness_thread_id on the calls it files under it: claude — {session}; openclaw — the 32-hex trace ID; no prefix"
     },
     "phase": {
       "type": "string",
@@ -81,7 +81,7 @@
     "harness_thread_id",
     "phase"
   ],
-  "$comment": "Standing since 2026-09-16: the OpenClaw plugin writes it (afo-design.md §8.3); harness is claude or openclaw since decision 26. Proposed 2026-09-17 (Francesco): harness_thread_id bare, the thread record carrying the same pair, so the reader joins the two by equality.",
+  "$comment": "harness is claude or openclaw, the harnesses whose plugins write this record. harness_thread_id is bare, and the thread record carries the same pair, so a reader joins the two by equality.",
   "if": {
     "properties": {
       "phase": {

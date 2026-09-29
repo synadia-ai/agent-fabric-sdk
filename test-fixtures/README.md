@@ -2,14 +2,15 @@
 
 Shared by the TypeScript and Python suites, so both packages are tested
 against the same bytes. Everything here is either vendored — copied, with
-its source and commit below, never edited — or the fabric's own.
+its source and commit below, never edited — or the fabric's own. The one
+exception is the four schemas' texts: see below.
 
 | Path | What | Source |
 | --- | --- | --- |
 | `scratchpad/` | Canonical content bytes, rejection cases, and an exact v2 reference for native clients | Public format data from ScratchPad `2f59c514`; [source and generation details](scratchpad/README.md) |
-| `schemas/edge.json` | The edge record's JSON Schema, the contract every record must validate against (the fabric's design, §6.2) | The fabric's design documents, `docs/schemas/edge.json` at `f92ba41` (last changed in `2c93858`, 2026-09-16) |
-| `schemas/served.json` | The served record's JSON Schema: a harness plugin's binding of a thread to the harness's own thread ID, two per received prompt (the fabric's design, §8.3) | The fabric's design documents, `docs/schemas/served.json` at `5b13989` (last changed in `235e73f`, 2026-09-17) |
-| `schemas/sp-grant-request.json`, `schemas/sp-grant-reply.json` | The grant request's two shapes: what a requester sends a reference's creator, and what the creator answers | The fabric's design documents, `docs/schemas/` at `d0f4188` (last changed in `9b5a9d3`, 2026-09-22); from the examples repository's `tools/` until 2026-09-22 |
+| `schemas/edge.json` | The edge record's JSON Schema, the contract every record must validate against (the fabric's design, §6.2) | The fabric's design documents, `docs/schemas/edge.json`: the constraints as at `f92ba41` (last changed in `2c93858`, 2026-09-16); the texts reworded here for publication on 2026-09-29, the source to follow |
+| `schemas/served.json` | The served record's JSON Schema: a harness plugin's binding of a thread to the harness's own thread ID, two per received prompt (the fabric's design, §8.3) | The fabric's design documents, `docs/schemas/served.json`: the constraints as at `5b13989` (last changed in `235e73f`, 2026-09-17); the texts reworded here for publication on 2026-09-29, the source to follow |
+| `schemas/sp-grant-request.json`, `schemas/sp-grant-reply.json` | The grant request's two shapes: what a requester sends a reference's creator, and what the creator answers | The fabric's design documents, `docs/schemas/`: the constraints as at `d0f4188` (last changed in `9b5a9d3`, 2026-09-22); from the examples repository's `tools/` until 2026-09-22; the request's texts reworded here for publication on 2026-09-29, the source to follow |
 | `identity/keys.json` | Throwaway user nkeys (alice, bob, carol, dave, erin). **Test-only. Never reuse.** | `synadia-agents` `test-fixtures/identity/` at `d558aff` (the SDK split's branch) |
 | `identity/nkey-noaccounts.conf` | One nkey user (alice), global account `$G`, port-less | as above |
 | `identity/operator/` | Operator mode: `operator.conf` (ACME, APP, SYS preloaded), `alice.creds` and `carol.creds` (ACME), `bob.creds` (APP), `keys.json`. ACME exports `agents.>` and `$SRV.>`, which APP imports, so bob can discover and prompt ACME's agents and send them grant requests. Real `A…`/`U…` keys, so an agent ID has the `{account}.{user}` form `edge.json` requires | as above, `identity/operator/` |
@@ -25,3 +26,11 @@ When the contract changes, copy `edge.json`, `served.json`,
 the fabric's design documents' `docs/schemas/` and update its commit above; the
 schema tests in both suites then say whether the packages still write valid
 records and requests.
+
+**The schemas' texts.** On 2026-09-29 their `description`, `$comment` and
+`title` texts were reworded here for publication: no colleague, internal
+decision or internal document named, no dated proposal, the rule in plain
+words. Nothing else changed; the source takes the same bytes afterwards, so
+the copies are equal again. `python/tests/test_schema_constraints.py` holds
+the digest of each file with those texts removed: it moves only when a
+constraint does, and a new copy updates it.

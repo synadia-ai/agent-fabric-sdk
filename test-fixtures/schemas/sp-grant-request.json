@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://synadia.io/agent-fabric/schemas/sp-grant-request.json",
   "title": "ScratchPad grant request",
-  "description": "What one agent's code sends another's before it hands on a ScratchPad reference it did not create: a request to the reference's creator to grant one more agent read on it. Sent as one signed NATS request (the `Agent-Sender` header) to `agents.sp-grant.<agent>.<owner>.<name>`, the creator's prompt address with the verb changed, where the creator serves it as an extra endpoint named `sp-grant` in queue group `agents`. Not a tool and not a record: no model sees it, and the log keeps only the `sp.grant` record ScratchPad writes when the creator grants (`agent-tools.md` §2.2).",
+  "description": "What one agent's code sends another's before it hands on a ScratchPad reference it did not create: a request to the reference's creator to grant one more agent read on it. Sent as one signed NATS request (the `Agent-Sender` header) to `agents.sp-grant.<agent>.<owner>.<name>`, the creator's prompt address with the verb changed, where the creator serves it as an extra endpoint named `sp-grant` in queue group `agents`. Not a tool and not a record: no model sees it, and the log keeps only the `sp.grant` record ScratchPad writes when the creator grants.",
   "type": "object",
   "additionalProperties": false,
   "required": [
