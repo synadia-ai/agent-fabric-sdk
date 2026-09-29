@@ -1,10 +1,10 @@
 # Native ScratchPad clients
 
-## Contract for the first implementation
+## Client contract
 
 The native clients use ScratchPad's current `api/v2` over the tenant's existing NATS import.
 The service, identities, agent protocol, and Fabric reference policy remain the existing contracts.
-Implement TypeScript first and Python second against the same conformance cases.
+Both languages use the same protocol and canonical content identities.
 
 The TypeScript implementation lives below `typescript/src/scratchpad-native/`.
 The Python implementation lives below `python/src/synadia_ai/agent_fabric/_scratchpad_native/`.
@@ -143,7 +143,7 @@ The saved control request remains until acceptance or an applicable fence establ
 Python uses nats-py's public connection and message APIs. Those APIs collapse repeated header names
 and replace malformed header text before this client receives it. The client validates the parsed
 headers and strict body JSON; it cannot prove the original raw header bytes or multiplicity.
-That upstream limitation is recorded for friendly-user qualification, without a private parser hook.
+Applications must account for that upstream parsing limitation.
 
 ### A closed volume without a saved continuation
 
@@ -167,7 +167,7 @@ Do not attach a new CLI workspace to the native writer slot.
 The service fences maintenance by revision; it does not record a separate maintenance-owner identity.
 This procedure requires coordinated operators. Independent concurrent maintenance actors remain outside the qualified scope.
 
-### Bounds and friendly-user test scope
+### Bounds
 
 Each publication replaces the head with one file at the selected path. It does not merge previous files into the new head.
 Prior references remain readable while their retention and grants remain valid.
@@ -183,96 +183,18 @@ The client checks capacity and retention before saving a new publish command.
 Admission conservatively allows space for existing content plus the new artifact, even when some objects could be shared.
 All eight occupied retention slots produce an explicit capacity refusal; live handoffs are never evicted to make space.
 
-The first milestone qualifies the local Node runtime and actual service workflow.
 Synchronous work can delay the caller's event loop during larger publications.
-Use the bounded spool probe below to measure that delay on the selected runtime and local filesystem.
-It covers encoding, database writes, and network work together; it does not isolate SQLite flush time.
-Other operating systems, synchronized clocks, the full disconnect matrix, and sustained workload sizing remain friendly-test risks.
+Measure encoding, database writes, and network work on the selected runtime and local filesystem.
 No Windows or network-filesystem qualification is implied.
 Full directory sync/hydrate remains the `sp` client path.
-Track TypeScript delivery in [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19),
-Python delivery in [SDK issue #23](https://github.com/synadia-ai/agent-fabric-sdk/issues/23),
-and qualification risks in [SDK issue #22](https://github.com/synadia-ai/agent-fabric-sdk/issues/22).
 
-### Conformance
+### SDK validation
 
-Use the real ScratchPad public service and native NATS identity imports for integration qualification.
-Compare exact artifact bytes and receipts, and directly assert denied readers and scopes.
-Exercise publication with multiple chunks, lost replies, process restart, and sustained retention-slot reuse.
-Cross-check native output with the Go client and `sp`.
-SDK agents must complete their workflows with no `sp` executable available.
-Shared vectors supplement each language's transport and persistence tests.
+The package suites include canonical codec vectors and transport failure cases.
+Run the TypeScript suite from `typescript/` with `npm test`.
+Run the Python suite from `python/` with `uv run pytest`.
+The shared vectors live in [`test-fixtures/scratchpad`](../test-fixtures/scratchpad/README.md).
 
-Run the real-service suite explicitly; the ordinary unit suite does not qualify a deployment:
-
-```sh
-cd typescript
-npm run build
-SCRATCHPAD_CORE_ROOT=/path/to/scratchpad-source npm run test:native
-
-cd ../python
-uv sync --python 3.12 --frozen
-SCRATCHPAD_CORE_ROOT=/path/to/scratchpad-source \
-SCRATCHPAD_TYPESCRIPT_PACKAGE=/path/to/agent-fabric-sdk/typescript \
-  uv run --no-sync pytest -s tests/test_scratchpad_native.py tests/test_scratchpad_native_expiry.py \
-    tests/test_scratchpad_native_controls.py
-```
-
-The core checkout is a test-only dependency. Shipped clients and their callers do not need it.
-The ScratchPad source is not public, so these suites need access not every reader has. Without `SCRATCHPAD_CORE_ROOT`, `npm run test:native` refuses to start and the Python and ordinary TypeScript suites skip these cases.
-The control suite requires the core's `native_client_control_test.go` fixture extension.
-The launcher creates temporary test credentials, uses the real broker identity imports, and records actual dropped receipts.
-The process-restart test runs the built package with no executables on PATH, kills its writer after an unknown result, and compares the recovered receipt and bytes.
-The Python suite also exchanges exact bytes and digests with the built TypeScript package:
-more than one MiB from Python to TypeScript, and 4097 bytes in the reverse direction
-within the fixture's smaller spare volume.
-Agent reference-policy tests use an explicit CLI adapter and fake `sp` to check policy in isolation.
-Those tests do not qualify ScratchPad storage, identity imports, or native recovery.
-
-The control cases withhold actual accepted grant, close, and collection replies plus their next volume observations.
-They reopen the workspace and compare the complete replayed request, stored state, and live bytes.
-Other cases observe a real disconnect/reconnect, operator recovery, fixed-slot pressure, and byte/object quota headroom.
-Overlapping handoffs use one writer's queue; they do not establish support for competing writer workspaces.
-The reconnect case follows an accepted publication whose reply was lost.
-A delayed-grant case holds the original request while another connection receives a definite service refusal.
-The client preserves its pending grant across reopening, then recovers after the original request arrives.
-The check compares the exact scope, service error cause, allowed reader, and denied reader.
-This establishes reordered-delivery behavior; the full NATS reconnect-buffer matrix remains separate work.
-Constructor and close cases preserve exact receipts, exclude another writer until close completes,
-and recover from failed input and cancelled Python close.
-
-The following optional checks require both packages' development environments.
-Run them from `python/`; select new output directories for each run:
-
-```sh
-uv run --no-sync ../scripts/check-native-control-recovery.py \
-  --core-root /path/to/scratchpad-source --output /path/to/evidence/control-mutations
-uv run --no-sync ../scripts/check-native-control-recovery.py \
-  --case delayed-refusal --core-root /path/to/scratchpad-source \
-  --output /path/to/evidence/delayed-mutations
-uv run --no-sync ../scripts/measure-native-spool.py \
-  --core-root /path/to/scratchpad-source --output /path/to/evidence/spool-probe --cycles 3
-```
-
-The mutation check omits durable grant-intent storage in isolated source copies.
-Both language tests must fail at the reopened-workspace assertion; setup failures do not count.
-The original checkout remains unchanged.
-
-The spool probe publishes a distinct 7 MiB stream, verifies its complete digest, and releases and collects the previous content.
-Use `--artifact-mib 32` for the explicit larger fixture profile and `--cycles 10` for a longer finite window.
-It closes and reopens the same workspace on every cycle.
-Records include publication time, worst observed event-loop gap, sample count/window, verified bytes, and closed database size.
-TypeScript records sampled RSS; Python records process-lifetime maximum RSS. Those measurements have different scopes.
-The default three cycles are a bounded diagnostic, not a soak or a latency guarantee.
-No timing threshold is used as a correctness assertion.
-The [September 28 qualification report](runs/2026-09-28-native-friendly-qualification.md) records exact case counts, measured pauses, and remaining boundaries.
-The [Linux command](../scripts/native-linux/README.md) records source hashes, runtimes, mount details, counts, and measurement scope.
-The [Linux preparation report](runs/2026-09-28-linux-native-preparation.md) records the delayed-grant, workspace lifecycle, and larger-spool results.
-
-The [sustained workload contract](native-sustained-plan.md) defines a separate 30-minute native-client run.
-It keeps both workspaces open between explicit writer deaths and uses independent cross-language readers.
-The run measures the SQLite database and rollback journal separately, plus their combined file size.
-Its canary checks require progress throughout each active interval, not only a final successful read.
-Use the contract's controls and rehearsal before its fixed qualification workload.
-The [September 29 sustained report](runs/2026-09-29-native-sustained.md) records the full window,
-exact recovery events, storage reuse, measured latency, and qualification limits.
+These checks exercise SDK behavior. Deployment qualification also needs an authenticated ScratchPad service.
+Check exact artifact bytes, receipts, reader permissions, lost replies, and recovery against that service.
+Exercise the selected runtime, filesystem, quotas, and workload before relying on deployment capacity.

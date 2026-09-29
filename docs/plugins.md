@@ -1198,10 +1198,11 @@ per served prompt, so they cannot be set once at start.
 
 ### 9.8 Packaging the sp command line
 
-The current shared build and standalone release contract is in
+The current binary download and standalone release contract is in
 [Standalone ScratchPad binaries](scratchpad-binaries.md). Its one pin is
 `plugins/scratchpad-skill/release.json`; harness packages and release archives
-use the same executable bytes and notices. Standalone downloads occur during
+use the same executable bytes, full license, and notices. Packaging downloads
+and verifies those bytes with Node 20+. Standalone downloads occur during
 explicit onboarding or image creation. Tool calls use the packaged binary.
 
 The following historical measurements used clean source archives,
@@ -1224,11 +1225,11 @@ The add-ons today are 36–64 KB each (`dist/`).
 | --- | --- | --- | --- |
 | **All four in each add-on package** | 12.5 MB download, 30.0 MB on disk, three quarters of it for other platforms | none beyond the add-on | while building: no extra packages, one pin |
 | **Per-platform optional packages** (`…-sp-<os>-<arch>`, with npm's `os` and `cpu` fields, as `optionalDependencies` of each add-on) | about 3 MB download, 7.5 MB on disk; shared by the three add-ons | four more packages per sp pin | **at the release**. Stated honestly: an install with optional dependencies omitted, or a lockfile made on another platform, can leave the binary out, so the wrapper names the missing package in its error |
-| **Download on first use** | a network fetch inside the model's first shell call | a public host for the binaries plus checksums | **rejected**. ScratchPad's repository is private, so it would need a host of our own, which makes the binaries as public as npm does, and it adds a network failure to a tool call |
+| **Download on first use** | a network fetch inside the model's first shell call | a release host plus checksums | **rejected**. It adds a network failure to a tool call |
 
-**Stated honestly: any published option makes the sp binaries public**
-while ScratchPad's source stays private. Publishing them is the
-ScratchPad owners' decision to make before the release.
+The release archives and all three add-ons carry the `sp` binaries under
+Apache-2.0, with the full license and dependency notices. The current
+download contract is in the binary guide above.
 
 ### 9.9 What the operator does, per harness
 
@@ -1287,7 +1288,7 @@ model cannot reach them.
 
 Built in `plugins/pi` on 2026-09-27: the skill (`SKILL.md`, ScratchPad's
 skill at `79f8927` adapted to `scripts/sp`), the wrapper (`scripts/sp`),
-the builds (`build-sp.sh`, at pack time, gitignored), all three now in
+the packaged binaries, with the shared skill and wrapper in
 `plugins/scratchpad-skill` and installed into each add-on's
 `skill/scratchpad` by its `npm run build:sp` (§9.12), and the add-on's
 variables (`src/scratchpad.ts`, whose shared part is now the fabric
@@ -1357,11 +1358,12 @@ unchanged, with no grant of the model's own.
 Built in `plugins/openclaw` on 2026-09-27, with two changes to what PI's
 build had.
 
-**One skill for every add-on.** `SKILL.md`, `scripts/sp` and the sp build
+**One skill for every add-on.** `SKILL.md`, `scripts/sp` and sp packaging
 moved out of `plugins/pi` into `plugins/scratchpad-skill`, with an
 `install.sh` each add-on's `npm run build:sp` (and `prepack`) runs: it
-builds sp once into the shared `bin/` and copies the skill and the binaries
-into the add-on's `skill/scratchpad`, which the add-on packages. PI's
+downloads and verifies the pinned release archives, then copies the skill,
+binaries, full license, and notices into the add-on's `skill/scratchpad`.
+The add-on packages that directory. PI's
 operator step, `--skill <add-on>/skill/scratchpad`, is unchanged. The code
 both add-ons need moved into the fabric package, TypeScript only like the
 rest of the plugins' contract (`typescript/src/plugin-scratchpad.ts`): the
@@ -1735,8 +1737,8 @@ earlier CLI after an upload refusal. Recover it first. Never automatically
 reset a writer merely because a response says `capacity`.
 
 PI, OpenClaw, and Claude Code copy the same maintained Fabric skill during
-`npm run build:sp` and `prepack`. The standalone archives derive their
-generic skill from the pinned ScratchPad source. The
+`npm run build:sp` and `prepack`. The standalone archives carry the generic
+skill for the selected release. The
 [distribution checks](scratchpad-binaries.md#checks-and-release-boundary)
 compare their shared recovery instructions and inspect all three npm
 archives for the exact generated skill and executable hashes.
