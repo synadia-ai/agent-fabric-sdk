@@ -230,14 +230,38 @@ async def test_the_agent_against_a_fake_model_behind_a_fake_proxy(tmp_path: Path
             assert child["turn_count_hint"] == 1
             assert first.headers["x-synadia-thread-id"] == root["thread_id"]
 
-            # The conversation remembered as words, not tool traffic.
+            # The conversation remembered as words, not tool traffic, and the
+            # exchange that delegated says so, in one line: whom, not what.
             fake.requests.clear()
             await prompt("and one more")
             msgs = fake.requests[0].body["messages"]
             assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user", "assistant", "user"]
             assert not any(m["role"] == "tool" or m.get("tool_calls") for m in msgs)
             assert msgs[2]["content"] == "plain answer to: hello there"
-            assert msgs[4]["content"] == "they said: pong: ping"
+            assert msgs[4]["content"] == f"[tools used: prompt_agent to {target.subject.prompt}]\nthey said: pong: ping"
+            assert "call_" not in msgs[4]["content"]
+
+            # A history per verified caller: another caller's exchanges are not shown.
+            fake.requests.clear()
+            other = Agents(
+                nc=nc_target,
+                identity=Identity(signer=signer_from_seed(users["target"].seed)),
+                interceptors=[TRACING.prompt_interceptor],
+            )
+            try:
+                for text in ("first from the other caller", "second from the other caller"):
+                    found = await other.discover(timeout=0.5, filter=DiscoverFilter(agent="assistant"))
+                    await reply_text(found[0].prompt(text))
+            finally:
+                await other.close()
+            first, second = fake.requests
+            assert [m["role"] for m in first.body["messages"]] == ["system", "user"]
+            assert [m["content"] for m in second.body["messages"]] == [
+                "You are under test.",
+                "first from the other caller",
+                "plain answer to: first from the other caller",
+                "second from the other caller",
+            ]
 
             # A question from the prompted agent goes in front of the model, and its answer_agent goes back.
             fake.requests.clear(); edges.clear()
@@ -355,7 +379,7 @@ async def test_the_agent_against_a_fake_model_behind_a_fake_proxy(tmp_path: Path
             assert f"--- content handed over as {token} ---\nthe content behind sp-ref:" in user["content"]
 
             # An unsigned caller gets the reply in words only: no grant, no reference.
-            pad.commits.clear(); pad.grants.clear()
+            pad.commits.clear(); pad.grants.clear(); fake.requests.clear()
             unsigned = Agents(nc=nc_caller, interceptors=[TRACING.prompt_interceptor])
             try:
                 found = await unsigned.discover(timeout=0.5, filter=DiscoverFilter(agent="assistant"))
@@ -363,6 +387,8 @@ async def test_the_agent_against_a_fake_model_behind_a_fake_proxy(tmp_path: Path
             finally:
                 await unsigned.close()
             assert len(pad.commits) == 1 and pad.grants == []
+            # And no history: an unsigned claim names no caller to keep one for.
+            assert [m["role"] for m in fake.requests[0].body["messages"]] == ["system", "user"]
         finally:
             await caller.close()
             await agent.stop()

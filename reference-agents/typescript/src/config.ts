@@ -39,7 +39,7 @@ export interface AgentConfig {
     /** Which of the agent tools the model is offered (`AGENT_TOOLS`; see {@link ToolsSetting}). */
     readonly tools: ToolsSetting;
     readonly heartbeatIntervalS: number | undefined;
-    /** How many user/assistant exchanges the agent remembers. */
+    /** How many user/assistant exchanges the agent remembers for each verified caller; 0 for none. */
     readonly maxHistoryExchanges: number;
     /** When set, a JSON line about the running instance is written here once the service is up. */
     readonly readyFile: string | undefined;
@@ -96,6 +96,16 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
     if (value === undefined) return fallback;
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number, got "${value}"`);
+    return n;
+  };
+  // A count that may be 0.
+  const count = (name: string, fallback: number): number => {
+    const value = optional(name);
+    if (value === undefined) return fallback;
+    const n = Number(value);
+    if (value.trim() === "" || !Number.isInteger(n) || n < 0) {
+      throw new Error(`${name} must be a whole number, 0 or more, got "${value}"`);
+    }
     return n;
   };
 
@@ -156,7 +166,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
       minSenderTrust,
       tools: toolsSetting,
       heartbeatIntervalS: optional("AGENT_HEARTBEAT_S") !== undefined ? number("AGENT_HEARTBEAT_S", 30) : undefined,
-      maxHistoryExchanges: number("AGENT_MAX_HISTORY", DEFAULTS.maxHistoryExchanges),
+      maxHistoryExchanges: count("AGENT_MAX_HISTORY", DEFAULTS.maxHistoryExchanges),
       readyFile: optional("AGENT_READY_FILE"),
     },
     model: {

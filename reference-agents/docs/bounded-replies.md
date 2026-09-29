@@ -19,6 +19,7 @@ Normal retention and explicit recovery rules still apply.
 
 ## Conversation history
 
+History is kept per verified caller; an unsigned caller has none, and `AGENT_MAX_HISTORY=0` keeps none for anyone.
 For a large result, the next model request remembers the actual delivered message: the explanation and reference, or the refusal.
 It does not silently keep another copy of the large result in conversational history.
 A later task must read a still-valid reference explicitly to obtain that content again.

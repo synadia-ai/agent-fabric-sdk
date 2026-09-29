@@ -68,6 +68,8 @@ class AgentIdentityConfig:
     #:   still has the capability; the operator has taken it off the table.
     tools: ToolsSetting
     heartbeat_interval_s: int | None
+    #: How many user/assistant exchanges the agent remembers for each
+    #: verified caller; 0 for none.
     max_history_exchanges: int
     ready_file: str | None
 
@@ -136,6 +138,19 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
             raise ValueError(f'{name} must be a positive number, got "{value}"')
         return n
 
+    def count(name: str, fallback: int) -> int:
+        # A count that may be 0.
+        value = optional(name)
+        if value is None:
+            return fallback
+        try:
+            n = float(value)
+        except ValueError:
+            n = -1.0
+        if not n.is_integer() or n < 0:
+            raise ValueError(f'{name} must be a whole number, 0 or more, got "{value}"')
+        return int(n)
+
     proxy_url = need("MODEL_PROXY_URL")
     virtual_key = need("MODEL_VIRTUAL_KEY")
     model = need("MODEL_NAME")
@@ -189,7 +204,7 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
             min_sender_trust=min_sender_trust,  # type: ignore[arg-type]
             tools=tools_setting,  # type: ignore[arg-type]
             heartbeat_interval_s=int(number("AGENT_HEARTBEAT_S", 30)) if heartbeat is not None else None,
-            max_history_exchanges=int(number("AGENT_MAX_HISTORY", DEFAULT_MAX_HISTORY)),
+            max_history_exchanges=count("AGENT_MAX_HISTORY", DEFAULT_MAX_HISTORY),
             ready_file=optional("AGENT_READY_FILE"),
         ),
         model=ModelConfig(

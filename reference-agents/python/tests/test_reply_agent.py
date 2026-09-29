@@ -108,7 +108,9 @@ async def test_bounded_reply_through_actual_agent(item):
         model_reply[0] = "next"
         await prompt()
         assert len(requests) == 2
-        assert [m["content"] for m in requests[1]["messages"] if m["role"] == "assistant"] == [reply if item["large"] else text]
+        # An unsigned caller is kept no history.
+        expected = [] if item["mode"] == "unsigned" else [reply if item["large"] else text]
+        assert [m["content"] for m in requests[1]["messages"] if m["role"] == "assistant"] == expected
     finally:
         if agent:
             await agent.stop()

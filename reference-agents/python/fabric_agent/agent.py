@@ -21,8 +21,8 @@ happens, so the file can be read as the list:
         no ScratchPad code, it is configured (``SCRATCHPAD_VOLUME``).
 
 The same agent as ``typescript/src/agent.ts``, in Python: the same tool
-definitions, the same words to the model, the same reference token. One
-history per process, shared by every caller, is a deliberate simplification.
+definitions, the same words to the model, the same reference token, and the
+same history: one per verified caller (``history.py``).
 """
 
 from __future__ import annotations
@@ -60,6 +60,7 @@ from synadia_ai.agents import (
 )
 
 from .config import AgentConfig
+from .history import Histories, with_tool_note
 from .model import ChatMessage, EmptyReplyError, ModelClient, converse
 from .reply import delivered_reply
 from .tools import NO_TOOLS, offered_tools, tool_runner
@@ -215,7 +216,8 @@ async def start_agent(
         **({"heartbeat_interval_s": cfg.agent.heartbeat_interval_s} if cfg.agent.heartbeat_interval_s else {}),
     )
 
-    history: list[ChatMessage] = []
+    # A history per verified caller, bounded; none with ``AGENT_MAX_HISTORY=0``.
+    histories = Histories(cfg.agent.max_history_exchanges)
 
     # What the model is offered. A role that must answer itself is offered no
     # tools at all (see ``config.py``).
@@ -264,9 +266,10 @@ async def start_agent(
         # target, the shortest loop between two agents.
         messages: list[ChatMessage] = [
             {"role": "system", "content": cfg.agent.system_prompt},
-            *history,
+            *histories.for_sender(stream.sender),
             {"role": "user", "content": user_content},
         ]
+        turn_start = len(messages)
         try:
             result = await converse(
                 model=model,
@@ -304,10 +307,9 @@ async def start_agent(
         reply, history_reply = delivered_reply(result.reply, granted_reference)
         await stream.send(reply)
 
-        # The history keeps the exchange as words, not the tool traffic.
-        history.append({"role": "user", "content": envelope.prompt})
-        history.append({"role": "assistant", "content": history_reply})
-        del history[: max(0, len(history) - cfg.agent.max_history_exchanges * 2)]
+        # The history keeps the exchange as words, not the tool traffic, with
+        # one line in front of the reply naming the tools the model used.
+        histories.record(stream.sender, envelope.prompt, with_tool_note(messages[turn_start:], history_reply))
 
     service.on_prompt(on_prompt)
     await service.start()

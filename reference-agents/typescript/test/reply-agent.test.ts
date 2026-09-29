@@ -101,8 +101,9 @@ describe("bounded reply through actual agent", () => {
         modelReply = "next";
         await prompt();
         expect(requests).toHaveLength(2);
+        // An unsigned caller is kept no history.
         expect(requests[1]!.messages.filter(m => m.role === "assistant").map(m => m.content))
-          .toEqual([item.large ? reply : text]);
+          .toEqual(item.mode === "unsigned" ? [] : [item.large ? reply : text]);
       } finally { await agent.stop(); }
     });
   }

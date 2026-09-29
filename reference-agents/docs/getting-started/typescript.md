@@ -170,7 +170,7 @@ node --env-file=.env.caller --import tsx src/prompt.ts assistant "What is my nam
 Your name is Ada, as you told me at the start of our conversation.
 ```
 
-The agent keeps the last exchanges (`AGENT_MAX_HISTORY`, twenty by default) and sends them with every model call. In the console, the second tree's model call carries the first exchange in its input. The history is one list per process, in memory, shared by every caller: a simplification to keep the example small. A history per caller is the natural next step, and a restart forgets.
+The agent keeps the last exchanges (`AGENT_MAX_HISTORY`, twenty by default) and sends them with every model call. In the console, the second tree's model call carries the first exchange in its input. The history is kept per caller, keyed by the caller's verified agent ID, so `prompt` signs its prompts; an unsigned caller gets no history. It is in memory, so a restart forgets. `AGENT_MAX_HISTORY=0` turns it off.
 
 ## Step 5: the agent tools, and the first child thread
 

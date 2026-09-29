@@ -388,7 +388,7 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
     expect(first.headers["x-synadia-thread-id"]).toBe(root.record.thread_id);
   });
 
-  it("remembers the conversation as words, not tool traffic", async () => {
+  it("remembers the conversation as words, not tool traffic, and names the tools an exchange used", async () => {
     await prompt("and one more");
     const req = requests[0]!;
     const roles = req.body.messages.map((m) => m.role);
@@ -396,7 +396,38 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
     expect(roles).toEqual(["system", "user", "assistant", "user", "assistant", "user"]);
     expect(req.body.messages.some((m) => m.role === "tool" || m.tool_calls)).toBe(false);
     expect(req.body.messages[2]!.content).toBe("plain answer to: hello there");
-    expect(req.body.messages[4]!.content).toBe("they said: pong: ping");
+    // The exchange that delegated says so, in one line: whom, not what.
+    expect(req.body.messages[4]!.content).toBe(
+      `[tools used: prompt_agent to ${target.subject.prompt}]\nthey said: pong: ping`,
+    );
+    expect(req.body.messages[4]!.content).not.toContain("call_");
+  });
+
+  it("keeps a history per verified caller: another caller's exchanges are not shown", async () => {
+    const other = new Agents({
+      nc: ncTarget,
+      identity: { signer: signerFromSeed(targetSeed) },
+      interceptors: [tracing.promptInterceptor],
+    });
+    try {
+      const ask = async (text: string): Promise<void> => {
+        const [found] = await other.discover({ filter: { agent: "assistant" }, timeoutMs: 500 });
+        for await (const msg of await found!.prompt(text)) void msg;
+      };
+      await ask("first from the other caller");
+      await ask("second from the other caller");
+      const [first, second] = requests as [ModelRequest, ModelRequest];
+      // Its first prompt comes with no history, though the caller above has one.
+      expect(first.body.messages.map((m) => m.role)).toEqual(["system", "user"]);
+      expect(second.body.messages.map((m) => m.content)).toEqual([
+        "You are under test.",
+        "first from the other caller",
+        "plain answer to: first from the other caller",
+        "second from the other caller",
+      ]);
+    } finally {
+      await other.close();
+    }
   });
 
   it("puts a question from the prompted agent in front of the model, and carries its answer_agent back", async () => {
@@ -546,6 +577,8 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
       expect(reply).toBe("plain answer to: hello, anonymously");
       expect(pad.commits).toHaveLength(1);
       expect(pad.grants).toHaveLength(0);
+      // And no history: an unsigned claim names no caller to keep one for.
+      expect(requests[0]!.body.messages.map((m) => m.role)).toEqual(["system", "user"]);
     } finally {
       await unsigned.close();
     }
