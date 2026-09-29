@@ -22,9 +22,7 @@
 //       (`SCRATCHPAD_VOLUME`).
 //
 // Ported from the labs' `06-chat-agent`: the persona and the accumulating
-// history stay. One history per process, shared by every caller, is a
-// deliberate simplification; per-caller histories are the natural next
-// step and are left out to keep the example small.
+// history stay, one history per verified caller (`history.ts`).
 
 import { writeFile } from "node:fs/promises";
 import { connect } from "@nats-io/transport-node";
@@ -49,6 +47,7 @@ import {
   type Logger,
 } from "@synadia-ai/agents";
 import type { AgentConfig } from "./config.js";
+import { Histories, withToolNote } from "./history.js";
 import { converse, createModelClient, EmptyReplyError, type ChatMessage } from "./model.js";
 import { deliveredReply } from "./reply.js";
 import { NO_TOOLS, offeredTools, toolRunner } from "./tools.js";
@@ -181,7 +180,8 @@ export async function startAgent(
       : {}),
   });
 
-  const history: ChatMessage[] = [];
+  // A history per verified caller, bounded; none with `AGENT_MAX_HISTORY=0`.
+  const histories = new Histories(cfg.agent.maxHistoryExchanges);
 
   // What the model is offered. A role that must answer itself is offered no
   // tools at all (see `config.ts`).
@@ -242,9 +242,10 @@ export async function startAgent(
     // the shortest loop between two agents.
     const messages: ChatMessage[] = [
       { role: "system", content: cfg.agent.systemPrompt },
-      ...history,
+      ...histories.for(response.sender),
       { role: "user", content: userContent },
     ];
+    const turnStart = messages.length;
     let result: Awaited<ReturnType<typeof converse>>;
     try {
       result = await converse({
@@ -288,12 +289,9 @@ export async function startAgent(
     const delivery = deliveredReply(result.reply, grantedReference);
     await response.send(delivery.reply);
 
-    // The history keeps the exchange as words, not the tool traffic.
-    history.push(
-      { role: "user", content: envelope.prompt },
-      { role: "assistant", content: delivery.history },
-    );
-    while (history.length > cfg.agent.maxHistoryExchanges * 2) history.splice(0, 2);
+    // The history keeps the exchange as words, not the tool traffic, with
+    // one line in front of the reply naming the tools the model used.
+    histories.record(response.sender, envelope.prompt, withToolNote(messages.slice(turnStart), delivery.history));
   }
 
   await service.start();
