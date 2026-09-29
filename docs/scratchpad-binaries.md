@@ -59,8 +59,8 @@ partial upload remain charged until maintenance collects them.
 A workspace left pending by an earlier CLI remains pending after upgrade.
 An uncertain checkpoint also stays pending. Follow the skill's recovery
 procedure; do not automatically reset an operation because its response
-says `capacity`. [Issue #1160](https://github.com/synadia-ai/scratchpad/issues/1160)
-records the defect and its regression evidence.
+says `capacity`. The defect and its regression evidence are recorded in the
+ScratchPad source repository.
 
 ## One build supplies both channels
 
@@ -71,12 +71,14 @@ advance the pin. A conflicting `SP_COMMIT` override is refused.
 
 Build tooling needs Python 3.12+, Git, and Go. It prefers `python3.12` when
 available; `SP_BUILD_PYTHON` selects another interpreter. Go uses the exact
-toolchain in the pin. The private checkout can contain unrelated work:
-build inputs come only from `git archive` of the selected commit.
+toolchain in the pin. Building needs a checkout of the ScratchPad source,
+which is not public: not every reader can build these binaries. The checkout
+can contain unrelated work: build inputs come only from `git archive` of the
+selected commit.
 
 ```sh
-SCRATCHPAD_SRC=/absolute/private/scratchpad sh plugins/scratchpad-skill/build-sp.sh
-SCRATCHPAD_SRC=/absolute/private/scratchpad sh plugins/scratchpad-skill/release-sp.sh
+SCRATCHPAD_SRC=/path/to/scratchpad-source sh plugins/scratchpad-skill/build-sp.sh
+SCRATCHPAD_SRC=/path/to/scratchpad-source sh plugins/scratchpad-skill/release-sp.sh
 uv run --python 3.12 python plugins/scratchpad-skill/release.py verify
 ```
 
@@ -145,7 +147,7 @@ The real-service artifact check is indexed here:
 
 ```sh
 uv run --script plugins/scratchpad-skill/tests/qualify-artifact.py run \
-  --core-root /absolute/clean/scratchpad \
+  --core-root /path/to/clean/scratchpad-source \
   --archive plugins/scratchpad-skill/dist/sp-v0.1.2/sp-v0.1.2-darwin-arm64.tar.gz \
   --target darwin-arm64 --evidence /absolute/new/evidence-directory
 ```
@@ -153,7 +155,8 @@ uv run --script plugins/scratchpad-skill/tests/qualify-artifact.py run \
 The workflow also exceeds the fixture's quota, inspects and abandons the
 saved upload, and publishes again without a writer reset. It checks exact
 new and retained bytes through the reader's own credentials.
-The core checkout must be clean and match the binary's source commit.
+The core checkout must be clean and match the binary's source commit. The
+ScratchPad source is not public, so this check needs access not every reader has.
 The controller builds a separate real-service fixture. Each CLI invocation
 runs with no tools on PATH. Linux workflows use Docker-managed workspaces.
 The `workflow` subcommand also accepts an already built fixture, executable,
@@ -170,15 +173,15 @@ It preserves executable modes, literal symbolic links, and the earlier retained 
 
 The new Go client reuses the first bounded read when hydrating listed files.
 It also reuses the initial metadata lookup for direct file hydration.
-The separate [three-NATS measurement](https://github.com/synadia-ai/scratchpad/blob/75662e979bee01177770f9181fc2fd8200a2763c/docs/research/2026-09-28--first-read-hydration.md)
-records 44.8–48.5% lower worst observed times across three shapes, with two samples per build.
+The separate three-NATS measurement, a research report in the ScratchPad
+source at the same commit, records 44.8–48.5% lower worst observed times across three shapes, with two samples per build.
 Those timings are not platform-wide latency guarantees.
 This Go client change does not change the native TypeScript or Python clients.
 
 Execution used native macOS arm64, Rosetta for macOS amd64, native Linux
-arm64 Docker, and native Linux amd64 on `omarx1`.
+arm64 Docker, and a native Linux amd64 host.
 The artifact checks use a real single-server service and establish platform correctness.
-Live deployment and sustained capacity remain separate checks.
+The fabric's deployment and sustained capacity remain separate checks.
 
 ### Earlier artifact qualification: sp-v0.1.1
 
@@ -192,7 +195,7 @@ removed the spool, and published valid content at the same writer position.
 The reader verified both the new result and the earlier retained result.
 
 Execution used native macOS arm64, Rosetta for macOS amd64, native Linux
-arm64 Docker, and native Linux amd64 on `omarx1`. These are real
+arm64 Docker, and a native Linux amd64 host. These are real
 single-server service checks. They do not measure sustained capacity or
 establish a new run of the six-agent Fabric team.
 
@@ -209,7 +212,7 @@ hydration with executable modes and a symlink.
 | darwin/arm64 | Native macOS arm64 |
 | darwin/amd64 | Rosetta on macOS arm64 |
 | linux/arm64 | Native arm64 Docker VM |
-| linux/amd64 | Native amd64 Docker on `omarx1` |
+| linux/amd64 | Native amd64 Docker on a native Linux amd64 host |
 
 The amd64 service fixture crashed under Docker emulation before the CLI
 ran. The native amd64 run supplies that target's evidence. These runs use

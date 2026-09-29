@@ -5,7 +5,8 @@
 # ///
 """Qualify an extracted sp executable against the real ScratchPad service fixture.
 
-The service fixture is built separately from an explicit private source revision.
+The service fixture is built separately from an explicit revision of the ScratchPad
+source, which is not public.
 The workflow itself uses only sp, an already built fixture, and the SDK test adapter.
 Credentials stay in the fixture's temporary directory and never enter the report.
 """

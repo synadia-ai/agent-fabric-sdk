@@ -10,7 +10,7 @@ The [counted results](2026-09-28-native-friendly-qualification.json) preserve th
 | --- | --- |
 | SDK tests and probe | `e328a29c8d99bdeae0e7c7b4853eb810a23c615e` |
 | SDK product implementation | Unchanged from `e24d6348d77fa8dc147625fc158f3208bba00330` |
-| Core service fixture | `7ca1f326`; [ScratchPad #1168](https://github.com/synadia-ai/scratchpad/pull/1168) |
+| Core service fixture | `7ca1f326`, in the ScratchPad source |
 | Core product implementation | Unchanged from `333a0e2cadcedc669941ce3ce41e2b6095051aa7` |
 | Protocol SDK development checkout | `3b9a20d88ef3e42ff4890e31c400aad4f0f836a4` |
 | Host | macOS arm64; shared development host |
@@ -18,7 +18,7 @@ The [counted results](2026-09-28-native-friendly-qualification.json) preserve th
 
 The fixture runs a real local NATS server, file-backed JetStream, activated imports, and authenticated users.
 These tests introduce no simulated ScratchPad service and require no `sp` executable.
-They do not repeat the deployed Linux image qualification or the six-role model workload in Live #42.
+They do not repeat the deployed Linux image qualification or the six-role model workload on the fabric's deployment.
 No identity, protocol, runtime client, binary, skill, or deployment pin changed.
 
 ## Counted test results

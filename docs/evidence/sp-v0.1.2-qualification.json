@@ -449,7 +449,7 @@
     },
     {
       "target": "linux-amd64",
-      "execution": "native Linux amd64 on omarx1",
+      "execution": "native Linux amd64 host",
       "binary_sha256": "21f19ff428c9f5a85eaac0409cbfddc76765718bf19f6308b1b87553462f7138",
       "platform": "Linux-7.2.5-3-omarchy-x86_64-with-glibc2.44",
       "machine": "x86_64",

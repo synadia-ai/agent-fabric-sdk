@@ -130,11 +130,11 @@ unbound.
 
 ## Running Claude Code on the fabric
 
-Measured on Claude Code 2.1.281 (2026-09-24, the reference agents' F24 and
-F25, since 2026-09-26 in `agent-fabric-live` `docs/findings-examples.md`).
-The worked version is `agent-fabric-live`'s `harnesses/claude-code/`
-(`run.sh`, `env.example`, its README; the examples' until then); what
-follows is the recipe it implements.
+Measured on Claude Code 2.1.281 (2026-09-24; the reference agents'
+findings F24 and F25, kept since 2026-09-26 with the fabric's deployment on
+one machine). That deployment's `harnesses/claude-code/` is the worked
+version (`run.sh`, `env.example`, its README); what follows is the recipe
+it implements.
 
 1. **Claude Code and bun.** `claude` on `PATH`, and `bun`: the plugin's
    server and hooks run on it.
@@ -165,44 +165,41 @@ follows is the recipe it implements.
    (on a test rig where that name is taken, a provider of another name at
    `https://api.anthropic.com` on the Anthropic shape), the tenant's
    Anthropic API key as the provider key in the record, and the harness
-   `claude`, without which the proxy files each call as a thread of its own
-   (F25 items 1 and 2).
+   `claude`, without which the proxy files each call as a thread of its own.
 6. **Two keys and the base URL.** Both are set, and Claude Code sends both:
    - `ANTHROPIC_API_KEY`: an Anthropic API key of the user's own, sent as
      `x-api-key`. Claude Code turns its channel on only when a feature flag
      says so, and it fetches its flags from Anthropic directly, never
      through the base URL, and only with an Anthropic credential; with the
-     virtual key alone the channel is ignored (F24 items 4 and 5). It may be
+     virtual key alone the channel is ignored. It may be
      the same key as the provider key of step 5, or another of the
      tenant's.
    - `ANTHROPIC_AUTH_TOKEN`: the virtual key, sent as
      `Authorization: Bearer` next to it. The proxy reads the virtual key
      from `Authorization` first and deletes both headers before it sets the
-     provider's own, so the Anthropic key reaches no provider (F24 item 2).
+     provider's own, so the Anthropic key reaches no provider.
    - `ANTHROPIC_BASE_URL`: the proxy's bare origin, no `/api`; Claude Code
-     appends `/v1/messages` and the proxy forwards it to Anthropic as it is
-     (F25 item 3).
+     appends `/v1/messages` and the proxy forwards it to Anthropic as it is.
 
    Claude Code warns at start that both keys are set and "auth may not work
    as expected". That is expected: sending both is the point.
 
 7. **No model variables.** Claude Code runs its own default models, the
    main loop and the side calls, every call through the proxy, recorded
-   with Anthropic's usage, cache reads and writes included (F25 item 5).
+   with Anthropic's usage, cache reads and writes included.
 8. **A home outside any git repository.** `HOME`, `CLAUDE_CONFIG_DIR` and
    the channel's `NATS_STATE_DIR` in a directory of the instance's own,
    never `~/.claude`, and not inside a git working tree: from inside one,
    Claude Code sends that repository's `CLAUDE.md` files and its git status
-   to the model with every call (F24 item 10). Outside one it offers the
+   to the model with every call. Outside one it offers the
    model the skills in the `.claude/skills` of every directory above its
    working directory, the user's own included; `--disable-slash-commands`
-   removes them (F25 item 7), and with them the Skill tool, so not with
+   removes them, and with them the Skill tool, so not with
    ScratchPad.
 9. **A terminal, or a pseudo-terminal.** Interactive only: `claude -p`
-   registers on the bus and turns no prompt into a turn (F24 item 7).
-   Answer the development-channels warning once and the channel is on
-   (F24 item 8); from a script, `tmux` with one Enter does the same (F24
-   item 11).
+   registers on the bus and turns no prompt into a turn.
+   Answer the development-channels warning once and the channel is on;
+   from a script, `tmux` with one Enter does the same.
 
 ## What the console shows
 
@@ -212,7 +209,7 @@ from `start` to `end`, `harness: claude` at depth `full` with both halves;
 a subagent's calls as children of the session's thread. A delegation
 Claude Code's model makes: it discovers and prompts another agent, whose
 thread sits under its `prompt_agent` tool call with Claude Code its
-verified caller (F24 items 8 and 9, F25 item 4). Everything the session
+verified caller. Everything the session
 does between the two records is filed under the prompt: local typing
 during a NATS-driven turn, and a second NATS prompt answered in the same
 turn, share the window.
@@ -221,7 +218,7 @@ One call can fall outside the pair. At the end of each turn Claude Code
 asks its model what the user might type next; when that call's model
 reaches for a tool, Claude Code calls it once more after the turn's `Stop`,
 and the add-on's `end`. The console shows that call as a root of its own
-on the session id, with no caller (F25 item 6). The pair is the turn, and
+on the session id, with no caller. The pair is the turn, and
 the reader infers nothing beyond it: a limit, not a bug.
 
 ## Stated honestly
@@ -239,7 +236,7 @@ the reader infers nothing beyond it: a limit, not a bug.
   nothing finer.
 - **The two keys are what Claude Code's warning calls unsupported.** Both
   sent together, the virtual key as `Bearer` and the Anthropic key as
-  `x-api-key`, was measured on 2.1.281 (F24 item 5); Claude Code does not
+  `x-api-key`, was measured on 2.1.281; Claude Code does not
   document it. Re-check it on a release that touches channels or gateways.
 - **An Anthropic credential on the machine.** The channel is behind a flag
   only an Anthropic credential fetches, so every Claude Code on the fabric
@@ -247,11 +244,11 @@ the reader infers nothing beyond it: a limit, not a bug.
   directly. Its model calls are traced because it is pointed at the proxy,
   by configuration, not by anything the add-on enforces.
 - **An interactive session.** No headless mode serves a prompt; a script
-  drives a terminal (F24 items 7 and 11).
+  drives a terminal.
 - **The context Claude Code sends.** Whatever its working directory
   offers goes to the model with every call: a repository's `CLAUDE.md` and
   git status from inside one, the skills of the directories above it from
-  outside one (F24 item 10, F25 item 7). The home's place decides it.
+  outside one. The home's place decides it.
 - **ScratchPad's grant is per turn.** Claude Code applies a skill's
   `allowed-tools` in the turn that loaded the skill, and clears it with the
   next message. A later prompt whose turn runs `scripts/sp` without loading
@@ -426,6 +423,8 @@ manifest (unit), and the references handed on (integration).
 `skills/scratchpad`, with the `allowed-tools` line, building the sp
 binaries first (Go on `PATH`, a ScratchPad checkout next to this
 repository); `npm pack` runs it too. `skills/` is gitignored.
+ScratchPad's source is not public, so this build needs access to it, which
+not every reader has.
 
 ```sh
 (cd ../../typescript && npm install && npm run build)
