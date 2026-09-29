@@ -1,6 +1,6 @@
 """The ``served`` record — a harness plugin's binding of a thread to the harness's own thread id.
 
-Two per received prompt (afo-design.md §8.3; the contract is
+Two per received prompt (the fabric's design, §8.3; the contract is
 ``docs/schemas/served.json``, vendored under ``test-fixtures/schemas/``).
 Mirrors ``typescript/src/served.ts``; the two must stay wire-identical.
 
@@ -55,7 +55,7 @@ SERVED_RECORD_VERSION = 1
 #: The harnesses whose plugins write ``served`` records: the ones that
 #: cannot put the fabric's headers on their own model calls. PI can, and
 #: writes none. The value is what the proxy files the harness's calls under
-#: (afo-design.md §8.1).
+#: (the fabric's design, §8.1).
 Harness = Literal["claude", "openclaw"]
 
 #: ``start`` when the prompt arrives, ``end`` when the turn is over.

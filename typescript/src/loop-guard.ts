@@ -1,8 +1,9 @@
-// The `409` loop guard. A harness serves one turn at a time and cannot serve
-// a prompt while its model waits inside a call to another agent, so a prompt
-// of a tree the harness is waiting in would wait until the turn ends, which
-// is never when the turn is what it waits for. The guard refuses such a
-// prompt at once with `409` instead.
+// The `409` loop guard (the fabric's design of the agent tools, §2.3). A
+// harness serves one turn at a time and cannot serve a prompt while its
+// model waits inside a call to another agent, so a prompt of a tree the
+// harness is waiting in would wait until the turn ends, which is never when
+// the turn is what it waits for. The guard refuses such a prompt at once
+// with `409` instead.
 //
 // A served request is *waiting* from the moment its model sends a prompt to
 // another agent until every call it has open has settled — completed,

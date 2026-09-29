@@ -41,7 +41,7 @@ python/              synadia-ai-agent-fabric — uv, ruff, mypy (strict), pytest
   src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension,scratchpad_cli}.py
   tests/             the same suites; conftest starts the servers lazily
 test-fixtures/       shared by both suites — see its README for every file's source
-  schemas/           the contracts, from synadia-agent-fabric: edge.json, served.json
+  schemas/           the contracts, from the fabric's design documents: edge.json, served.json
                      and the grant request's two shapes, sp-grant-{request,reply}.json
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
@@ -88,7 +88,7 @@ reference-agents/    the two reference agents, the package's worked example — 
   language against the other's host.
 - **`edge.json` is the contract.** Both suites validate records against the
   vendored copy, on the wire in operator mode (a real `{account}.{user}`
-  agent ID). When `synadia-agent-fabric` changes it, copy it again and
+  agent ID). When the fabric's design documents change it, copy it again and
   update `test-fixtures/README.md`. The same for `served.json` and the grant
   request's `sp-grant-{request,reply}.json`, also from `docs/schemas/`.
 - **What the add-ons share lives in the fabric package, TypeScript only.**
@@ -193,16 +193,16 @@ prepare them.
 
 ## Reference
 
-- The plan: `synadia-agent-fabric/docs/sdk-split.md`.
-- The contract: `synadia-agent-fabric/docs/afo-design.md` §3, §4, §6.2,
-  §8.1–§8.2, and `docs/schemas/edge.json`.
+- The plan: the fabric's design documents, the SDK split.
+- The contract: the fabric's design, §3, §4, §6.2, §8.1–§8.2, and its
+  `docs/schemas/edge.json`.
 - The hooks: `synadia-agents` `client-sdk/*/…/interceptor.*` and
   `agent-sdk/*/…/interceptor.*` on `sdk-release-rollout` (merged there by synadia-agents #205, 2026-09-22).
   The Python host's `extra_endpoints`, which serve the grant endpoint:
   `AgentServiceExtraEndpoint` in `agent-sdk/python/…/service.py` (#210, `218f602`).
 - The agent tools and their extension hooks: `synadia-agents`
-  `docs/agent-tools.md` §6.3 (#207); the fabric's view,
-  `synadia-agent-fabric/docs/agent-tools.md` §2.1–§2.2; the rules the
+  `docs/agent-tools.md` §6.3 (#207); the fabric's view, its design
+  documents' agent tools, §2.1–§2.2; the rules the
   extension was ported from, the reference agents' `tools/README.md` and
   `agents/*/` at `1e783a3`, in the examples repository before they moved
   here (`reference-agents/`, 2026-09-27).

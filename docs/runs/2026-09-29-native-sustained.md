@@ -2,7 +2,7 @@
 
 Work item: [SDK #22](https://github.com/synadia-ai/agent-fabric-sdk/issues/22).
 Implementation: [SDK #41](https://github.com/synadia-ai/agent-fabric-sdk/pull/41) and
-[ScratchPad #1172](https://github.com/synadia-ai/scratchpad/pull/1172).
+the matching fixture change in the ScratchPad source.
 The [fixed workload contract](../native-sustained-plan.md) defines the gates.
 The [counted JSON](2026-09-29-native-sustained.json) preserves unrounded measurements and source identity.
 PR and issue state belongs in those trackers.
@@ -158,7 +158,7 @@ The control evidence SHA-256 is `ff82192293c7327d645a0574006e5fb3622d67994aa06e8
 All three input checkouts were clean during qualification. This report is a subsequent documentation commit.
 
 Original results, every cycle, canary samples, fault receipts, matching controls, source inventories, review, and logs are retained at
-`scratchpad-redesign-evidence/2026-09-29-sdk-sustained/` beside the private checkouts.
+`/path/to/evidence/2026-09-29-sdk-sustained/`, outside this repository.
 `make-report.py` there reruns the committed controller's evidence checks and compares the complete recomputed summary with the original.
 The checked-in counted JSON was produced by that script after the container exited successfully without an OOM kill.
 Test credentials remained outside exported evidence.
@@ -172,6 +172,6 @@ The complete reconnect-buffer matrix, independent maintenance actors, other plat
 public npm/PyPI installation, and general latency or memory bounds remain outside this result.
 The nats-py raw-header visibility limitation remains documented in the client contract.
 
-Use the measured result alongside the earlier Live qualification when starting friendly-user work.
+Use the measured result alongside the earlier qualification on the fabric's deployment when starting friendly-user work.
 The sustained scripts and fixture require no binary release or deployment-pin change.
-SDK and Live integration state remains in their PRs.
+The integration state of the SDK and of the fabric's deployment remains in their PRs.

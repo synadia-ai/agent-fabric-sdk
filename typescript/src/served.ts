@@ -1,6 +1,6 @@
 // The `served` record — a harness plugin's binding of one prompt execution
-// to the harness's own thread id, two per received prompt (afo-design.md
-// §8.3; the contract is `docs/schemas/served.json`, vendored under
+// to the harness's own thread id, two per received prompt (the fabric's
+// design, §8.3; the contract is `docs/schemas/served.json`, vendored under
 // `test-fixtures/schemas/`). Mirrors `synadia_ai/agent_fabric/served.py`
 // in the Python package; the two must stay wire-identical.
 //
@@ -46,7 +46,7 @@ export const SERVED_RECORD_VERSION = 1;
  * The harnesses whose plugins write `served` records: the ones that cannot
  * put the fabric's headers on their own model calls. PI can, and writes
  * none. The value is what the proxy files the harness's calls under
- * (afo-design.md §8.1).
+ * (the fabric's design, §8.1).
  */
 export type Harness = "claude" | "openclaw";
 

@@ -1,13 +1,14 @@
 # Linux native-client qualification
 
 This command qualifies the selected Linux runtimes against the actual ScratchPad service.
-It uses a private core checkout, authenticated NATS imports, and file-backed R1 storage.
-The command measures a finite publication window. It does not qualify a Live deployment or a soak workload.
+It uses a checkout of the ScratchPad core source, authenticated NATS imports, and file-backed R1 storage.
+The ScratchPad source is not public: this command needs access not every reader has.
+The command measures a finite publication window. It does not qualify the fabric's deployment or a soak workload.
 Run R3 and full agent-stack qualification separately.
 
 ## Build inputs
 
-Use the locally built Live TypeScript and Python agent images as `NODE_IMAGE` and `PYTHON_IMAGE`.
+Use locally built TypeScript and Python agent images from the fabric's deployment as `NODE_IMAGE` and `PYTHON_IMAGE`.
 The recipe reuses their development dependencies and checks the TypeScript dependency lockfiles byte for byte.
 It removes inherited sources, copies the selected checkouts, and rebuilds them.
 Python resolves its development environment through the checked-in `uv.lock` and the image's Python 3.12.
@@ -19,18 +20,18 @@ Use new evidence paths for every run.
 
 ```sh
 uv run --no-project --python 3.12 python scripts/native-linux/sources.py \
-  --sdk-root . --core-root /path/to/private/scratchpad \
+  --sdk-root . --core-root /path/to/scratchpad-source \
   --protocol-root /path/to/synadia-agents --output /path/to/new/expected-sources.json
 
 docker buildx build --load --tag scratchpad-native-qualification:local \
   --build-arg NODE_IMAGE=<qualified-ts-image> \
   --build-arg PYTHON_IMAGE=<qualified-python-image> \
   --build-context agents=/path/to/synadia-agents \
-  --build-context scratchpad=/path/to/private/scratchpad \
+  --build-context scratchpad=/path/to/scratchpad-source \
   --file scripts/native-linux/Dockerfile .
 ```
 
-The private core needs the native subprocess fixture, including its delayed-grant gate and `spool-32m` profile.
+The core checkout needs the native subprocess fixture, including its delayed-grant gate and `spool-32m` profile.
 The profile reserves 512 objects and 128 MiB for the measured volume.
 Ordinary fixtures keep their smaller scope. Product provisioning limits do not change.
 

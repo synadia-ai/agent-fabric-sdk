@@ -249,6 +249,8 @@ the edges on the wire validated against `test-fixtures/schemas/edge.json`.
 repository, a checkout next to this one (`SCRATCHPAD_SRC` names another),
 at the commit pinned in `../scratchpad-skill/release.json`, with Go on
 `PATH`; `npm pack` runs it too (`prepack`). `skill/` is gitignored.
+ScratchPad's source is not public, so this build needs access to it, which
+not every reader has.
 `test/unit/scripts-sp.test.ts` drives the shared `scripts/sp` with fake
 binaries and a fake `uname`, and runs the real binary for this machine
 through the installed copy when it is built.

@@ -1,6 +1,6 @@
 {
   "date": "2026-09-28",
-  "scope": "finite Linux arm64 qualification; actual authenticated service; file-backed R1; no Live deployment claim",
+  "scope": "finite Linux arm64 qualification; actual authenticated service; file-backed R1; no claim about the fabric's deployment",
   "source": {
     "sdk": "84fee0d3ee43fb6e353f19ca722c128bb112660e",
     "core": "541b8c107d5b44cfcedca9c43cbac84db7432e2e",

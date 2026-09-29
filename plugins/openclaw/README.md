@@ -264,7 +264,8 @@ ways.
 `npm run build:sp` installs the skill from `../scratchpad-skill` into
 `skill/scratchpad`, building the sp binaries first (Go on `PATH`, a
 ScratchPad checkout next to this repository); `npm pack` runs it too.
-`skill/` is gitignored.
+`skill/` is gitignored. ScratchPad's source is not public, so this build
+needs access to it, which not every reader has.
 
 ```sh
 (cd ../../typescript && npm install && npm run build)

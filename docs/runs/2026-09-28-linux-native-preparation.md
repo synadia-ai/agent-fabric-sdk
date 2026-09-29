@@ -25,7 +25,7 @@ The raw inventory and logs remain in the retained evidence archive.
 The container sees eight host CPUs; its configured CPU quota is four.
 
 The fixture starts actual authenticated NATS ingress, activated imports, and file-backed storage with one replica.
-The run qualifies component behavior on Linux. It does not exercise the Live deployment or three-replica storage.
+The run qualifies component behavior on Linux. It does not exercise the fabric's deployment or three-replica storage.
 The Linux image reuses qualified development dependencies and checks their lockfiles before rebuilding the selected sources.
 This procedure establishes no clean npm/PyPI installation result.
 
@@ -124,5 +124,5 @@ The documented nats-py raw-header visibility limit remains unchanged.
 
 Use the [Linux qualification command](../../scripts/native-linux/README.md) to reproduce this pass.
 Use the [native client guide](../scratchpad-native.md) for application behavior and operator recovery.
-The retained local archive is `scratchpad-redesign-evidence/2026-09-28-preparation` beside the repository worktrees.
+The retained local archive is kept outside this repository, at `/path/to/evidence/2026-09-28-preparation`.
 Exported evidence excludes the scratch directory where fixtures create credentials.
