@@ -1,236 +1,150 @@
-# Standalone ScratchPad binaries
+# ScratchPad binaries
 
-Use a compiled `sp` client when an agent has a shell or an image builder can
-install an executable. Native TypeScript and Python agents can use the
-[native client](scratchpad-native.md) instead.
+Use the compiled `sp` client when an agent has a shell or an image builder
+can install an executable. TypeScript and Python agents can use the
+[native client](scratchpad-native.md).
 
-The release channel is `synadia-ai/agent-fabric-sdk`, under tags such as
-`sp-v0.1.2`. This private preview requires authenticated access to that
-repository. Installation needs no private ScratchPad checkout or Go compiler.
-The [delivery issue](https://github.com/synadia-ai/agent-fabric-sdk/issues/29)
-records qualification and publication.
+The binary release channel is
+[agent-fabric-sdk releases](https://github.com/synadia-ai/agent-fabric-sdk/releases),
+with explicit tags such as `sp-v0.1.3`. The binaries and included skills
+use Apache-2.0. Each archive includes the full `LICENSE` and
+`THIRD_PARTY_NOTICES`. Installation and harness packaging need no Go compiler
+or service source checkout.
 
 ## Install an explicit release
 
-Use the version your operator selected. The installer in this repository is
-[get-sp.sh](../plugins/scratchpad-skill/get-sp.sh). Run it during onboarding
-or image creation. Harness tool calls use their packaged binary and do not
-download one at runtime.
-
-The installer needs authenticated `gh` access to this repository, `tar`, and
-`sha256sum` or `shasum`. It selects the current Linux or macOS processor, or
-accepts an explicit `--target` for an image build. The destination must be a
-new absolute directory; installation preserves existing directories.
+Run [get-sp.sh](../plugins/scratchpad-skill/get-sp.sh) during onboarding or
+image creation. It needs a POSIX shell, `curl`, `tar`, and `sha256sum` or
+`shasum`. Public downloads use HTTPS. While repository access requires
+authentication, add `--download gh` and authenticate the GitHub CLI.
 
 ```sh
-sh plugins/scratchpad-skill/get-sp.sh --version sp-v0.1.2 --dest "$HOME/.local/share/scratchpad/sp-v0.1.2"
+sh plugins/scratchpad-skill/get-sp.sh --version sp-v0.1.3 --dest "$HOME/.local/share/scratchpad/sp-v0.1.3"
 ```
 
-For an agent with no checkout, download `get-sp.sh` and `SHA256SUMS` from the
-same selected GitHub release. Verify the script's SHA-256 against its single
-entry in `SHA256SUMS`, then run the command above with that script's path.
-The installer verifies the selected archive, its regular-file allowlist,
-version, target, source metadata, and executable hash before installing it.
-GitHub authenticates the release source; checksums detect changed bytes.
+The installer selects the host's Linux or macOS target. Use
+`--target linux/amd64`, `linux/arm64`, `darwin/amd64`, or `darwin/arm64`
+to select another target for an image. The destination must be a new
+absolute directory. Existing destinations remain intact.
 
-Put the installed directory on PATH or invoke its `sp` by absolute path.
-Keep its `SOURCE`, `BUILD.json`, `SKILL.md`, `README.md`, and
-`THIRD_PARTY_NOTICES` beside the executable. `SOURCE` and `BUILD.json`
-identify its exact revision and toolchain; `sp` has no version flag.
+Without a checkout, download `get-sp.sh` and `SHA256SUMS` from the selected
+release. Verify the script against its single checksum entry before running
+it. The installer downloads the selected archive and checks its SHA-256,
+seven regular-file members, release tag, target, source identifier,
+toolchain identifier, and executable hash before installation.
+Checksums detect changed bytes; the HTTPS release channel supplies the
+expected checksums.
 
-Use the agent's existing NATS credentials. Give each writer a private
-persistent workspace and preserve it across restarts. The standalone skill
-uses explicit connection flags. Harness agents retain their `scripts/sp`
-wrapper, which supplies Fabric connection and caller context.
-
-For Linux containers on macOS, put the workspace on a Docker-managed
-volume. In local qualification, a macOS-shared bind mount failed the CLI's
-spool directory identity check; the same Linux arm64 executable passed on
-a Docker volume. Preserve that volume across process and container restarts.
-The identity check protects recovery state and must remain enabled.
-
-From `sp-v0.1.1`, an upload quota refusal leaves a previously ready writer
-ready. The CLI checks the saved graph against its provisioned quota before
-upload and prepares the checkpoint only after upload succeeds. Use
-`spool-remove` to inspect an unprepared upload, then `spool-remove --apply`
-to abandon it. This does not reset the writer. Remote reservations from a
-partial upload remain charged until maintenance collects them.
-
-A workspace left pending by an earlier CLI remains pending after upgrade.
-An uncertain checkpoint also stays pending. Follow the skill's recovery
-procedure; do not automatically reset an operation because its response
-says `capacity`. The defect and its regression evidence are recorded in the
-ScratchPad source repository.
-
-## One build supplies both channels
-
-[release.json](../plugins/scratchpad-skill/release.json) is the source of
-truth for the release tag, full private source commit, Go version, target
-set, build flags, and reviewed dependency versions. Change that file to
-advance the pin. A conflicting `SP_COMMIT` override is refused.
-
-Build tooling needs Python 3.12+, Git, and Go. It prefers `python3.12` when
-available; `SP_BUILD_PYTHON` selects another interpreter. Go uses the exact
-toolchain in the pin. Building needs a checkout of the ScratchPad source,
-which is not public: not every reader can build these binaries. The checkout
-can contain unrelated work: build inputs come only from `git archive` of the
-selected commit.
-
-```sh
-SCRATCHPAD_SRC=/path/to/scratchpad-source sh plugins/scratchpad-skill/build-sp.sh
-SCRATCHPAD_SRC=/path/to/scratchpad-source sh plugins/scratchpad-skill/release-sp.sh
-uv run --python 3.12 python plugins/scratchpad-skill/release.py verify
-```
-
-The shared `bin/` cache contains the four executables, hashes, source/build
-metadata, canonical standalone skill, and dependency notices. The builder
-checks all cached bytes and settings before reuse. Each harness's existing
-`npm run build:sp` copies the same executable bytes and notices.
-Run shared builds serially; a concurrent build refuses the occupied cache lock.
-
-Standalone output is `plugins/scratchpad-skill/dist/sp-v0.1.2/`:
+Each archive contains exactly these seven regular files:
 
 ```text
-sp-v0.1.2-darwin-arm64.tar.gz
-sp-v0.1.2-darwin-amd64.tar.gz
-sp-v0.1.2-linux-arm64.tar.gz
-sp-v0.1.2-linux-amd64.tar.gz
-release.json
-SHA256SUMS
-get-sp.sh
+sp
+SOURCE
+BUILD.json
+SKILL.md
+README.md
+THIRD_PARTY_NOTICES
+LICENSE
 ```
 
-Each archive contains exactly six regular files: `sp`, `SOURCE`,
-`BUILD.json`, `SKILL.md`, `README.md`, and `THIRD_PARTY_NOTICES`.
-The archive packer does not copy source trees, credentials, fixtures, or
-repository history. The generic skill comes from the pinned private source
-with its repository-only links replaced by local instructions. Its original
-hash is recorded in `BUILD.json`.
+Keep these files together. `SOURCE` and `BUILD.json` identify the release,
+opaque source revision, toolchain, target, and executable bytes.
+`BUILD.json` also records public Go module metadata and licensing.
+The command has no version flag. Put the installed directory on PATH or
+invoke its `sp` by absolute path.
 
-Dependency notices come from the actual linked module closure and Go's
-runtime license. They include the owned nats.go replacement notice.
-They do not assign a license to the private ScratchPad code. The SDK
-repository's source license does not determine the executable's license.
+Use the agent's existing NATS credentials and a private persistent writer
+workspace. The standalone skill uses explicit connection flags. Harness
+agents use `scripts/sp`, which supplies their Fabric connection and caller
+context. Tool calls use packaged binaries and never download them.
 
-## Skill sources and generated copies
+For Linux containers on macOS, use a Docker-managed workspace volume.
+A shared macOS bind mount can fail the spool directory identity check.
+Preserve the workspace across process and container restarts.
 
-| Distribution | Maintained source | Generated copy |
+## Package the harness add-ons
+
+[release.json](../plugins/scratchpad-skill/release.json) pins the release,
+distribution repository, source and toolchain identifiers, and the archive
+and executable hashes for all four supported targets. Advance these pins
+together when selecting a new release.
+
+Each add-on's `npm run build:sp` and `npm pack` run the shared
+[install.sh](../plugins/scratchpad-skill/install.sh). The loader needs Node
+20 or newer. It downloads the four selected archives over HTTPS, verifies
+them against the checked-in manifest, and installs identical executable
+bytes, license text, and dependency notices into PI, OpenClaw, and Claude
+Code. `SP_RELEASE_DOWNLOAD=gh` selects authenticated GitHub CLI downloads.
+
+The loader checks every cached archive again before reuse, including its
+member types, identities, full license, and executable hash. It rejects a
+damaged cache. Remove that release's directory under
+`plugins/scratchpad-skill/downloads/` to fetch a fresh copy.
+`SP_RELEASE_CACHE_DIR` selects another cache parent. Concurrent use of the
+same cache fails with an error that names the lock directory; run packaging
+steps in sequence. After an interrupted run, confirm that no packaging
+process is running before removing that lock. Verified downloads enter the
+cache by a rename, so an interrupted write cannot leave a partial archive
+at its published filename.
+
+For offline packaging, set `SP_RELEASE_SOURCE_DIR` to a directory containing
+the four release archives. An explicit `--source-dir` option is also
+available on `install.sh` and `load-sp.mjs`. This path uses the same
+checked-in hashes and archive checks as downloads. It cannot select another
+release or bypass verification. Missing or altered files stop packaging.
+
+```sh
+SP_RELEASE_SOURCE_DIR=/absolute/release-assets npm run build:sp
+```
+
+Run that command from the add-on directory. The wrapper and its settings
+remain part of the SDK. The binary archives carry no runtime downloader.
+Temporary skill copies and backups stay in each add-on's ignored
+`.scratchpad-work/` directory, outside the paths its npm package includes.
+
+## Maintained skills and generated copies
+
+| Distribution | Skill source | Installed path |
 | --- | --- | --- |
-| Standalone archives | ScratchPad `skills/scratchpad/SKILL.md` at the pinned commit | Archive `SKILL.md`, with local links |
-| PI | SDK `plugins/scratchpad-skill/SKILL.md` | `plugins/pi/skill/scratchpad/SKILL.md` |
-| OpenClaw | Same SDK source | `plugins/openclaw/skill/scratchpad/SKILL.md` |
-| Claude Code | Same SDK source | `plugins/claude-code/skills/scratchpad/SKILL.md`, with its permission field |
+| Standalone | Selected release archive | `SKILL.md` beside `sp` |
+| PI | `plugins/scratchpad-skill/SKILL.md` | `plugins/pi/skill/scratchpad/SKILL.md` |
+| OpenClaw | Same SDK skill | `plugins/openclaw/skill/scratchpad/SKILL.md` |
+| Claude Code | Same SDK skill, with its wrapper permission | `plugins/claude-code/skills/scratchpad/SKILL.md` |
 
-Change the maintained sources. Run each add-on's `npm run build:sp` to
-regenerate its ignored copy; `prepack` also runs this step. Do not edit
-generated copies. The packaging tests compare their complete text and
-executables inside actual npm archives. They also compare the shared
-upload-abandonment instructions with the pinned generic skill and reject
-a deliberately changed pending-operation rule.
+Edit the maintained SDK skill and run `npm run build:sp` to regenerate
+the ignored copies. Packaging compares its upload-abandonment guidance
+with the selected standalone skill. A pending checkpoint remains protected;
+an upload quota refusal does not authorize a writer reset.
 
 ## Checks and release boundary
 
-These commands index the packaging checks:
+These commands index the public distribution checks:
 
 ```sh
-uv run --python 3.12 python -m unittest discover -s plugins/scratchpad-skill/tests -p test_release.py -v
-uv run --python 3.12 python plugins/scratchpad-skill/release.py verify
+node plugins/scratchpad-skill/load-sp.mjs verify
+node --test plugins/scratchpad-skill/tests/distribution.test.mjs
 ```
 
-Build the TypeScript SDK and all three harness add-ons before these checks.
-The tests corrupt cache bytes, archive checksums, provenance, and archive
-membership and require refusal. They exercise installation through a test
-double for the external GitHub CLI and compare installed executables with
-the built cache. They do not establish that a GitHub release is published.
+Set `SP_RELEASE_SOURCE_DIR` for local release candidates or offline checks.
+Use `SP_RELEASE_DOWNLOAD=gh` while authenticated access is required.
+The checks need Node 20+, npm, a POSIX shell, and the standalone installer's
+archive and hash tools. They do not need a service checkout or Go.
+Build the TypeScript SDK and all three harness add-ons before running the
+suite; it checks that each npm archive contains its JavaScript entrypoint.
 
-The real-service artifact check is indexed here:
+The suite consumes real release archives and creates all three npm packages.
+It compares all twelve packaged executables, skills, metadata, licenses,
+notices, and wrappers. It checks the exact skill member set and excludes
+deliberately abandoned copies outside each package's included paths.
+An orphan inside a packaged skill root must fail that check.
+It exercises both installer download modes through
+external command doubles with no compiler on PATH. Changed downloads,
+unsafe archive members, inconsistent identities, and damaged caches must
+fail. A control disables the archive checksum guard and must admit the same
+changed archive that the ordinary installer rejects.
 
-```sh
-uv run --script plugins/scratchpad-skill/tests/qualify-artifact.py run \
-  --core-root /path/to/clean/scratchpad-source \
-  --archive plugins/scratchpad-skill/dist/sp-v0.1.2/sp-v0.1.2-darwin-arm64.tar.gz \
-  --target darwin-arm64 --evidence /absolute/new/evidence-directory
-```
-
-The workflow also exceeds the fixture's quota, inspects and abandons the
-saved upload, and publishes again without a writer reset. It checks exact
-new and retained bytes through the reader's own credentials.
-The core checkout must be clean and match the binary's source commit. The
-ScratchPad source is not public, so this check needs access not every reader has.
-The controller builds a separate real-service fixture. Each CLI invocation
-runs with no tools on PATH. Linux workflows use Docker-managed workspaces.
-The `workflow` subcommand also accepts an already built fixture, executable,
-and SDK test adapter for qualification on a native Linux host.
-
-### Recorded artifact qualification: sp-v0.1.2
-
-The [sp-v0.1.2 report](evidence/sp-v0.1.2-qualification.json) binds four
-observed executable hashes to source `75662e979bee01177770f9181fc2fd8200a2763c`
-and their release archives. Each target completed 22 CLI commands, for 88 total.
-The workflow checks publication, granted and denied reads, a lost reply,
-service restart, exact receipt recovery, directory hydration, and quota recovery.
-It preserves executable modes, literal symbolic links, and the earlier retained result.
-
-The new Go client reuses the first bounded read when hydrating listed files.
-It also reuses the initial metadata lookup for direct file hydration.
-The separate three-NATS measurement, a research report in the ScratchPad
-source at the same commit, records 44.8–48.5% lower worst observed times across three shapes, with two samples per build.
-Those timings are not platform-wide latency guarantees.
-This Go client change does not change the native TypeScript or Python clients.
-
-Execution used native macOS arm64, Rosetta for macOS amd64, native Linux
-arm64 Docker, and a native Linux amd64 host.
-The artifact checks use a real single-server service and establish platform correctness.
-The fabric's deployment and sustained capacity remain separate checks.
-
-### Earlier artifact qualification: sp-v0.1.1
-
-The [sp-v0.1.1 report](evidence/sp-v0.1.1-qualification.json) binds four
-observed executable hashes to their release archives and source commit.
-Each target completed 22 CLI commands, for 88 total. Each run exercised an
-actual lost publication reply, service restart, exact recovery, granted and
-denied reads, and directory hydration. It then refused a 9 MiB upload and
-its recovery attempt, checked unchanged writer and volume state, explicitly
-removed the spool, and published valid content at the same writer position.
-The reader verified both the new result and the earlier retained result.
-
-Execution used native macOS arm64, Rosetta for macOS amd64, native Linux
-arm64 Docker, and a native Linux amd64 host. These are real
-single-server service checks. They do not measure sustained capacity or
-establish a new run of the six-agent Fabric team.
-
-### Earlier artifact qualification: sp-v0.1.0
-
-The [public report](evidence/sp-v0.1.0-qualification.json) binds all four
-observed executable hashes to the exact release archives. It records 48
-CLI commands, one actual dropped publication reply per target, a service
-restart, exact receipt and byte recovery, access refusal, and directory
-hydration with executable modes and a symlink.
-
-| Target | Execution environment |
-| --- | --- |
-| darwin/arm64 | Native macOS arm64 |
-| darwin/amd64 | Rosetta on macOS arm64 |
-| linux/arm64 | Native arm64 Docker VM |
-| linux/amd64 | Native amd64 Docker on a native Linux amd64 host |
-
-The amd64 service fixture crashed under Docker emulation before the CLI
-ran. The native amd64 run supplies that target's evidence. These runs use
-a real single-server service fixture; three-server Fabric integration and
-sustained capacity are separate checks.
-
-Before publication, use each extracted artifact for publication, a granted
-byte-exact read, an unauthorized read refusal, and recovery after a lost
-publication reply. Qualify the directory workflow on the advertised targets
-as well. Record macOS amd64 runs under Rosetta and Linux amd64 runs under
-Docker emulation as such. A Linux amd64 check can instead use a native
-Linux amd64 host. Native Windows is outside this target set.
-
-Publish from a reviewed SDK commit and retain the recorded packaging file
-hashes. The manifest marks builds from uncommitted packaging sources.
-Use a new version for changes to a published release; do not replace its
-assets. `--replace` refreshes metadata only when existing candidate assets
-still match the current packaging inputs. After changing those inputs,
-retain the old candidate and choose a new `--output` directory.
-After publication, download through the documented authenticated channel
-and verify the retrieved artifact. Repository visibility stays unchanged.
+These checks establish distribution and packaging behavior. Service
+qualification and Fabric integration are separate checks. After publishing
+a new tag, run the installer against the actual release and compare the
+downloaded binaries with the selected manifest. Published assets keep their
+versioned bytes; changes require a new release tag.

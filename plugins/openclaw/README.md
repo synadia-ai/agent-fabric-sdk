@@ -262,10 +262,12 @@ the pair and the edges on the wire validated against
 ways.
 
 `npm run build:sp` installs the skill from `../scratchpad-skill` into
-`skill/scratchpad`, building the sp binaries first (Go on `PATH`, a
-ScratchPad checkout next to this repository); `npm pack` runs it too.
-`skill/` is gitignored. ScratchPad's source is not public, so this build
-needs access to it, which not every reader has.
+`skill/scratchpad`. It downloads the four published binaries pinned in
+`../scratchpad-skill/release.json` and verifies their archive and executable
+hashes with Node 20+. `npm pack` runs it too. `skill/` is gitignored.
+No Go compiler or service checkout is required. The
+[binary guide](../../docs/scratchpad-binaries.md) covers authenticated
+downloads, offline archives, cache checks, and the included licenses.
 
 ```sh
 (cd ../../typescript && npm install && npm run build)

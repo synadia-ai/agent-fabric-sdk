@@ -7,7 +7,7 @@ exception is the four schemas' texts: see below.
 
 | Path | What | Source |
 | --- | --- | --- |
-| `scratchpad/` | Canonical content bytes, rejection cases, and an exact v2 reference for native clients | Public format data from ScratchPad `2f59c514`; [source and generation details](scratchpad/README.md) |
+| `scratchpad/` | Canonical content bytes, rejection cases, and an exact v2 reference for native clients | Protocol vector set `scratchpad-v2-vector-build-2f59c514`; [vector details](scratchpad/README.md) |
 | `schemas/edge.json` | The edge record's JSON Schema, the contract every record must validate against (the fabric's design, §6.2) | The fabric's design documents, `docs/schemas/edge.json`: the constraints as at `f92ba41` (last changed in `2c93858`, 2026-09-16); the texts reworded here for publication on 2026-09-29, the source to follow |
 | `schemas/served.json` | The served record's JSON Schema: a harness plugin's binding of a thread to the harness's own thread ID, two per received prompt (the fabric's design, §8.3) | The fabric's design documents, `docs/schemas/served.json`: the constraints as at `5b13989` (last changed in `235e73f`, 2026-09-17); the texts reworded here for publication on 2026-09-29, the source to follow |
 | `schemas/sp-grant-request.json`, `schemas/sp-grant-reply.json` | The grant request's two shapes: what a requester sends a reference's creator, and what the creator answers | The fabric's design documents, `docs/schemas/`: the constraints as at `d0f4188` (last changed in `9b5a9d3`, 2026-09-22); from the examples repository's `tools/` until 2026-09-22; the request's texts reworded here for publication on 2026-09-29, the source to follow |

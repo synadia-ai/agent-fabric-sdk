@@ -962,11 +962,10 @@ on one machine (the examples' until 2026-09-26), measured on Claude Code
   arrives while the harness waits in it, and keeps refusing after a call
   settles unseen until the model's next agent-tool result or the prompt's
   end (§3.1).
-- **ScratchPad references reach PI and OpenClaw only.** A reference in a
-  prompt to Claude Code is removed by the caller's `prompt_agent` before
-  sending (`reference-agents/README.md`, "The agent tools"), until its
-  add-on registers that it reads them; PI's and OpenClaw's do (§9.11,
-  §9.12).
+- **ScratchPad references require a configured add-on.** PI, OpenClaw, and
+  Claude Code register that they read references when ScratchPad is enabled
+  (§9.6). The caller's `prompt_agent` removes references for an agent that
+  does not register that capability (`reference-agents/README.md`, "The agent tools").
 - **`traceparent` from any client files as OpenClaw** until the virtual
   key names its harness (§3.3).
 - **What is measured, and where.** Every add-on, against real turns on
@@ -1018,14 +1017,19 @@ package.
 
 ### 9.1 The design
 
-Each add-on package carries one skill directory:
+Each add-on package carries one skill directory. PI and OpenClaw use
+`skill/scratchpad`; Claude Code uses `skills/scratchpad`:
 
 ```
 skill/scratchpad/
   SKILL.md             ScratchPad's skill, adapted (below)
   scripts/sp           the wrapper the model runs; POSIX sh
-  bin/sp-darwin-arm64  the sp command line at a pinned commit (§9.8);
-  bin/sp-darwin-amd64    or these four come from per-platform packages
+  LICENSE              full Apache-2.0 license
+  THIRD_PARTY_NOTICES   dependency notices
+  bin/BUILD.json       pinned release and executable hashes
+  bin/COMMIT           opaque source identifier
+  bin/sp-darwin-arm64  the four pinned executables (§9.8)
+  bin/sp-darwin-amd64
   bin/sp-linux-arm64
   bin/sp-linux-amd64
 ```
@@ -1158,9 +1162,9 @@ answered with `answer_agent` (`agents/pi/README.md:175`,
 | Claude Code | `Bash`, on by default; the demo denies `Bash` and `Skill` outright, which removes both from the model's context, so the operator takes them out of `deny` | **Yes**, for any tool call no rule allows, in the default permission mode (permissions docs, "Manage permissions") | **Yes, in query mode.** With `permissions: { "mode": "query" }` in the plugin's config (`/nats-channel:configure permissions query`), the plugin takes Claude Code's `permission_request` notification (it declares `claude/channel/permission`, `server.ts:469`) and asks the caller of the last active served prompt with a `query`: the tool, its description, the input preview and "Reply 'yes' to allow or 'no' to deny." An answer of `yes`/`allow` or `no`/`deny` (or JSON with `behavior`) decides; no answer in 2 minutes, or no active served prompt, denies (`server.ts:75, 235-245, 593-634`; `agents/claude-code/README.md` "Permissions"). In the default `terminal` mode the dialog waits in the terminal, and the demo sets no mode, so a session with no human waits | read; **measured** (§9.13): four questions reached the caller as `query` and its `yes` let each call run |
 
 So in PI, and in OpenClaw's default mode, the model runs `scripts/sp`
-without a question. In Claude Code every `scripts/sp` call becomes a
-question to the caller unless the operator allows it by a rule, which is
-the operator's choice.
+without a question. Claude Code's generated skill supplies the exact
+`allowed-tools` rule for its absolute wrapper path (§9.13). Commands outside
+that rule still follow the operator's permission settings.
 
 ### 9.6 References: declaring `reads_scratchpad_references: true`
 
@@ -1173,16 +1177,15 @@ so the heartbeat, which the add-on can extend, does not carry it.
 
 | Harness | Answer | Source | How known |
 | --- | --- | --- | --- |
-| PI | **Not possible today.** The plugin passes `extraMetadata: { cwd }`, hard-coded, and the contract has no metadata field | `extensions/nats-channel.ts:771-773`; `extensions/extensions.ts:128-145` | read |
-| OpenClaw | **Not possible today.** `extraMetadata` is `{ platform, description }`, hard-coded. The account config schema has no metadata field, and unknown keys reach `settings.config` but no metadata | `src/gateway.ts:289-292`; `src/extensions.ts:150-166`; `openclaw.plugin.json` | read |
-| Claude Code | **Not possible today.** The service is built with no `extraMetadata`, and the contract has no metadata field | `server.ts:494-512`; `src/extensions.ts:163-179` | read |
+| PI | Registers the read capability when ScratchPad is configured | `plugins/pi/src/extension.ts` | integration test: discovery reports the registered capability |
+| OpenClaw | Registers the read capability when ScratchPad is configured | `plugins/openclaw/src/extension.ts` | integration test: discovery reports the registered capability |
+| Claude Code | Registers the read capability when ScratchPad is configured | `plugins/claude-code/src/extension.ts` | integration test: discovery reports the registered capability |
 
 **For all three: the public plugin's `metadata` field of §9.1.** The add-on
 sets the key only when ScratchPad is configured (`SCRATCHPAD_VOLUME` set).
-Until the field exists, a harness can publish and hand on its own
-references, but references handed to it are taken out by the caller.
 The field exists since synadia-agents #218 (2026-09-27, `2c6eb76` on
-`sdk-release-rollout`), and PI's add-on sets the key (§9.11).
+`sdk-release-rollout`). All three add-ons set the key. Without ScratchPad
+configured, they omit it and the caller removes references before sending.
 
 ### 9.7 Trace context: `SP_THREAD_ID` and `SP_ROOT_ID` (optional for level B)
 
@@ -1198,10 +1201,11 @@ per served prompt, so they cannot be set once at start.
 
 ### 9.8 Packaging the sp command line
 
-The current shared build and standalone release contract is in
+The current binary download and standalone release contract is in
 [Standalone ScratchPad binaries](scratchpad-binaries.md). Its one pin is
 `plugins/scratchpad-skill/release.json`; harness packages and release archives
-use the same executable bytes and notices. Standalone downloads occur during
+use the same executable bytes, full license, and notices. Packaging downloads
+and verifies those bytes with Node 20+. Standalone downloads occur during
 explicit onboarding or image creation. Tool calls use the packaged binary.
 
 The following historical measurements used clean source archives,
@@ -1218,17 +1222,19 @@ The table was **measured** on 2026-09-27 at `79f8927`; at
 | linux/amd64 | 7,708,832 B (7.4 MiB) | 3,175,581 B | static ELF, stripped |
 | all four in one npm package | 30.0 MB unpacked | 12.5 MB packed | `npm pack` of a package holding only the four |
 
-The add-ons today are 36–64 KB each (`dist/`).
+At that measurement, the add-ons' `dist/` directories were 36–64 KB each.
+The size estimates below come from that measurement; the current packaging
+choice includes all four executables in each add-on.
 
 | Option | Install cost | Publishing cost | Verdict |
 | --- | --- | --- | --- |
-| **All four in each add-on package** | 12.5 MB download, 30.0 MB on disk, three quarters of it for other platforms | none beyond the add-on | while building: no extra packages, one pin |
-| **Per-platform optional packages** (`…-sp-<os>-<arch>`, with npm's `os` and `cpu` fields, as `optionalDependencies` of each add-on) | about 3 MB download, 7.5 MB on disk; shared by the three add-ons | four more packages per sp pin | **at the release**. Stated honestly: an install with optional dependencies omitted, or a lockfile made on another platform, can leave the binary out, so the wrapper names the missing package in its error |
-| **Download on first use** | a network fetch inside the model's first shell call | a public host for the binaries plus checksums | **rejected**. ScratchPad's repository is private, so it would need a host of our own, which makes the binaries as public as npm does, and it adds a network failure to a tool call |
+| **All four in each add-on package** | 12.5 MB download, 30.0 MB on disk, three quarters of it for other platforms | none beyond the add-on | current choice: downloaded and verified during packaging, one pin |
+| **Per-platform optional packages** (`…-sp-<os>-<arch>`, with npm's `os` and `cpu` fields, as `optionalDependencies` of each add-on) | about 3 MB download, 7.5 MB on disk; shared by the three add-ons | four more packages per sp pin | earlier proposal, not implemented; omitted optional dependencies could leave the binary out |
+| **Download on first use** | a network fetch inside the model's first shell call | a release host plus checksums | **rejected**. It adds a network failure to a tool call |
 
-**Stated honestly: any published option makes the sp binaries public**
-while ScratchPad's source stays private. Publishing them is the
-ScratchPad owners' decision to make before the release.
+The release archives and all three add-ons carry the `sp` binaries under
+Apache-2.0, with the full license and dependency notices. The current
+download contract is in the binary guide above.
 
 ### 9.9 What the operator does, per harness
 
@@ -1287,7 +1293,7 @@ model cannot reach them.
 
 Built in `plugins/pi` on 2026-09-27: the skill (`SKILL.md`, ScratchPad's
 skill at `79f8927` adapted to `scripts/sp`), the wrapper (`scripts/sp`),
-the builds (`build-sp.sh`, at pack time, gitignored), all three now in
+the packaged binaries, with the shared skill and wrapper in
 `plugins/scratchpad-skill` and installed into each add-on's
 `skill/scratchpad` by its `npm run build:sp` (§9.12), and the add-on's
 variables (`src/scratchpad.ts`, whose shared part is now the fabric
@@ -1357,11 +1363,12 @@ unchanged, with no grant of the model's own.
 Built in `plugins/openclaw` on 2026-09-27, with two changes to what PI's
 build had.
 
-**One skill for every add-on.** `SKILL.md`, `scripts/sp` and the sp build
+**One skill for every add-on.** `SKILL.md`, `scripts/sp` and sp packaging
 moved out of `plugins/pi` into `plugins/scratchpad-skill`, with an
 `install.sh` each add-on's `npm run build:sp` (and `prepack`) runs: it
-builds sp once into the shared `bin/` and copies the skill and the binaries
-into the add-on's `skill/scratchpad`, which the add-on packages. PI's
+downloads and verifies the pinned release archives, then copies the skill,
+binaries, full license, and notices into the add-on's `skill/scratchpad`.
+The add-on packages that directory. PI's
 operator step, `--skill <add-on>/skill/scratchpad`, is unchanged. The code
 both add-ons need moved into the fabric package, TypeScript only like the
 rest of the plugins' contract (`typescript/src/plugin-scratchpad.ts`): the
@@ -1735,8 +1742,8 @@ earlier CLI after an upload refusal. Recover it first. Never automatically
 reset a writer merely because a response says `capacity`.
 
 PI, OpenClaw, and Claude Code copy the same maintained Fabric skill during
-`npm run build:sp` and `prepack`. The standalone archives derive their
-generic skill from the pinned ScratchPad source. The
+`npm run build:sp` and `prepack`. The standalone archives carry the generic
+skill for the selected release. The
 [distribution checks](scratchpad-binaries.md#checks-and-release-boundary)
 compare their shared recovery instructions and inspect all three npm
 archives for the exact generated skill and executable hashes.

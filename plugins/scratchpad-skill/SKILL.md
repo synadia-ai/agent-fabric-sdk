@@ -6,8 +6,9 @@ description: Read ScratchPad references (sp-ref:…) handed to you, and publish,
 # ScratchPad
 
 Adapted from the canonical ScratchPad skill for an agent on the fabric.
-The packaged `bin/BUILD.json` records the exact source, toolchain,
-command contract, and executable hashes.
+The packaged `bin/BUILD.json` records the release, opaque source identifier,
+toolchain, targets, and executable hashes. `LICENSE` and
+`THIRD_PARTY_NOTICES` contain the distribution terms.
 Run the sp command line only as this skill's `scripts/sp`, by its absolute
 path: the directory of this file, then `scripts/sp`. In the examples below,
 `scripts/sp` stands for that path.

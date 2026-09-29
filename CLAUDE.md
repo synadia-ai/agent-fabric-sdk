@@ -9,8 +9,8 @@ its examples beside each package (moved from the examples repository on
 2026-09-27). Private while it is built, public at the release.
 
 Under `plugins/` sit the fabric add-ons for the harness plugins, one small
-TypeScript package per harness, `plugins/pi` and `plugins/openclaw` built
-and Claude Code's to come. Each is an extension module the public plugin in
+TypeScript package per harness: `plugins/pi`, `plugins/openclaw`, and
+`plugins/claude-code`. Each is an extension module the public plugin in
 `synadia-agents` loads by name and hands the SDK's hooks and the harness's
 events; the add-on wires `fabricTracing()` in and adds the harness piece.
 The plugins stay in the public repo and are never copied here;
@@ -46,7 +46,7 @@ test-fixtures/       shared by both suites — see its README for every file's s
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
-  scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, build-sp.sh, install.sh
+  scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, load-sp.mjs, install.sh
   pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
     src/extension.ts the factory: tracing's hooks, the guard, the scope bound at PI's events, the headers
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, edge.json

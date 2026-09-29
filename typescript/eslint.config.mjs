@@ -12,10 +12,6 @@ export default tseslint.config(
       "*.config.mts",
       // A stand-in for the `sp` CLI, run as a program by the tests.
       "test/harness/*.mjs",
-      // Standalone JavaScript qualification runner; no TypeScript project context.
-      "scripts/run-native-tests.mjs",
-      "scripts/measure-native-spool.mjs",
-      "scripts/native-sustained-worker.mjs",
     ],
   },
   ...tseslint.configs.recommendedTypeChecked,
