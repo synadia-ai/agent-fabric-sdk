@@ -394,21 +394,33 @@ code, once the plugin passes the id to `execute()`
 (the fabric's agent-tools design, §2.1).
 
 **The `409` loop guard.** A harness cannot serve a prompt while its model
-waits inside a blocking tool call, so it refuses an incoming prompt whose
+waits on a call to another agent, so it refuses an incoming prompt whose
 `root_id` names a tree it is waiting in, with `409`
-(the fabric's agent-tools design, §2.3). The add-on
-builds it from what it already has: its own request interceptor, placed
-after tracing's, marks the request's root as *served* for the handler's
-duration; its own prompt interceptor, which runs in the async context of
-the `prompt_agent` call and so inside the served request's scope, marks that
-root as *waiting*; an arriving prompt whose adopted root is marked *waiting*
-is refused with `RequestRejectedError(409, …)` before `next()`. The mark is
-cleared when the served prompt ends. Stated honestly: this refuses a
-legitimate second prompt of the same tree that arrives while the harness
-waits in it, a sibling delegation issued with `wait: false` by the same
-coordinator. PI and OpenClaw serve one turn at a time anyway, so that prompt
-would have queued; the guard turns the wait into a refusal the caller sees
-at once.
+(the fabric's agent-tools design, §2.3). Waiting means: from
+the moment the model sends a prompt until every call the served request has
+open has settled — completed, failed, cancelled or expired. A blocking
+`prompt_agent` holds the mark until it returns; a call started with
+`wait: false` holds it for as long as it is open, since the model may
+`wait_agent` on it at any moment; with no call open, a prompt of the tree
+is admitted. The add-on builds it from what it already has: its own request
+interceptor, placed after tracing's, keeps the served request by the scope
+tracing bound for the handler's duration; its own prompt interceptor, which
+runs in the async context of the `prompt_agent` call and so inside the
+served request's scope, marks that request as *waiting*; the guard's
+`aroundToolCall`, inside the add-on's, lifts the mark when a tool result
+carries no `open_calls` (`AgentTools` counts the scope's open calls on every
+result while one is) and no other agent-tool call of the request is still
+running. An arriving prompt whose adopted root a served request is
+*waiting* in is refused with `RequestRejectedError(409, …)` before
+`next()`; every mark goes when its served prompt ends. The mark falls at a
+tool result, so a call that fails or expires while the model runs no agent
+tool keeps it until the model's next agent-tool result or the end of the
+served prompt, whichever comes first; a result the guard cannot read leaves
+the mark as it was. Stated honestly: this refuses a legitimate second
+prompt of the same tree that arrives while the harness waits in it, a
+sibling delegation issued with `wait: false` by the same coordinator. A
+harness serves one turn at a time anyway, so that prompt would have
+queued; the guard turns the wait into a refusal the caller sees at once.
 
 **Identity.** `edge` and `served` records are signed, so the add-on needs
 `senderIdentity: signed`. With identity off the add-on logs one warning at
@@ -678,7 +690,7 @@ session, a pseudo-terminal when scripted (§6 step 7).
 | OpenClaw's `traceparent` seed | exposes the dispatch as `aroundDispatch` | seeds OpenClaw's trace scope with the minted id | nothing | nothing |
 | The `served` publisher | nothing | publishes the pair (OpenClaw, Claude Code) through it | `publishSigned` with a nonce | `servedPublisher()`, `buildServedRecord()` and the vocabulary (`served.ts`, its Python twin `served.py`; gap 2, closed) |
 | The extension contract's types (`AgentExtension`, `HarnessEvents`, `ServedRequest`, …) | declares them, `agents/*/…/extensions.ts` | imports them | the hook types they name | declares them structurally, `plugin-contract.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23) |
-| The `409` loop guard | nothing | returns its request and prompt interceptors | `RequestRejectedError` | `loopGuard()`, `loop-guard.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23), and the scope it reads |
+| The `409` loop guard | nothing | returns its request and prompt interceptors, calls its `aroundToolCall` in its own | `RequestRejectedError` | `loopGuard()`, `loop-guard.ts`, TypeScript only (moved from `plugins/pi` 2026-09-23), and the scope it reads |
 | The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, read by the add-on alone | nothing | `resolveEdgeSubject()` gives every add-on the precedence (`plugin-settings.ts`, TypeScript only); validates it |
 | `senderIdentity: signed` | the plugin's setting, as today | required for any record; warns once without it | identity | warns once when a record is due |
 | ScratchPad references | the neutral `metadata` field (#218) | PI (§9.11), OpenClaw (§9.12): the one skill of `plugins/scratchpad-skill`, the registration key, `scratchPadExtension`; Claude Code: designed (§9) | the tools' extension hooks | `scratchPadExtension`, `spCliScratchPad` |
@@ -947,7 +959,9 @@ on one machine (the examples' until 2026-09-26), measured on Claude Code
   crosses the boundary is copy-safe by construction today; a future SDK
   change that checks a class by `instanceof` alone would break it silently.
 - **The `409` guard over-refuses** a sibling prompt of the same tree that
-  arrives while the harness waits in it (§3.1).
+  arrives while the harness waits in it, and keeps refusing after a call
+  settles unseen until the model's next agent-tool result or the prompt's
+  end (§3.1).
 - **ScratchPad references reach PI and OpenClaw only.** A reference in a
   prompt to Claude Code is removed by the caller's `prompt_agent` before
   sending (`reference-agents/README.md`, "The agent tools"), until its

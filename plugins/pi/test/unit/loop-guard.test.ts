@@ -62,6 +62,49 @@ describe("the loop guard", () => {
     await later.end();
   });
 
+  it("admits a prompt of the tree once the model's calls have settled, the request still open", async () => {
+    const ext = createExtension(extensionContext(), NO_ENV);
+    const first = serve(ext, "r1", { thread_id: T1, root_id: R }, "ACME.coordinator");
+    await first.accepted;
+    const toolCall = (name: string, result: () => Promise<unknown>): Promise<unknown> =>
+      ext.events!.aroundToolCall!(first.request, name, result);
+    const admitted = async (id: string, thread: string, root = R): Promise<void> => {
+      const p = serve(ext, id, { thread_id: thread.repeat(32), root_id: root });
+      await p.accepted;
+      await p.end();
+    };
+    const refused = (id: string, thread: string): Promise<void> =>
+      expect(
+        serve(ext, id, { thread_id: thread.repeat(32), root_id: R }).accepted,
+      ).rejects.toMatchObject({ code: LOOP_GUARD_CODE });
+
+    // A blocking `prompt_agent`: refused while it runs, admitted once it returned.
+    let settle!: (r: unknown) => void;
+    let sent!: () => void;
+    const prompted = new Promise<void>((r) => (sent = r));
+    const blocking = toolCall("prompt_agent", async () => {
+      await phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_pi_1" });
+      sent();
+      return new Promise((r) => (settle = r));
+    });
+    await prompted;
+    await refused("r2", "4");
+    await admitted("r3", "5", S);
+    settle({ status: "completed", call_id: "c1", text: "done" });
+    await blocking;
+    await admitted("r4", "6");
+
+    // A call with `wait: false`: refused while it is open, admitted after `wait_agent` returned it.
+    await toolCall("prompt_agent", async () => {
+      await phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_pi_2" });
+      return { status: "running", call_id: "c2", open_calls: 1 };
+    });
+    await refused("r5", "7");
+    await toolCall("wait_agent", () => Promise.resolve({ status: "completed", call_id: "c2" }));
+    await admitted("r6", "8");
+    await first.end();
+  });
+
   it("keeps the description on one line, under the SDK's cap", () => {
     const description = loopGuardDescription(R);
     expect(description).not.toMatch(/[\r\n]/);

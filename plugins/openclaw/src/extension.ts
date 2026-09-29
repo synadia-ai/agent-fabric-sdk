@@ -27,7 +27,9 @@
 // the handler's async context, so the binding is a no-op rebind the add-on
 // makes anyway; on 2026.5.4 the plugin puts a tool call back into the
 // oldest pending request's context itself. The `409` loop guard is the
-// fabric package's two interceptors, after tracing's.
+// fabric package's two interceptors, after tracing's, and its `aroundToolCall`
+// inside the add-on's, which lifts the mark once the request's calls have
+// settled.
 //
 // ScratchPad (§9): when a volume is configured, the add-on sets the
 // environment the package's skill (`skill/scratchpad`, named to OpenClaw in
@@ -227,7 +229,9 @@ export function createFabricExtension(
       },
       aroundToolCall(request, _toolName, run) {
         const scope = scopeOf(request);
-        return scope === undefined ? run() : bindActiveTrace(scope, run);
+        return scope === undefined
+          ? run()
+          : bindActiveTrace(scope, () => guard.aroundToolCall(scope, run));
       },
     },
   };

@@ -16,7 +16,9 @@
 // every agent-tool call, and `providerHeaders`, which returns the fabric's
 // two headers for the request so the proxy files PI's own model calls on
 // the served thread. The `409` loop guard is its own two interceptors,
-// after tracing's (`loopGuard`, from the fabric package).
+// after tracing's, and its `aroundToolCall` inside the add-on's, which lifts
+// the mark once the request's calls have settled (`loopGuard`, from the
+// fabric package).
 //
 // ScratchPad (§9): when a volume is configured, the add-on sets the
 // environment the package's skill (`skill/scratchpad`, given to PI with
@@ -196,7 +198,9 @@ export function createFabricExtension(
         // The same binding as the injection's, for the case PI's tool
         // runner does not inherit it; a no-op rebind when it does.
         const scope = scopeOf(request);
-        return scope === undefined ? run() : bindActiveTrace(scope, run);
+        return scope === undefined
+          ? run()
+          : bindActiveTrace(scope, () => guard.aroundToolCall(scope, run));
       },
     },
   };
