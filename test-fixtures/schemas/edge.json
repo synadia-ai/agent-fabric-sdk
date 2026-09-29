@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://synadia.io/agent-fabric/schemas/edge.json",
   "title": "Edge record",
-  "description": "The caller's lineage claim, one per prompt(), published before the prompt is sent; on TRACE.{account}.edges, signed with Agent-Sender (afo-design.md §6.2).",
+  "description": "The caller's lineage claim, one per prompt(), published before the prompt is sent; on TRACE.{account}.edges, signed with Agent-Sender.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -59,7 +59,7 @@
     "turn_count_hint": {
       "type": "integer",
       "minimum": 0,
-      "description": "the writer's model-call count at spawn time; 0 on a root or before the first call; always written by the SDKs (relaxed from omitted-when-0 on 2026-09-16); a hint, never a claim"
+      "description": "the writer's model-call count at spawn time; 0 on a root or before the first call; always written by the SDKs, 0 included; a hint, never a claim"
     }
   },
   "required": [
