@@ -186,6 +186,11 @@ All suites green means all of these: the two packages', the three add-ons',
 and the reference agents' two (`reference-agents/typescript` `npm test`,
 `reference-agents/python` `pytest`).
 
+For the separate distribution suite, build the TypeScript SDK and all three
+add-ons first. Use the complete
+[build-and-test sequence](docs/scratchpad-binaries.md#checks-and-release-boundary);
+`npm pack` installs the skill and binaries but does not build the add-ons.
+
 The cross-version interop cases (against the last published, pre-tracing
 SDK releases) are skipped unless `SYNADIA_INTEROP_PRETRACING_PY_PYTHON` /
 `SYNADIA_INTEROP_PRETRACING_TS_DIR` are set; the test files say how to

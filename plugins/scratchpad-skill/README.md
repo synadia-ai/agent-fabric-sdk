@@ -28,8 +28,12 @@ does not bypass any checks. `SP_RELEASE_DOWNLOAD=gh` selects authenticated
 downloads while repository access requires authentication.
 
 The wrapper tests are in `plugins/pi/test/unit/scripts-sp.test.ts`.
-The source-independent distribution suite is
-`node --test plugins/scratchpad-skill/tests/distribution.test.mjs`.
+The source-independent distribution suite requires the TypeScript SDK and
+**all three harness add-ons to be built first**. Follow the
+[build-and-test commands](../../docs/scratchpad-binaries.md#checks-and-release-boundary)
+from the repository root. The add-ons' `prepack` hook installs the skill and
+`sp` binaries; it does not compile their TypeScript.
+
 It verifies real release archives, both standalone download modes, refusal
 controls, and all three actual npm archives. It compares complete generated
 skills and checks shared recovery instructions against the standalone skill.
