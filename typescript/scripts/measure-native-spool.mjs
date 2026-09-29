@@ -10,8 +10,9 @@ import { nativeScratchPad, scratchPadReader } from "../dist/index.js";
 
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
-const { config, directory, cycles } = JSON.parse(input);
+const { config, directory, cycles, artifactMiB } = JSON.parse(input);
 assert(Number.isInteger(cycles) && cycles >= 1 && cycles <= 10);
+assert(artifactMiB === 7 || artifactMiB === 32);
 const nc = await connect({
   servers: config.url,
   authenticator: credsAuthenticator(await readFile(config.users.owner.credentials)),
@@ -32,8 +33,10 @@ try {
     const expected = createHash("sha256");
     let inputBytes = 0;
     function* chunks() {
-      for (let index = 0; index < 14; index++) {
-        const bytes = Buffer.alloc(512 * 1024, cycle * 16 + index);
+      for (let index = 0; index < 2 * artifactMiB; index++) {
+        const bytes = Buffer.alloc(512 * 1024, (cycle * 16 + index) % 256);
+        bytes.writeUInt32BE(cycle, 0);
+        bytes.writeUInt32BE(index, 4);
         expected.update(bytes);
         inputBytes += bytes.length;
         yield bytes;
@@ -70,7 +73,7 @@ try {
       clearInterval(timer);
     }
     assert(samples >= 2);
-    assert.equal(inputBytes, 7 * 1024 * 1024);
+    assert.equal(inputBytes, artifactMiB * 1024 * 1024);
     const actual = createHash("sha256");
     let readBytes = 0;
     for await (const chunk of reader.readStream(publication.reference, {
@@ -105,6 +108,7 @@ try {
         arch: process.arch,
         cycle,
         artifactBytes: inputBytes,
+        generator: "cycle-index-prefix-v1",
         verifiedBytes: readBytes,
         sha256,
         publishMs,

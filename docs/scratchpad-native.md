@@ -233,7 +233,12 @@ They reopen the workspace and compare the complete replayed request, stored stat
 Other cases observe a real disconnect/reconnect, operator recovery, fixed-slot pressure, and byte/object quota headroom.
 Overlapping handoffs use one writer's queue; they do not establish support for competing writer workspaces.
 The reconnect case follows an accepted publication whose reply was lost.
-Delayed delivery of an earlier buffered control and the full disconnect matrix remain separate qualification work.
+A delayed-grant case holds the original request while another connection receives a definite service refusal.
+The client preserves its pending grant across reopening, then recovers after the original request arrives.
+The check compares the exact scope, service error cause, allowed reader, and denied reader.
+This establishes reordered-delivery behavior; the full NATS reconnect-buffer matrix remains separate work.
+Constructor and close cases preserve exact receipts, exclude another writer until close completes,
+and recover from failed input and cancelled Python close.
 
 The following optional checks require both packages' development environments.
 Run them from `python/`; select new output directories for each run:
@@ -241,6 +246,9 @@ Run them from `python/`; select new output directories for each run:
 ```sh
 uv run --no-sync ../scripts/check-native-control-recovery.py \
   --core-root /path/to/private/scratchpad --output /path/to/evidence/control-mutations
+uv run --no-sync ../scripts/check-native-control-recovery.py \
+  --case delayed-refusal --core-root /path/to/private/scratchpad \
+  --output /path/to/evidence/delayed-mutations
 uv run --no-sync ../scripts/measure-native-spool.py \
   --core-root /path/to/private/scratchpad --output /path/to/evidence/spool-probe --cycles 3
 ```
@@ -250,9 +258,20 @@ Both language tests must fail at the reopened-workspace assertion; setup failure
 The original checkout remains unchanged.
 
 The spool probe publishes a distinct 7 MiB stream, verifies its complete digest, and releases and collects the previous content.
+Use `--artifact-mib 32` for the explicit larger fixture profile and `--cycles 10` for a longer finite window.
 It closes and reopens the same workspace on every cycle.
 Records include publication time, worst observed event-loop gap, sample count/window, verified bytes, and closed database size.
 TypeScript records sampled RSS; Python records process-lifetime maximum RSS. Those measurements have different scopes.
 The default three cycles are a bounded diagnostic, not a soak or a latency guarantee.
 No timing threshold is used as a correctness assertion.
 The [September 28 qualification report](runs/2026-09-28-native-friendly-qualification.md) records exact case counts, measured pauses, and remaining boundaries.
+The [Linux command](../scripts/native-linux/README.md) records source hashes, runtimes, mount details, counts, and measurement scope.
+The [Linux preparation report](runs/2026-09-28-linux-native-preparation.md) records the delayed-grant, workspace lifecycle, and larger-spool results.
+
+The [sustained workload contract](native-sustained-plan.md) defines a separate 30-minute native-client run.
+It keeps both workspaces open between explicit writer deaths and uses independent cross-language readers.
+The run measures the SQLite database and rollback journal separately, plus their combined file size.
+Its canary checks require progress throughout each active interval, not only a final successful read.
+Use the contract's controls and rehearsal before its fixed qualification workload.
+The [September 29 sustained report](runs/2026-09-29-native-sustained.md) records the full window,
+exact recovery events, storage reuse, measured latency, and qualification limits.

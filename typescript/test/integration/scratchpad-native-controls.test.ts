@@ -5,12 +5,24 @@ import { connect, credsAuthenticator } from "@nats-io/transport-node";
 import type { NatsConnection } from "@nats-io/nats-core";
 import { describe, expect, it } from "vitest";
 import { nativeScratchPad, scratchPadReader } from "../../src/scratchpad-native.js";
-import type { Receipt, VolumeView } from "../../src/scratchpad-native/protocol.js";
+import { decodeReference } from "../../src/scratchpad-native/codec.js";
+import type {
+  GrantIssueRequest,
+  Receipt,
+  VolumeView,
+} from "../../src/scratchpad-native/protocol.js";
 import { deadline, NativeServiceFixture } from "../harness/scratchpad-native.js";
 
 const coreRoot = process.env["SCRATCHPAD_CORE_ROOT"];
 type Pad = Awaited<ReturnType<typeof nativeScratchPad>>;
 type ControlKind = "grant" | "close" | "apply";
+interface DelayedGrantStatus {
+  request: GrantIssueRequest;
+  view: VolumeView;
+  held_requests: number;
+  released_requests: number;
+  accepted: boolean;
+}
 interface ControlStatus {
   verb: string;
   request: Record<string, unknown>;
@@ -63,6 +75,187 @@ function options(fixture: NativeServiceFixture, nc: NatsConnection, directory: s
 }
 
 describe.skipIf(!coreRoot)("native control recovery through the actual service", () => {
+  it("keeps a delayed grant pending after a later definite refusal", async () => {
+    await withFixture(async (fixture, directory) => {
+      const originalConnection = await owner(fixture);
+      const direct = await connect({
+        servers: fixture.config.url,
+        authenticator: credsAuthenticator(await readFile(fixture.config.users.owner.credentials)),
+        reconnect: false,
+      });
+      let pad: Pad | undefined;
+      try {
+        pad = await nativeScratchPad(options(fixture, originalConnection, directory));
+        const bytes = new TextEncoder().encode("delivered after the refusal");
+        const publication = await pad.publishBytes(bytes, "/late.txt", {
+          operationId: "late-grant",
+        });
+        const grantee = {
+          account: fixture.config.users.reader.account,
+          user: fixture.config.users.reader.user,
+        };
+        expect(await fixture.command("delay_grant")).toEqual({ armed: "grant.issue" });
+        await expect(pad.grantRead(publication.reference, grantee)).rejects.toMatchObject({
+          unknown: true,
+        });
+        const held = await fixture.command<DelayedGrantStatus>("delayed_grant_status");
+        expect(held).toMatchObject({ held_requests: 1, released_requests: 0, accepted: false });
+        const reference = decodeReference(publication.reference);
+        expect(reference.target.volume).toBe(fixture.config.volume);
+        expect(held.request).toMatchObject({
+          principal: grantee,
+          target: reference.target,
+          root: reference.root,
+          path: reference.path,
+          retention: reference.retention,
+        });
+        await pad.close();
+        pad = await nativeScratchPad(options(fixture, direct, directory));
+        expect((await pad.describe()).pending).toBe("grant");
+        const closed = await fixture.command<{ view: VolumeView }>("operator_close", {
+          reference: publication.reference,
+        });
+        await expect(
+          pad.recover(),
+          "a later refusal cannot clear an earlier unknown grant",
+        ).rejects.toMatchObject({
+          code: "closed",
+          unknown: true,
+          cause: { code: "closed", local: false, unknown: false },
+        });
+        const refused = await pad.describe();
+        expect(refused.pending, "a later refusal cannot clear an earlier unknown grant").toBe(
+          "grant",
+        );
+        expect(refused.volume).toEqual(closed.view);
+        await pad.close();
+        pad = await nativeScratchPad(options(fixture, direct, directory));
+        expect((await pad.describe()).pending).toBe("grant");
+        await fixture.command("operator_collect", { reference: publication.reference });
+        const delivered = await fixture.command<DelayedGrantStatus>("release_delayed_grant");
+        expect(delivered).toMatchObject({ held_requests: 1, released_requests: 1, accepted: true });
+        expect(delivered.request).toEqual(held.request);
+        await expect(pad.recover()).resolves.toMatchObject({ kind: "grant" });
+        expect((await pad.describe()).pending).toBeUndefined();
+        expect(pad.granted(publication.reference, grantee)).toBe("first-hand");
+        expect(
+          await fixture.command("go_read", { user: "reader", reference: publication.reference }),
+        ).toMatchObject({ bytes: bytes.length });
+        await expect(
+          fixture.command("go_read", { user: "intruder", reference: publication.reference }),
+        ).rejects.toThrow(/denied/);
+        const reader = await scratchPadReader({ nc: direct });
+        expect(await reader.readBytes(publication.reference)).toEqual(bytes);
+        console.info(
+          "NATIVE_DELAYED_RESULT",
+          JSON.stringify({
+            language: "typescript",
+            held: 1,
+            released: 1,
+            recoveredGrants: 1,
+            verifiedBytes: bytes.length,
+          }),
+        );
+      } finally {
+        try {
+          await pad?.close();
+        } finally {
+          await originalConnection.close();
+          await direct.close();
+        }
+      }
+    });
+  });
+
+  it("releases the workspace after failed constructor binding", async () => {
+    await withFixture(async (fixture, directory) => {
+      const nc = await owner(fixture);
+      let pad: Pad | undefined;
+      try {
+        const opts = options(fixture, nc, directory);
+        pad = await nativeScratchPad(opts);
+        const bytes = new TextEncoder().encode("preserved across failed startup");
+        const published = await pad.publishBytes(bytes, "/startup.txt", { operationId: "startup" });
+        await pad.close();
+        await expect(
+          nativeScratchPad({ ...opts, creator: "agents.another.creator" }),
+        ).rejects.toThrow(/workspace is bound/);
+        pad = await nativeScratchPad(opts);
+        const replay = await pad.publishBytes(new Uint8Array(), "/startup.txt", {
+          operationId: "startup",
+        });
+        expect(replay).toEqual(published);
+        const reader = await scratchPadReader({ nc });
+        expect(await reader.readBytes(replay.reference)).toEqual(bytes);
+      } finally {
+        try {
+          await pad?.close();
+        } finally {
+          await nc.close();
+        }
+      }
+    });
+  });
+
+  it.each([false, true])(
+    "joins an active publication on close (input failure=%s)",
+    async (failInput) => {
+      await withFixture(async (fixture, directory) => {
+        const nc = await owner(fixture);
+        let pad: Pad | undefined;
+        let release!: () => void;
+        let entered!: () => void;
+        const sourceReady = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const proceed = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const bytes = new Uint8Array(512 * 1024).fill(37);
+        async function* source() {
+          yield bytes;
+          entered();
+          await proceed;
+          if (failInput) throw new Error("controlled input failure");
+        }
+        let publishing: Promise<unknown> | undefined;
+        let closing: Promise<void> | undefined;
+        try {
+          const opts = options(fixture, nc, directory);
+          pad = await nativeScratchPad(opts);
+          publishing = pad.publishStream(source(), "/close.bin", { operationId: "close-active" });
+          await deadline(sourceReady, 5000, "stream reached its controlled hold");
+          closing = pad.close();
+          expect(pad.close()).toBe(closing);
+          await expect(pad.describe()).rejects.toMatchObject({ code: "closed", local: true });
+          await expect(nativeScratchPad(opts)).rejects.toMatchObject({ code: "busy", local: true });
+          release();
+          let completed: unknown;
+          if (failInput) await expect(publishing).rejects.toThrow("controlled input failure");
+          else completed = await publishing;
+          await closing;
+          pad = await nativeScratchPad(opts);
+          expect((await pad.describe()).pending).toBeUndefined();
+          const published = await pad.publishBytes(bytes, "/close.bin", {
+            operationId: "close-active",
+          });
+          expect(published.receipt.command.number).toBe(1);
+          if (!failInput) expect(published).toEqual(completed);
+          const reader = await scratchPadReader({ nc });
+          expect(await reader.readBytes(published.reference)).toEqual(bytes);
+        } finally {
+          release();
+          await Promise.allSettled([publishing, closing].filter((p) => p !== undefined));
+          try {
+            await pad?.close();
+          } finally {
+            await nc.close();
+          }
+        }
+      });
+    },
+  );
+
   it.each<[ControlKind, string]>([
     ["grant", "grant.issue"],
     ["close", "maintenance.close"],
