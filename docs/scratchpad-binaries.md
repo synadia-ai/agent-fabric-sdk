@@ -118,19 +118,35 @@ an upload quota refusal does not authorize a writer reset.
 
 ## Checks and release boundary
 
-These commands index the public distribution checks:
+The checks need Node 20+, npm, a POSIX shell, and the standalone installer's
+archive and hash tools. They do not need a service checkout or Go.
+Set `SP_RELEASE_SOURCE_DIR` for local release candidates or offline checks.
+Use `SP_RELEASE_DOWNLOAD=gh` while authenticated access is required.
+
+Build the TypeScript SDK and **all three harness add-ons** before running
+the distribution suite. It creates real npm archives and checks their
+JavaScript entrypoints. The add-ons' `prepack` hook installs the skill and
+`sp` binaries; it does not compile the add-ons' TypeScript.
+
+First prepare the linked protocol SDK packages as described in
+[the development setup](../CLAUDE.md#the-protocol-sdk-during-development).
+Then run this build-and-test sequence from the repository root:
 
 ```sh
+npm --prefix typescript ci
+npm --prefix typescript run build
+npm --prefix plugins/pi ci
+npm --prefix plugins/pi run build
+npm --prefix plugins/openclaw ci
+npm --prefix plugins/openclaw run build
+npm --prefix plugins/claude-code ci
+npm --prefix plugins/claude-code run build
+
 node plugins/scratchpad-skill/load-sp.mjs verify
 node --test plugins/scratchpad-skill/tests/distribution.test.mjs
 ```
 
-Set `SP_RELEASE_SOURCE_DIR` for local release candidates or offline checks.
-Use `SP_RELEASE_DOWNLOAD=gh` while authenticated access is required.
-The checks need Node 20+, npm, a POSIX shell, and the standalone installer's
-archive and hash tools. They do not need a service checkout or Go.
-Build the TypeScript SDK and all three harness add-ons before running the
-suite; it checks that each npm archive contains its JavaScript entrypoint.
+After changing an add-on's source, rebuild it before running the suite again.
 
 The suite consumes real release archives and creates all three npm packages.
 It compares all twelve packaged executables, skills, metadata, licenses,
