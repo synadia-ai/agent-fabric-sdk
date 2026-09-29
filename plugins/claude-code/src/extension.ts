@@ -31,7 +31,9 @@
 // call. The plugin already re-enters the handler's async context (a
 // snapshot taken after the interceptors ran) before `aroundToolCall`, so
 // the binding is a no-op rebind the add-on makes anyway. The `409` loop
-// guard is the fabric package's two interceptors, after tracing's.
+// guard is the fabric package's two interceptors, after tracing's, and its
+// `aroundToolCall` inside the add-on's, which lifts the mark once the
+// request's calls have settled.
 //
 // ScratchPad (§9.13): when a volume is configured, the add-on keeps the
 // variables the package's skill (`skills/scratchpad`, loaded with the
@@ -367,7 +369,9 @@ export function createFabricExtension(
 
       aroundToolCall(request: ServedRequest | undefined, _toolName, run) {
         const scope = request === undefined ? undefined : served.get(request.id)?.scope;
-        return scope === undefined ? run() : bindActiveTrace(scope, run);
+        return scope === undefined
+          ? run()
+          : bindActiveTrace(scope, () => guard.aroundToolCall(scope, run));
       },
     },
   };

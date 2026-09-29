@@ -66,11 +66,15 @@ the order the records were due, so a pair's `end` never overtakes its
 service starting and `started` gets its trace id seeded and no pair.
 
 **The `409` loop guard.** OpenClaw serves an account's prompts one turn at
-a time and cannot serve a prompt while its model waits inside a blocking
-tool call, so a prompt of a tree OpenClaw is waiting in is refused at once
-with `409` instead of queueing behind the wait it is part of. The guard is
-the fabric package's `loopGuard()`, two more interceptors after tracing's;
-the PI add-on returns the same.
+a time and cannot serve a prompt while its model waits on a call to
+another agent, so a prompt of a tree OpenClaw is waiting in is refused at
+once with `409` instead of queueing behind the wait it is part of. It waits
+from the moment its model sends a prompt until every call the served
+request has open has settled: a blocking `prompt_agent` until it returns, a
+call started with `wait: false` for as long as it is open. Once none is
+open, a prompt of the tree is admitted. The guard is the fabric package's
+`loopGuard()`, two more interceptors after tracing's and its
+`aroundToolCall` inside the add-on's; the PI add-on returns the same.
 
 **What it does not do.** No header on OpenClaw's calls: the plugin cannot
 add one, which is why the pair exists.

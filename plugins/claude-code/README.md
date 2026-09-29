@@ -63,10 +63,15 @@ still open now with `error` — and flushes. The plugin calls it before it
 fails the requests still open, and no `Stop` comes after it.
 
 **The `409` loop guard.** Claude Code cannot serve a prompt while its model
-waits inside a blocking tool call, so a prompt of a tree it is waiting in is
+waits on a call to another agent, so a prompt of a tree it is waiting in is
 refused at once with `409` instead of waiting behind the wait it is part of.
-The guard is the fabric package's `loopGuard()`, two more interceptors after
-tracing's; the PI and OpenClaw add-ons return the same.
+It waits from the moment its model sends a prompt until every call the
+served request has open has settled: a blocking `prompt_agent` until it
+returns, a call started with `wait: false` for as long as it is open. Once
+none is open, a prompt of the tree is admitted, though the turn goes on.
+The guard is the fabric package's `loopGuard()`, two more interceptors
+after tracing's and its `aroundToolCall` inside the add-on's; the PI and
+OpenClaw add-ons return the same.
 
 **What it does not do.** No `toolExtensions`: a harness reads no ScratchPad
 reference in the MVP. No header on Claude Code's calls: the plugin cannot

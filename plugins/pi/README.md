@@ -47,20 +47,27 @@ A request the add-on never saw (no scope kept) is left alone: no headers,
 `run` called as it is.
 
 **The `409` loop guard.** PI serves one turn at a time and cannot serve a
-prompt while its model waits inside a blocking tool call, so a prompt of a
+prompt while its model waits on a call to another agent, so a prompt of a
 tree PI is waiting in is refused at once with `409` instead of queueing
-behind the wait it is part of. The guard is two more interceptors: its
-request interceptor, after tracing's, keeps the served request by the scope
-tracing bound for the handler's duration and refuses an arriving prompt
-whose root a served request is waiting in, before `next()`, with
+behind the wait it is part of. PI waits from the moment its model sends a
+prompt until every call the served request has open has settled: a
+blocking `prompt_agent` until it returns, a call started with `wait: false`
+for as long as it is open. With no call open, a prompt of the tree is
+admitted. The guard is two more interceptors and a wrapper: its request
+interceptor, after tracing's, keeps the served request by the scope tracing
+bound for the handler's duration and refuses an arriving prompt whose root
+a served request is waiting in, before `next()`, with
 `RequestRejectedError(409, …)`; its prompt interceptor, on the plugin's
-client, runs in the tool call's context and marks that request as waiting.
-The mark goes when the served prompt ends. The root is read from the scope
-tracing bound, never from the envelope. Stated honestly: this also refuses a
-legitimate second prompt of the same tree that arrives while PI waits in it,
-such as a sibling delegation issued with `wait: false` by the same
-coordinator; PI would have queued it anyway, and the guard turns the queue
-into a refusal the caller sees at once.
+client, runs in the tool call's context and marks that request as waiting;
+its `aroundToolCall`, inside the add-on's, lifts the mark when a tool
+result counts no open call and no other agent-tool call of the request
+runs. A call that fails or expires while the model runs no agent tool keeps
+the mark until the next agent-tool result or the served prompt's end. The
+root is read from the scope tracing bound, never from the envelope. Stated
+honestly: this also refuses a legitimate second prompt of the same tree
+that arrives while PI waits in it, such as a sibling delegation issued with
+`wait: false` by the same coordinator; PI would have queued it anyway, and
+the guard turns the queue into a refusal the caller sees at once.
 
 **What it does not do.** No `served` record: PI's calls carry the headers,
 so they need none, and PI writes nothing to `TRACE.edges` but the edges of
@@ -219,7 +226,7 @@ thread's calls carry its timing.
 | `resolveEdgeSubject(options, env?)`                                                                                                                                           | the setting's precedence, as above                                                                                                                                    |
 | `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                                           | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the packaged sp's path                                                                 |
 | `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                           | the constants                                                                                                                                                         |
-| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `serving(rootId)`, `waiting(rootId)`                                                                 |
+| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `aroundToolCall(scope, run)`, `serving(rootId)`, `waiting(rootId)`                                   |
 | `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI                                                                   |
 
 The setting's precedence, the loop guard and the contract's types live in

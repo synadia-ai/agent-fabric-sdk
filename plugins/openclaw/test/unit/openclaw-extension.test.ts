@@ -338,6 +338,53 @@ describe("the loop guard", () => {
   });
 });
 
+describe("the loop guard, once the calls have settled", () => {
+  it("admits a prompt of the tree once the model's calls have settled, the request still open", async () => {
+    const { ext } = await started();
+    const first = serve(ext, { thread_id: THREAD, root_id: ROOT }, CALLER);
+    await first.dispatched;
+    const toolCall = (name: string, result: () => Promise<unknown>): Promise<unknown> =>
+      first.inTurn(() => ext.events!.aroundToolCall!(first.request, name, result));
+    const admitted = async (thread: string, root = ROOT): Promise<void> => {
+      const p = serve(ext, { thread_id: thread.repeat(32), root_id: root });
+      await p.accepted;
+      await p.end();
+    };
+    const refused = (thread: string): Promise<void> =>
+      expect(
+        serve(ext, { thread_id: thread.repeat(32), root_id: ROOT }).accepted,
+      ).rejects.toMatchObject({ code: LOOP_GUARD_CODE });
+
+    // A blocking `prompt_agent`: refused while it runs, admitted once it returned.
+    let settle!: (r: unknown) => void;
+    let sent!: () => void;
+    const prompted = new Promise<void>((r) => (sent = r));
+    const blocking = toolCall("prompt_agent", async () => {
+      await phaseOne(ext.promptInterceptors!, { toolCallId: "call_oc_11" });
+      sent();
+      return new Promise((r) => (settle = r));
+    });
+    await prompted;
+    await refused("c");
+    await admitted("d", "e".repeat(32));
+    settle({ status: "completed", call_id: "c1", text: "done" });
+    await blocking;
+    await admitted("f");
+
+    // A call with `wait: false`: refused while it is open, admitted after it expired.
+    await toolCall("prompt_agent", async () => {
+      await phaseOne(ext.promptInterceptors!, { toolCallId: "call_oc_12" });
+      return { status: "running", call_id: "c2", open_calls: 1 };
+    });
+    await refused("1");
+    await toolCall("wait_agent", () =>
+      Promise.resolve({ status: "expired", call_id: "c2", error: "the call expired" }),
+    );
+    await admitted("2");
+    await first.end();
+  });
+});
+
 describe("identity off", () => {
   it("warns once at start, and every record owed counts as dropped", async () => {
     const before = traceRecordCounts();
