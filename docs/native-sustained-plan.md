@@ -2,7 +2,7 @@
 
 Work issue: [SDK #22](https://github.com/synadia-ai/agent-fabric-sdk/issues/22).
 This qualification extends the short Linux window in SDK #39.
-The runtime sources remain unchanged. Live deployment and integration pins remain separate.
+The runtime sources remain unchanged. The fabric's deployment and its integration pins remain separate.
 The [September 29 report](runs/2026-09-29-native-sustained.md) records the measured result.
 
 ## Fixed workload
@@ -68,7 +68,7 @@ The final run requires passed control evidence with the exact same source manife
 This is one Linux arm64 container with four CPUs and 4 GiB memory on local Docker storage.
 It qualifies sustained native client work and service-instance restart, not broker restart or R3 failover.
 It does not qualify an independent operator maintenance controller or public npm/PyPI installation.
-The previous real Live run and its six agents remain separate evidence.
+The previous real run on the fabric's deployment, with its six agents, remains separate evidence.
 
 ## Worker protocol
 
@@ -108,7 +108,8 @@ Publication operation IDs are `sustained-<language>-<cycle>`.
 
 Use the [Linux build instructions](../scripts/native-linux/README.md#build-inputs) to inventory the three checkouts
 and build `scratchpad-native-qualification:local`. The core needs the `sustained-128m` profile and `observe_storage`
-from ScratchPad #1172. The build uses the selected Live images' locked dependencies; it does not prove a public package install.
+from the ScratchPad source at the pinned revision, which is not public: not every reader can build it.
+The build uses the locked dependencies of the fabric deployment's agent images; it does not prove a public package install.
 Set `qualification_evidence` to a new absolute directory. Save the source inventory there as `expected-sources.json`.
 Use unused container and volume names. The example leaves containers and volumes available for inspection.
 

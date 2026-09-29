@@ -1,5 +1,5 @@
-// The `409` loop guard (`synadia-agent-fabric/docs/agent-tools.md` §2.3;
-// decision 31). A harness serves one turn at a time and cannot serve a
+// The `409` loop guard (the fabric's design of the agent tools, §2.3: a
+// harness refuses a prompt of a tree it is waiting in). A harness serves one turn at a time and cannot serve a
 // prompt while its model waits inside a blocking tool call, so a prompt of a
 // tree the harness is waiting in would wait until the turn ends, which is
 // never when the turn is what it waits for. The guard refuses such a prompt

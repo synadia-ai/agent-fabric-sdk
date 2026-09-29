@@ -238,7 +238,7 @@ The same surface in both languages (TypeScript names; Python in snake_case):
 ## On the wire
 
 Byte for byte what the protocol SDK wrote before tracing moved out of it
-(`synadia-agents` `c9d7bcb`), and the contract of `afo-design.md` §3, §4,
+(`synadia-agents` `c9d7bcb`), and the contract of the fabric's design, §3, §4,
 §6.2 and §8:
 
 - **The edge record**, `version: 1`, kind `edge`, published on `TRACE.edges`
@@ -262,7 +262,7 @@ Byte for byte what the protocol SDK wrote before tracing moved out of it
 
 One signed NATS request, one JSON reply, the shapes of
 `test-fixtures/schemas/sp-grant-{request,reply}.json` (vendored from
-`synadia-agent-fabric`), the same bytes from both packages:
+the fabric's design documents), the same bytes from both packages:
 `{"reference":"sp-ref:…","grantee":"<account>.<user>","trace":{"thread_id":"…","root_id":"…","tool_call_id":"…"}}`,
 `trace` only inside a served prompt and `tool_call_id` only when valid;
 `{"granted":true}` or `{"granted":false,"reason":"…"}`, one reason per line

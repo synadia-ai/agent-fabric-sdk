@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
-# Named contexts: agents (protocol SDK) and scratchpad (private core).
-# Use the locally qualified Live agent images. This reuses their locked
+# Named contexts: agents (protocol SDK) and scratchpad (the ScratchPad core source).
+# Use the locally qualified agent images of the fabric's deployment. This reuses their locked
 # development dependencies; it is not a clean public-package install check.
 ARG NODE_IMAGE
 ARG PYTHON_IMAGE

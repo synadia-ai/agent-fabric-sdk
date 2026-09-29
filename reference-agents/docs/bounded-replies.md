@@ -47,16 +47,16 @@ uv run --python 3.12 pytest tests/test_reply.py tests/test_reply_agent.py tests/
 From the repository root, run the mutation controls with the same installed SDK dependencies:
 
 ```sh
-uv run --script reference-agents/test-fixtures/reply_controls.py --evidence /absolute/private/reply-controls
+uv run --script reference-agents/test-fixtures/reply_controls.py --evidence /path/to/evidence
 ```
 
 The controls change UTF-8 byte counting, bypass the grant condition, and put the original large text back in history.
 Each selected test must fail on its own behavioral assertion.
 The control runner preserves source copies and output outside the checkout and does not change the working source.
-Run `make test-reply-controls REPLY_EVIDENCE=/absolute/private/reply-controls` from `reference-agents/` to run the same controls.
+Run `make test-reply-controls REPLY_EVIDENCE=/path/to/evidence` from `reference-agents/` to run the same controls.
 
 ## Source
 
-This port adapts `agent-fabric-examples-scratchpad` PR #3, commit `4c06bde289c175119a97d09f89c7802d131cd75f`.
+This port adapts an earlier branch of the examples repository, commit `4c06bde289c175119a97d09f89c7802d131cd75f`.
 The handlers use the current public ScratchPad port and native client defaults.
 The handler fixtures use the shared Go-generated v2 reference.

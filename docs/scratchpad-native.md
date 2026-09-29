@@ -208,17 +208,18 @@ Run the real-service suite explicitly; the ordinary unit suite does not qualify 
 ```sh
 cd typescript
 npm run build
-SCRATCHPAD_CORE_ROOT=/path/to/private/scratchpad npm run test:native
+SCRATCHPAD_CORE_ROOT=/path/to/scratchpad-source npm run test:native
 
 cd ../python
 uv sync --python 3.12 --frozen
-SCRATCHPAD_CORE_ROOT=/path/to/private/scratchpad \
+SCRATCHPAD_CORE_ROOT=/path/to/scratchpad-source \
 SCRATCHPAD_TYPESCRIPT_PACKAGE=/path/to/agent-fabric-sdk/typescript \
   uv run --no-sync pytest -s tests/test_scratchpad_native.py tests/test_scratchpad_native_expiry.py \
     tests/test_scratchpad_native_controls.py
 ```
 
 The core checkout is a test-only dependency. Shipped clients and their callers do not need it.
+The ScratchPad source is not public, so these suites need access not every reader has. Without `SCRATCHPAD_CORE_ROOT`, `npm run test:native` refuses to start and the Python and ordinary TypeScript suites skip these cases.
 The control suite requires the core's `native_client_control_test.go` fixture extension.
 The launcher creates temporary test credentials, uses the real broker identity imports, and records actual dropped receipts.
 The process-restart test runs the built package with no executables on PATH, kills its writer after an unknown result, and compares the recovered receipt and bytes.
@@ -245,12 +246,12 @@ Run them from `python/`; select new output directories for each run:
 
 ```sh
 uv run --no-sync ../scripts/check-native-control-recovery.py \
-  --core-root /path/to/private/scratchpad --output /path/to/evidence/control-mutations
+  --core-root /path/to/scratchpad-source --output /path/to/evidence/control-mutations
 uv run --no-sync ../scripts/check-native-control-recovery.py \
-  --case delayed-refusal --core-root /path/to/private/scratchpad \
+  --case delayed-refusal --core-root /path/to/scratchpad-source \
   --output /path/to/evidence/delayed-mutations
 uv run --no-sync ../scripts/measure-native-spool.py \
-  --core-root /path/to/private/scratchpad --output /path/to/evidence/spool-probe --cycles 3
+  --core-root /path/to/scratchpad-source --output /path/to/evidence/spool-probe --cycles 3
 ```
 
 The mutation check omits durable grant-intent storage in isolated source copies.

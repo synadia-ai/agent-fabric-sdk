@@ -1,9 +1,9 @@
 # How a plugin joins the fabric
 
-**Version:** 0.1.0-alpha · **Date:** 2026-09-23 · **Status:** the spec for phase B; draft for Francesco's review
+**Version:** 0.1.0-alpha · **Date:** 2026-09-23 · **Status:** the spec of the harness add-ons
 
-This document is two things. It is the spec the next three sessions build
-from, in this order: PI, OpenClaw, Claude Code. And it is the guide a plugin
+This document is two things. It is the spec the three add-ons are built
+from: PI, OpenClaw, Claude Code. And it is the guide a plugin
 author reads who wants a harness plugin from the public protocol repo to
 take part in the Synadia Agent Fabric. Every claim below names its
 mechanism and cites the code it rests on. The interface shapes in
@@ -13,7 +13,7 @@ needs does not exist yet, §3.5 names the gap.
 The repos: `synadia-agents` (public; the protocol SDKs and the plugins, on
 branch `sdk-release-rollout` at `40fab3a`), this repo (`agent-fabric-sdk`,
 private while it is built; the fabric package and, under `plugins/`, the
-add-ons), `synadia-agent-fabric` (the decisions and the contracts). The
+add-ons), and the fabric's design documents (the contracts). The
 plugins' state before the SDK split is `synadia-agents` `fbd16ab` (PR #201,
 2026-09-21); the split is `f2ff6ed` (PR #205, 2026-09-22).
 
@@ -48,11 +48,10 @@ calls, the `served` pair and the `traceparent` seed for OpenClaw, the
 **Without the variable, nothing changes.** A plugin that loads no extension
 is the plain plugin as it is today at `40fab3a`.
 
-**Why not two plugins.** Francesco asked why the plugins should exist twice,
-in `synadia-agents` and here. They should not (decision 34 in
-`synadia-agent-fabric/CLAUDE.md`, 2026-09-23). A second copy drifts from the
+**Why not two plugins.** The plugins should not exist twice, in
+`synadia-agents` and here. A second copy drifts from the
 first, and every harness fix would land twice. The split's rules also
-require this shape (`synadia-agent-fabric/docs/sdk-split.md` §1): the
+require this shape (the fabric's design documents, the SDK split §1): the
 dependency goes one way, from the fabric to the protocol SDK, never back;
 nothing is copied, the fabric repo depends on the published SDK packages;
 and nothing fabric-specific enters the public repo, not in code, not in
@@ -86,8 +85,8 @@ plugins already use for `SYNADIA_PI_OWNER` over `SYNADIA_OWNER` over the
 config's `owner` (`agents/pi/README.md` "Environment variables",
 `agents/claude-code/README.md` "Environment variables").
 
-The reason for this name: decision 34 proposed `SYNADIA_AGENT_EXTENSIONS`,
-the `SYNADIA_*` prefix is the convention the three plugins already share for
+The reason for this name: the
+`SYNADIA_*` prefix is the convention the three plugins already share for
 settings that mean the same thing in each, and `AGENT` says the extensions
 belong to the agent the plugin registers, not to the harness. A single
 `extensions` config field keeps the per-harness spelling identical.
@@ -212,7 +211,7 @@ constructs one `AgentService` with `nc`, the address tokens, `identity:
 (`agents/pi/extensions/nats-channel.ts`, `agents/openclaw/src/gateway.ts`,
 `agents/claude-code/server.ts`). None keeps an `Agents` client: PI and
 OpenClaw create none, Claude Code creates one to find a free session name at
-start and closes it. The tools work of phase B gives each plugin one client,
+start and closes it. The agent tools give each plugin one client,
 with the same signer as its service and the extensions' interceptors, and
 that client is what `AgentTools` prompts through.
 
@@ -266,7 +265,7 @@ export interface HarnessEvents {
 | --- | --- | --- | --- | --- |
 | `promptAccepted` | all | notification, synchronous | inside the prompt handler, in the request's async context, after every interceptor has run. An extension reads here what its own request interceptor bound | PI: `activeTrace()` captured at `enqueue` (`nats-channel.ts` `fbd16ab`); OpenClaw: `activeTrace()` at `beginTurn` (`gateway.ts`); Claude Code: the same plus `resolveClaudeSessionId` (`server.ts`) |
 | `promptEnded` | all | notification, synchronous | when the plugin settles the request: PI at `agent_settled`, or a failure or expiry; OpenClaw when the dispatch resolved, `error` when it threw or reported a dispatch error; Claude Code when `reply` completed with `done`, on a handler failure, or on the 30-minute request TTL (`timeout`) | OpenClaw's `turn.settle(status)`; Claude Code's `pending.outcome` |
-| `aroundToolCall` | all | wrapper, synchronous | around every `tools.execute()`, with the request the plugin believes the model is working in: PI's and OpenClaw's active turn, Claude Code's `request_id` argument or its last active request | Francesco's `activeTrace() ?? promptQueue.active?.trace` in PI, `associateAgentTraceScope` in OpenClaw, `lastActiveRequestId` in Claude Code (`cozis/feat/non-sdk-prompt-tools`) |
+| `aroundToolCall` | all | wrapper, synchronous | around every `tools.execute()`, with the request the plugin believes the model is working in: PI's and OpenClaw's active turn, Claude Code's `request_id` argument or its last active request | `activeTrace() ?? promptQueue.active?.trace` in PI, `associateAgentTraceScope` in OpenClaw, `lastActiveRequestId` in Claude Code |
 | `aroundInject` | PI | wrapper, synchronous | around `pi.sendUserMessage()`; the extension must call `run` once and return its value | `injectInScope(pending.trace, …)` |
 | `providerHeaders` | PI | query, synchronous | from PI's `before_provider_headers` while a served request is PI's active turn; the plugin merges the returned headers into the event's headers | `Object.assign(event.headers, active.traceHeaders)` |
 | `aroundDispatch` | OpenClaw | wrapper, asynchronous | around `dispatchInboundDirectDmWithRuntime()` | `runWithTraceId(traceId, …)` |
@@ -326,7 +325,7 @@ and the `409` guard of §3.1 refuses on purpose.
 - **Claude Code's `request_id`.** A `request_id` argument on `prompt_agent`
   and the other tools names the served prompt when several are pending;
   the helper ignores arguments it does not define
-  (`synadia-agent-fabric/docs/agent-tools.md` §2.3). The plugin adds it to
+  (the fabric's agent-tools design, §2.3). The plugin adds it to
   the definitions it shows and uses it to pick the request for
   `aroundToolCall`, falling back to its last active request, which it
   already tracks for permission queries (`server.ts`, `lastActiveRequestId`).
@@ -392,12 +391,12 @@ prompt's context under `toolCallId` (`TOOL_CALL_ID_CONTEXT_KEY`), and the
 prompt interceptor writes it on the edge. So a delegation the harness's
 model makes hangs under its tool call in the console with no extension
 code, once the plugin passes the id to `execute()`
-(`synadia-agent-fabric/docs/agent-tools.md` §2.1).
+(the fabric's agent-tools design, §2.1).
 
 **The `409` loop guard.** A harness cannot serve a prompt while its model
 waits inside a blocking tool call, so it refuses an incoming prompt whose
 `root_id` names a tree it is waiting in, with `409`
-(`synadia-agent-fabric/docs/agent-tools.md` §2.3; decision 31). The add-on
+(the fabric's agent-tools design, §2.3). The add-on
 builds it from what it already has: its own request interceptor, placed
 after tracing's, marks the request's root as *served* for the handler's
 duration; its own prompt interceptor, which runs in the async context of
@@ -432,10 +431,10 @@ add-on returning `scratchPadExtension`; §9 is the design.
 ### 3.2 PI — the SDK's headers on PI's own model calls
 
 **The join.** PI fires `before_provider_headers` before every provider
-request (PI 0.85.1 on this machine, `dist/core/extensions/types.d.ts`; the
+request (PI 0.85.1, `dist/core/extensions/types.d.ts`; the
 pre-split plugin used it on 0.84). The proxy files a call by the SDK pair
 when it carries `X-Synadia-Thread-ID` and `X-Synadia-Root-ID`
-(`afo-design.md` §8.1; `proxy/forward.go` `sdkThreadIDsFromRequest`). So
+(the fabric's design, §8.1; `proxy/forward.go` `sdkThreadIDsFromRequest`). So
 PI's calls need no record: the headers alone put them on the served thread,
 exactly as an SDK agent's.
 
@@ -447,8 +446,8 @@ exactly as an SDK agent's.
    …)`, so PI's loop, and any tool it executes, sees this request's thread
    and nothing else's. The pre-split code also neutralized the injecting
    context first with `AsyncLocalStorage.snapshot()`, because a prompt was
-   injected from another prompt's settle hook; whether B2 needs that depends
-   on where the plugin injects from (§3.5, gap 3). Measured in B2 (PI
+   injected from another prompt's settle hook; whether the add-on needs that depends
+   on where the plugin injects from (§3.5, gap 3). Measured (PI
    0.85.1, 2026-09-23): the plugin does inject the next queued prompt from
    the previous turn's settle hook, so `bindActiveTrace`, an
    `AsyncLocalStorage.run`, replaces that context and no snapshot is
@@ -471,19 +470,17 @@ thread the caller's edge created, PI the executor, its depth `full` in the
 agents view; the `asked` row of the caller's story names PI. A delegation
 PI's model makes is a grandchild under its tool call. No outcome or
 duration from a pair: PI publishes none, and the thread's calls carry its
-timing. F16 item 4 in the examples' findings describes today's picture; the
-same run with the add-on is the check.
+timing. `reference-agents/docs/findings.md` F16 item 4 describes the
+picture without the add-on; the same run with the add-on is the check.
 
-**What the test repo asserts.** The three waivers marked
-`scenario.PluginsPending` go: `scenarios/smoke/pi_one_prompt_test.go` (the
-console step: the root as one thread with PI's call at its key's counts, PI
-the executor, filed as an SDK thread), `scenarios/gate/m2/pi_at_leaf_test.go`
-(the log half: PI's thread one level down with its call, stamped with the
-pair agent-1's edge names, that edge verified; the console half: two
-threads, PI's with its call, agent-1 its verified caller), and the three
-`Waive` calls guarded by `Untraced` on PI's member in
-`scenarios/gate/m3/acceptance_path_test.go` (full depth, its call under the
-root, the tree naming it the executor).
+**What the fabric's test system asserts.** Its PI cases run unwaived: a
+single prompt (the root as one thread with PI's call at its key's counts,
+PI the executor, filed as an SDK thread), PI at the leaf (the log half:
+PI's thread one level down with its call, stamped with the pair the
+caller's edge names, that edge verified; the console half: two threads,
+PI's with its call, the caller its verified caller), and PI as a member of
+the acceptance path (full depth, its call under the root, the tree naming
+it the executor).
 
 ### 3.3 OpenClaw — a trace id per prompt and the `served` pair
 
@@ -498,7 +495,7 @@ the 32-hex trace id (`proxy/forward.go` `openClawThread`). The plugin cannot
 add headers to OpenClaw's provider requests, so it publishes the binding
 instead: two signed `served` records per prompt on `TRACE.edges`, `start`
 on arrival and `end` with the outcome, naming the thread and the trace id,
-bare (`afo-design.md` §8.3; `docs/schemas/served.json`). The reader attaches
+bare (the fabric's design, §8.3; `docs/schemas/served.json`). The reader attaches
 the calls filed under that id between the two.
 
 **What the add-on does.** Built in `plugins/openclaw`
@@ -543,25 +540,24 @@ its class, since the plugin's client throws its own copy's class (§2.7).
 
 **The proxy's half, and its open flaw.** The derivation from `traceparent`
 is on the proxy's `dev` since 2026-09-16. Today any well-formed
-`traceparent` files as OpenClaw (`BUGS.txt` 25; the board's M3-31): an
+`traceparent` files as OpenClaw, a known flaw of the proxy: an
 OpenTelemetry-instrumented client or a mesh sends one, and nothing in the
 header names OpenClaw. The decided direction is that the virtual key record
-names its harness (`key_management.md`, our change) and the proxy derives
-the OpenClaw pair only for such a key (B7 of the plan). Until then a stray
+names its harness (the fabric's key management) and the proxy derives
+the OpenClaw pair only for such a key. Until then a stray
 `traceparent` gets an OpenClaw thread.
 
 **What the console shows when it works.** The summarizer's child thread
 with its call joined through the pair, the outcome and the duration from
 `start` to `end`, OpenClaw `full` in the agents view with both halves, its
-signed `served` records its NATS half (the examples' `team/README.md`,
-"What to look at in the console"). Two prompts' windows can overlap, since
+signed `served` records its NATS half (the examples repository's team
+README, "What to look at in the console"). Two prompts' windows can overlap, since
 `start` is stamped on arrival and OpenClaw queues; the trace id, not the
 window, tells their calls apart.
 
-**What the test repo asserts.** Nothing yet: the test repo runs PI as its
-harness and has no OpenClaw scenario. The examples' team run is the check
-(§8), recorded as a finding: the examples' F20 (2026-09-23; since 2026-09-26
-in `agent-fabric-live` `docs/findings-examples.md`), the
+**What the fabric's test system asserts.** Nothing yet: it runs PI as its
+harness and has no OpenClaw scenario. The examples' team run is the check,
+measured on 2026-09-23: the
 summarizer's call joined through the pair in the team, and OpenClaw's model
 delegating to the researcher when prompted directly, every call of the turn,
 tool turns included, under the one seeded id.
@@ -571,11 +567,11 @@ tool turns included, under the one seeded id.
 **The join.** Claude Code sends `X-Claude-Code-Session-ID` on every model
 request and `X-Claude-Code-Agent-ID` on a subagent's; the proxy files them
 as `harness: claude`, `harness_thread_id` the session id, `harness_agent_id`
-the agent id (`afo-design.md` §8.1; `proxy/forward.go` `claudeCodeThread`).
+the agent id (the fabric's design, §8.1; `proxy/forward.go` `claudeCodeThread`).
 The plugin is an MCP server inside the session and cannot touch those
 headers, so it publishes the pair naming the session (`fbd16ab`
 `agents/claude-code/src/served.ts`). The console makes a subagent's calls
-the child of the session's thread (`query-node.md` §5).
+the child of the session's thread (the fabric's query design, §5).
 
 **What the public plugin gives it.** Built in `synadia-agents` #215
 (`agents/claude-code`, merged into `sdk-release-rollout` at `85a69c8`,
@@ -651,12 +647,12 @@ Everything the session does between the two records is filed under the
 prompt: local typing during a NATS-driven turn, and a second NATS prompt
 answered in the same turn, share the window.
 
-**What the test repo asserts.** Step 8b of its plan, Claude Code at the
-leaf: an SDK agent prompts Claude Code, which calls a tool and replies, a
-real Anthropic-shaped model through the proxy, `CLAUDE_CONFIG_DIR` and
-`HOME` inside the run directory, opt-in and never in CI
-(`agent-fabric-tests` `docs/PLAN.md`, row 8b). The add-on is built and
-measured against real turns (§6 step 8); 8b wants what that run had: the
+**What the fabric's test system asserts.** A case still to come, Claude
+Code at the leaf: an SDK agent prompts Claude Code, which calls a tool and
+replies, a real Anthropic-shaped model through the proxy,
+`CLAUDE_CONFIG_DIR` and `HOME` inside the run directory, opt-in and never
+in CI. The add-on is built and
+measured against real turns (§6 step 8); the case wants what that run had: the
 two keys and Anthropic as the provider (§6 step 6) and an interactive
 session, a pseudo-terminal when scripted (§6 step 7).
 
@@ -664,9 +660,9 @@ session, a pseudo-terminal when scripted (§6 step 7).
 
 | # | Gap | Where | What it must carry | Needed by |
 | --- | --- | --- | --- | --- |
-| 1 | **An explicit tools scope handle.** `AgentTools` opens a scope only around a handler (`requestInterceptor`, `runInPromptScope`); nothing lets a host run later work inside an open scope | not needed (B4, 2026-09-23): the plugins re-enter the handler's context through a snapshot taken inside it (§3.4; Claude Code's `runAgentTool`, OpenClaw 2026.5.4's oldest pending request), which carries the tools scope with it; an explicit handle stays a candidate for the async tools | nothing now | — |
-| 2 | **The `served` vocabulary.** Built in the fabric package on 2026-09-23 (Mario's decision of that day: both languages, like the edge record), from the pre-split `fbd16ab` `agents/openclaw/src/served.ts` and `agents/claude-code/src/served.ts`: `buildServedRecord(agent, threadId, rootId, harness, harnessThreadId, phase, status?, ts?)` in the schema's key order, `validHarnessThreadId` (the pre-split `validHarnessId` rule, plus the lone-surrogate refusal `validToolCallId` has), `servedPublisher({ agents, subject?, logger? })` over `agents.publishSigned` with the record id as nonce, one chain so records leave in the order they were due, counted on the trace counters, fail-open, `beginTurn(scope, harness)` → `bind` / `settle`, `flush()`; the Python twin `build_served_record`, `served_publisher` over `Agents.publish_signed(nonce=)`, which the Python client has; `served.json` vendored at `5b13989`; both suites validate a `start` and an `end` against it and `test_served_wire_parity.py` compares the bytes | closed | nothing more; the two add-ons import it | — |
-| 3 | **PI's context inheritance.** Measured in B2 on PI 0.85.1 (2026-09-23, by the plugin's session, confirmed on the rig in the examples' F19): the turn, `before_provider_headers`, a tool's `execute` and the following `agent_settled` all run in the async context of the `pi.sendUserMessage()` caller, also when the plugin injects the next queued prompt from the previous turn's settle hook. So the scope the add-on binds at `aroundInject` flows to the tools, `aroundToolCall`'s rebind is a no-op the add-on makes anyway, and PI does not need gap 1 | closed | nothing more | — |
+| 1 | **An explicit tools scope handle.** `AgentTools` opens a scope only around a handler (`requestInterceptor`, `runInPromptScope`); nothing lets a host run later work inside an open scope | not needed (measured 2026-09-23): the plugins re-enter the handler's context through a snapshot taken inside it (§3.4; Claude Code's `runAgentTool`, OpenClaw 2026.5.4's oldest pending request), which carries the tools scope with it; an explicit handle stays a candidate for the async tools | nothing now | — |
+| 2 | **The `served` vocabulary.** Built in the fabric package on 2026-09-23 (in both languages, like the edge record), from the pre-split `fbd16ab` `agents/openclaw/src/served.ts` and `agents/claude-code/src/served.ts`: `buildServedRecord(agent, threadId, rootId, harness, harnessThreadId, phase, status?, ts?)` in the schema's key order, `validHarnessThreadId` (the pre-split `validHarnessId` rule, plus the lone-surrogate refusal `validToolCallId` has), `servedPublisher({ agents, subject?, logger? })` over `agents.publishSigned` with the record id as nonce, one chain so records leave in the order they were due, counted on the trace counters, fail-open, `beginTurn(scope, harness)` → `bind` / `settle`, `flush()`; the Python twin `build_served_record`, `served_publisher` over `Agents.publish_signed(nonce=)`, which the Python client has; `served.json` vendored at `5b13989`; both suites validate a `start` and an `end` against it and `test_served_wire_parity.py` compares the bytes | closed | nothing more; the two add-ons import it | — |
+| 3 | **PI's context inheritance.** Measured on PI 0.85.1 (2026-09-23, with the add-on, and confirmed on the fabric's test system): the turn, `before_provider_headers`, a tool's `execute` and the following `agent_settled` all run in the async context of the `pi.sendUserMessage()` caller, also when the plugin injects the next queued prompt from the previous turn's settle hook. So the scope the add-on binds at `aroundInject` flows to the tools, `aroundToolCall`'s rebind is a no-op the add-on makes anyway, and PI does not need gap 1 | closed | nothing more | — |
 | 4 | **`turn_count_hint` for OpenClaw and Claude Code.** Their calls carry no SDK headers, so nothing counts them; an edge their model spawns says `0` | the contract allows it: a hint, never a claim (`edge.json`) | nothing; stated honestly | none |
 
 ## 4. What stays where
@@ -686,7 +682,7 @@ session, a pseudo-terminal when scripted (§6 step 7).
 | The `tracing` setting the plugins had (`NATS_TRACING`, `tracing: on`) | **gone**; removed by the split; not reintroduced | the add-on's presence is the switch; its one setting is the edge subject, `options.edgeSubject` or `SYNADIA_FABRIC_EDGE_SUBJECT`, read by the add-on alone | nothing | `resolveEdgeSubject()` gives every add-on the precedence (`plugin-settings.ts`, TypeScript only); validates it |
 | `senderIdentity: signed` | the plugin's setting, as today | required for any record; warns once without it | identity | warns once when a record is due |
 | ScratchPad references | the neutral `metadata` field (#218) | PI (§9.11), OpenClaw (§9.12): the one skill of `plugins/scratchpad-skill`, the registration key, `scratchPadExtension`; Claude Code: designed (§9) | the tools' extension hooks | `scratchPadExtension`, `spCliScratchPad` |
-| The proxy's half: the SDK pair, the harness pairs, the `traceparent` flaw | — | — | — | the proxy (`agent-fabric-model-proxy`), M3-31 |
+| The proxy's half: the SDK pair, the harness pairs, the `traceparent` flaw | — | — | — | the model proxy; the `traceparent` flaw is open (§3.3) |
 
 ## 5. Packaging and loading
 
@@ -727,8 +723,8 @@ installs the add-on where the harness runs, `npm install
 @synadia-ai/agent-fabric-pi` in a directory of their choosing, and names it:
 by package name when that directory is the plugin's or an ancestor of it,
 by absolute path otherwise (`SYNADIA_PI_EXTENSIONS=/opt/fabric/node_modules/@synadia-ai/agent-fabric-pi`).
-The examples' and the test repo's launchers, which build their own homes for
-each harness, give the path.
+The launchers of the examples and of the fabric's test system, which build
+their own homes for each harness, give the path.
 
 **The development path while the SDK is unpublished.** This repo resolves
 the SDK from the checkout of `synadia-agents` on `sdk-release-rollout` next
@@ -754,9 +750,9 @@ but no `edge` and no `served` record is published, each counts as dropped,
 and OpenClaw's and Claude Code's calls stand as harness threads of their
 own, unbound.
 
-**PI**, from `agent-fabric-live` `harnesses/pi/` (the examples' until
-2026-09-26) and the test repo's
-`internal/piagent/piagent.go`:
+**PI**, from the harness configuration of the fabric's deployment on one
+machine (the examples' until 2026-09-26) and the PI launcher of the fabric's
+test system:
 
 1. PI on `PATH` (0.85.1 here; the plugin's peer range is
    `>=0.84.0 <0.86.0`, `agents/pi/package.json` on `sdk-release-rollout`). The public plugin from the `synadia-agents` checkout with
@@ -766,9 +762,9 @@ own, unbound.
    of this repo built.
 3. `SYNADIA_PI_EXTENSIONS=<path or name>`, or `"extensions": ["…"]` in
    `nats-channel.json`. The add-on's presence is the switch: there is no
-   `tracing` setting, and the live repo's `harnesses/pi/config/` carries
-   none since their PR #26 (2026-09-23); the test repo's launcher sets the
-   variable (`internal/piagent/piagent.go`).
+   `tracing` setting, and the deployment's PI configuration carries
+   none since 2026-09-23; the test system's launcher sets the
+   variable.
 4. A NATS context with PI's own credentials in `nats-context.json`,
    `senderIdentity: signed`, `minSenderTrust: signed` recommended.
 5. The proxy as PI's provider: `models.json` with `baseUrl` the proxy's
@@ -776,7 +772,7 @@ own, unbound.
    in no file (`harnesses/pi/config/models.json`, `run.sh`).
 6. Headless: `pi --mode rpc --no-extensions -e <plugin>/extensions/nats-channel.ts …`
    with `PI_CODING_AGENT_DIR` and `HOME` in a directory of its own
-   (`run.sh`; `piagent.go`). The connected line names the loaded
+   (`run.sh`; the test system's launcher). The connected line names the loaded
    extensions.
 7. ScratchPad (§9), when PI's model is to use it: `--skill
    <add-on>/skill/scratchpad`, and the bash tool on in place of
@@ -788,7 +784,8 @@ own, unbound.
    add-on's line `ScratchPad volume …, workspace …` confirms it at start.
    Measured end to end on 2026-09-27 (§9.11).
 
-**OpenClaw**, from `agent-fabric-live` `harnesses/openclaw/`:
+**OpenClaw**, from the harness configuration of the fabric's deployment on
+one machine:
 
 1. OpenClaw 2026.8 or later and a Node it accepts (`≥24.16 <25`, or
    `≥26.1`; the examples pin 2026.9.4 with Node 24). The public plugin from
@@ -798,9 +795,8 @@ own, unbound.
 2. The add-on: `npm install @synadia-ai/agent-fabric-openclaw`.
 3. `SYNADIA_OPENCLAW_EXTENSIONS=<path or name>`, or `"extensions": ["…"]`
    in `channels.nats.accounts.default`. The add-on's presence is the
-   switch: there is no `tracing` setting, and the live repo's
-   `harnesses/openclaw/config/` carries none since the examples' PR #27
-   (2026-09-23).
+   switch: there is no `tracing` setting, and the deployment's OpenClaw
+   configuration carries none since 2026-09-23.
 4. `senderIdentity: signed` with `credentials` OpenClaw's own.
 5. The proxy as the `fabric` provider in `models.providers`, the key from
    the environment (`apiKey: { source: "env", … }`).
@@ -809,7 +805,7 @@ own, unbound.
    registers them optional, so by name), no `tools.profile` (a profile is a
    layer before `allow`; `minimal` leaves nothing for it), no `deny` that
    matches them (deny wins), and no `compat.supportsTools: false` on the
-   model. Measured on OpenClaw 2026.9.4 in the examples' F20 (2026-09-23).
+   model. Measured on OpenClaw 2026.9.4 (2026-09-23).
 7. `openclaw gateway run --port … --bind loopback` with `HOME`,
    `OPENCLAW_HOME`, `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH` in a
    directory of its own (`run.sh`). The `gateway starting` line names the
@@ -827,10 +823,9 @@ own, unbound.
    `ScratchPad volume …, workspace …` confirms it at start. Measured end to
    end on 2026-09-27 (§9.12).
 
-**Claude Code**, from `agent-fabric-live` `harnesses/claude-code/` (the
-examples' until 2026-09-26), measured on Claude Code 2.1.281 in the examples'
-F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
-`docs/findings-examples.md`):
+**Claude Code**, from the harness configuration of the fabric's deployment
+on one machine (the examples' until 2026-09-26), measured on Claude Code
+2.1.281 (2026-09-24):
 
 1. `claude` and `bun` on `PATH` (the plugin's server and hooks run on bun).
    The plugin from the checkout, `claude --plugin-dir
@@ -859,49 +854,46 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
    is an Anthropic API key of the user's own, sent as `x-api-key`: the
    channel is behind a feature flag Claude Code fetches from Anthropic
    directly, never through the base URL, and only with an Anthropic
-   credential (F24 item 4). `ANTHROPIC_AUTH_TOKEN` is the virtual key,
+   credential. `ANTHROPIC_AUTH_TOKEN` is the virtual key,
    sent as `Authorization: Bearer` next to it; Claude Code warns that both
-   are set, and sends both (F24 item 5). The proxy reads the virtual key
+   are set, and sends both. The proxy reads the virtual key
    from `Authorization` first and deletes both headers before it sets the
-   provider's own, so the Anthropic key reaches no provider (F24 item 2;
-   `proxy/forward.go`). `ANTHROPIC_BASE_URL` is the proxy's bare origin, no
-   `/api` (F25 item 3). The model is Anthropic's, through the proxy (Mario,
-   2026-09-24): Claude Code is Anthropic's product, its documented gateway
+   provider's own, so the Anthropic key reaches no provider
+   (`proxy/forward.go`). `ANTHROPIC_BASE_URL` is the proxy's bare origin, no
+   `/api`. The model is Anthropic's, through the proxy: Claude Code is Anthropic's product, its documented gateway
    shape is a proxy in front of Anthropic, and an Anthropic key means
    Anthropic bills its owner. So the virtual key names Anthropic as its
    provider, the proxy's built-in `anthropic` in production and on the
-   rig `anthropic-api` (`https://api.anthropic.com,anthropic` in the test
-   repo's `local/aft.local.yaml`, since `anthropic` is the stand-in's name
+   fabric's test system `anthropic-api` (`https://api.anthropic.com,anthropic`
+   in its local settings, since `anthropic` is the stand-in's name
    there), with the tenant's Anthropic key as the provider key in the
-   record and the harness `claude` (F25 items 1 and 2). No model
+   record and the harness `claude`. No model
    variables: Claude Code runs its own default models, every call through
    the proxy, recorded with Anthropic's usage, cache reads and writes
-   included (F25 item 5). The fabric never routes Claude Code to another
-   model provider; F24's OpenRouter model was a stand-in for that
+   included. The fabric never routes Claude Code to another
+   model provider; an OpenRouter model was a stand-in in the first
    measurement.
 7. `HOME`, `CLAUDE_CONFIG_DIR` and `NATS_STATE_DIR` in a home of the
    instance's own, never `~/.claude`, and outside any git repository: from
    inside one, Claude Code sends that repository's `CLAUDE.md` files and
-   its git status to the model with every call (F24 item 10); outside one
+   its git status to the model with every call; outside one
    it offers the skills of every directory above its working directory,
-   the user's own included, which `--disable-slash-commands` removes (F25
-   item 7), and with them the Skill tool, so not with ScratchPad (§9.13).
+   the user's own included, which `--disable-slash-commands` removes,
+   and with them the Skill tool, so not with ScratchPad (§9.13).
    The examples' `run.sh` keeps the home under the user's state
    directory and refuses one inside a git working tree. And a terminal:
-   `claude -p` registers on the bus and serves no prompt (F24 item 7);
+   `claude -p` registers on the bus and serves no prompt;
    interactive, the development-channels warning answered once, the
-   channel is on; scripted, `tmux` with one Enter does it (F24 items 8
-   and 11).
+   channel is on; scripted, `tmux` with one Enter does it.
 8. **Measured.** A signed caller prompted Claude Code, and the reply sat
    on the caller's thread, `harness: claude`, depth `full` with both
-   halves, the session's calls joined through the pair (F24 item 8, F25
-   item 4). Asked to delegate, Claude Code's model discovered and prompted
+   halves, the session's calls joined through the pair. Asked to delegate, Claude Code's model discovered and prompted
    the researcher, whose thread sits under its `prompt_agent` tool call
-   with Claude Code its verified caller (F24 item 9, F25 item 4). One call
+   with Claude Code its verified caller. One call
    falls outside the pair: Claude Code's prompt-suggestion call at the end
    of a turn, re-run once after the turn's `Stop` when its model reached
    for a tool, stands as a root of its own on the session id with no
-   caller (F25 item 6); the pair is the turn, and the reader infers
+   caller; the pair is the turn, and the reader infers
    nothing beyond it.
 9. ScratchPad (§9), when Claude Code's model is to use it: `npm run
    build:sp` in the add-on, then the add-on loaded as a plugin too, a
@@ -921,12 +913,12 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
 
 - **Structure is self-reported.** The edge is the caller's claim, the pair
   is the plugin's, and the proxy records what the headers say. The console
-  verifies signatures, not truth (`afo-design.md` §10).
+  verifies signatures, not truth (the fabric's design, §10).
 - **PI's turn boundaries.** The turn spans everything PI does for the prompt
   until it settles, retries and the compaction after an answer included. A
   compaction before the turn is not stamped, and local typing during a
   remote turn files under the remote thread; PI gives the plugin no way to
-  tell the two apart (`afo-design.md` §8.3).
+  tell the two apart (the fabric's design, §8.3).
 - **OpenClaw before 2026.8.** The trace id is not carried through the turn
   queue, so the model calls carry an id of OpenClaw's own and the pair names
   an id no call carries. The scope is an internal of OpenClaw's, keyed by a
@@ -937,11 +929,10 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
   every Claude Code on the fabric has an Anthropic API key on its machine
   and is traced because it is pointed at the proxy, by configuration.
   Sending both keys is what Claude Code's start-up warning calls
-  unsupported; it works on 2.1.281 (F24 item 5) and is to be re-checked on
+  unsupported; it works on 2.1.281 and is to be re-checked on
   releases that touch channels or gateways. The add-on is now measured
   against real turns (§6 step 8), in an interactive session only, and the
-  call Claude Code makes after the turn's `Stop` falls outside the pair
-  (F25 item 6).
+  call Claude Code makes after the turn's `Stop` falls outside the pair.
 - **Claude Code without its hooks** (`disableAllHooks`): no `SessionStart`
   file, so a prompt after `/clear` files under the session the server
   started with; no `Stop`, so `end` carries the reply's time and the closing
@@ -962,37 +953,26 @@ F24 and F25 (2026-09-24; since 2026-09-26 in `agent-fabric-live`
   sending (`reference-agents/README.md`, "The agent tools"), until its
   add-on registers that it reads them; PI's and OpenClaw's do (§9.11,
   §9.12).
-- **`traceparent` from any client files as OpenClaw** until M3-31 (§3.3).
+- **`traceparent` from any client files as OpenClaw** until the virtual
+  key names its harness (§3.3).
 - **What is measured, and where.** Every add-on, against real turns on
-  the test rig: PI in the examples' F19 and OpenClaw in F20 (2026-09-23),
-  Claude Code in F24 and F25 (2026-09-24). PI and OpenClaw also in the test
-  system's gates, `gate/m2` on the rig and `gate/m3` on the cloud; Claude
-  Code's step 8b is still to come (§3.4).
+  the fabric's test system: PI and OpenClaw on 2026-09-23, Claude Code on
+  2026-09-24. PI and OpenClaw also in the test system's acceptance gates,
+  locally and on the cloud; Claude Code's case there is still to come
+  (§3.4).
 
-## 8. The plan to build it
+## 8. The rule for every change to the public plugins
 
-Phase B of `synadia-agent-fabric/local/plan-2026-09-23.md`. Each step is a
-fresh session with a paste; each ends with a run that is recorded.
-
-| Step | Public repo (`synadia-agents`, one PR on a branch) | This repo | Examples, tests | Done when |
-| --- | --- | --- | --- | --- |
-| **B2 PI** | `agents/pi`: `AgentTools` (the blocking three) through `pi.registerTool`, one `Agents` client with the plugin's signer, the extension point of §2 with the PI events, `agents/EXTENSIONS.md` and the README paragraph of §10, the peer range to include 0.85, CHANGELOG; Francesco's `agents/pi/extensions/agent-tools.ts` as reference for the registration and where the active request is | `plugins/pi`: the add-on of §3.2 with its tests; gap 3 measured and written into this doc | examples: `harnesses/pi/config/nats-channel.json` and `run.sh` name the add-on in place of `tracing`; tests: `internal/piagent` sets the variable and the `aft.yaml` sibling for this repo | the examples' team on the rig (`make demo` in the examples repository) shows the editor's calls on its child thread, PI `full`, the `asked` row naming it, recorded as a finding; `gate/m2` `TestPIAtLeaf` green with its two waivers deleted |
-| **B3 OpenClaw** | `agents/openclaw`: `AgentTools` registered through the channel plugin's tools (Francesco's `channel.ts` diff as reference), the client, the extension point with the OpenClaw events, `extensions` in `openclaw.plugin.json`, README, CHANGELOG, `dist/` rebuilt with tsup | gap 2 decided and built first; `plugins/openclaw`: the add-on of §3.3 | examples: `harnesses/openclaw/config/openclaw.json`, `run.sh` | the team on the rig shows the summarizer's thread with its call, the pair's outcome and duration, OpenClaw `full` with both halves, recorded as a finding |
-| **B4 Claude Code** | `agents/claude-code` (#215): `AgentTools` on the MCP tool handlers, `request_id`, the hooks back as neutral session events (`hooks/hooks.json` with `SessionStart`, `Stop`, `PreToolUse`; `hooks/session-event.ts`), the client, the extension point with the Claude Code events, README, CHANGELOG, the bundle rebuilt; no SDK change, since gap 1 was not needed (the snapshot re-entry, §3.5) | `plugins/claude-code`: the add-on of §3.4 (#8) | examples: `harnesses/claude-code/`, the live run parked on F21 (2026-09-23) and done on 2026-09-24 (F24, F25); tests: step 8b, opt-in, with the two keys, Anthropic as the provider and a pseudo-terminal, an Anthropic key on the runner (§3.4, §6) | 8b's gate passes: an SDK agent prompts Claude Code, which calls a tool and replies, its calls on the child thread with the pair and the closing call inside the window; the report names the model |
-| **B5 the waivers and the team** | — | this doc's §7 updated with what was measured | tests: `scenario.PluginsPending` and the `Untraced` flag on PI's `gate/m3` member removed; `gate/m2` whole on the rig; `gate/m3` on NGS with PI's member unwaived, on Mario's `-apply`; examples: `harnesses/README.md` and `team/README.md` say the harnesses are traced; Claude Code as a sixth role when 8b is done, with the same two keys, Anthropic as its provider and a pseudo-terminal (§6) | `aft run` on the rig green but for the known F8; `aft run -target ngs -apply gate/m3` green with nothing waived; the team's run recorded |
-| **B7 M3-31** (alongside) | — | — | the fabric's `key_management.md`: the key names its harness; the proxy derives the OpenClaw pair only for such a key (Francesco, or us) | the proxy's scripted case for a stray `traceparent` files no harness pair |
-
-**The rule for every public-repo PR.** Before the push: `git diff
-sdk-release-rollout... | grep -iE 'fabric|scratchpad|afo|synadia-agent-fabric'`
+Before the push: `git diff
+sdk-release-rollout... | grep -iE 'fabric|scratchpad|afo'`
 returns nothing (PR text and code comments do not matter, files do); no
 absolute path of any machine in the diff; when the Claude Code plugin's
 TypeScript source changes, `runtime/server.js` is rebuilt with bun 1.3.14
 from a `git archive` export of the branch, since the repo's CI rebuilds the
 bundle from packed SDK artefacts and fails on any byte difference
 (`synadia-agents` `CLAUDE.md`; `agents/claude-code/scripts/lock-install.ts`
-names 1.3.14 as the version that builds the committed bundle; this machine
-has bun 1.4.0). `bun run verify:bundle` before the commit. Francesco is
-informed when Mario says (B6).
+names 1.3.14 as the version that builds the committed bundle). `bun run
+verify:bundle` before the commit.
 
 ## 9. ScratchPad in the harnesses
 
@@ -1015,7 +995,7 @@ to the caller over the protocol (a `query`, protocol spec §7), not to a
 terminal (§9.5).
 
 Every answer carries how it is known: **measured** (something was run on
-this machine) or **read** (docs or code, with the place). The versions read
+a development machine) or **read** (docs or code, with the place). The versions read
 and run: PI 0.85.1, OpenClaw 2026.9.4, Claude Code 2.1.282 (the test
 install) and 2.1.283 (the `claude` on `PATH`), the public plugins at
 `synadia-agents` `sdk-release-rollout` `e8355c3` (`3b9a20d` for Claude
@@ -1257,7 +1237,7 @@ setup: one flag and the shell tool on, with an environment that reaches the
 shell tool without any setting. Both are measured on PI 0.85.1. PI never
 asks for permission, so no question has to travel. The per-call trace ids
 come without a public-plugin change (§9.7), and PI runs headless on the
-test rig. Nothing of ours is built beyond the add-on's variables.
+fabric's test system. Nothing of ours is built beyond the add-on's variables.
 
 **OpenClaw second.**
 Registration is one config entry, plus the skill allowlist and
@@ -1308,7 +1288,7 @@ module's default export, is asynchronous now: it resolves ScratchPad
 before the plugin reads `metadata`, which the plugin does once before its
 service starts.
 
-**The run, measured on this machine on 2026-09-27.** A local ScratchPad from
+**The run, measured on a development machine on 2026-09-27.** A local ScratchPad from
 ScratchPad's `79f8927` (`scratchpad serve`, provisioned with one volume per
 agent) on a `nats-server` 2.14.6 in operator mode; one tenant account with
 two users, a caller and PI. PI 0.85.1 with the public plugin at `e8355c3`
@@ -1402,7 +1382,7 @@ plugin dispatches one turn at a time (§3.1).
   `granted_to_caller` or `caller_grant_error`. The grant rule is unchanged:
   the only grantee is the served prompt's caller.
 
-**The run, measured on this machine on 2026-09-27.** The local ScratchPad of
+**The run, measured on a development machine on 2026-09-27.** The local ScratchPad of
 §9.11 with four tenant users and volumes: the caller, OpenClaw, the reader
 (the TypeScript reference agent, ScratchPad on) and one unused. OpenClaw
 2026.9.4 on Node 24, the public plugin loaded from `sdk-release-rollout`
@@ -1505,7 +1485,7 @@ piped nowhere, content in on standard input, and `data_base64` decoded in a
 command of its own, `echo … | base64 -d`, which Claude Code runs unasked
 (measured). With that and the skill allowed, the run below asked nothing.
 
-**The run, measured on this machine on 2026-09-27.** The local ScratchPad of
+**The run, measured on a development machine on 2026-09-27.** The local ScratchPad of
 §9.11, provisioned afresh with a Claude Code user and volume beside the
 caller's, PI's, the reader's and OpenClaw's. Claude Code 2.1.283,
 interactive in `tmux`, in a home of its own outside any git repository, the
@@ -1611,7 +1591,7 @@ so the file widens nothing. The record is on the machine, not in
 ScratchPad: a harness moved to another machine without its workspace
 answers no request about the grants it made before.
 
-**The run, measured on this machine on 2026-09-28.** A local ScratchPad
+**The run, measured on a development machine on 2026-09-28.** A local ScratchPad
 from `79f8927` (`scratchpad serve`) on `nats-server` in operator mode, one
 tenant account with a caller, PI and a reader, a volume each. PI 0.85.1
 with the public plugin at `sdk-release-rollout` `3b9a20d` and this add-on,
@@ -1699,7 +1679,7 @@ creation operation id, which the old `workspace.journal` holds as
 publishing works. Grants recorded in `SP_GRANTS_FILE` are the add-on's own
 file and stay valid.
 
-**The run, measured on this machine on 2026-09-28.** A local ScratchPad
+**The run, measured on a development machine on 2026-09-28.** A local ScratchPad
 from `a28bb49` (`scratchpad serve`) on `nats-server` in operator mode, one
 tenant account with a caller, PI and a reader, a volume each. PI 0.85.1
 with the public plugin at `sdk-release-rollout` `d333f26` and this add-on,
@@ -1727,7 +1707,7 @@ and references all went through.
 
 ### 9.16 Upload-quota recovery from sp-v0.1.1
 
-The shared release pin selects the correction for ScratchPad issue #1160.
+The shared release pin selects ScratchPad's correction for upload-quota recovery.
 A new upload checks its complete encoded graph against the volume's quota
 before sending content. It prepares the journal's checkpoint only after
 upload succeeds. A quota refusal during upload therefore preserves a
