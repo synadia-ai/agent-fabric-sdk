@@ -46,7 +46,7 @@ test-fixtures/       shared by both suites — see its README for every file's s
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
-  scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, build-sp.sh, install.sh
+  scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, load-sp.mjs, install.sh
   pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
     src/extension.ts the factory: tracing's hooks, the guard, the scope bound at PI's events, the headers
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, edge.json
