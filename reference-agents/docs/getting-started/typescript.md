@@ -1,6 +1,6 @@
 # Getting started: a TypeScript agent on the fabric
 
-The model and console examples come from the 2026-09-26 walkthrough. Step 6 describes the native TypeScript ScratchPad client and its persistent workspace. The [native client contract](../../../docs/scratchpad-native.md) defines that interface; [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19) holds delivery and validation status. The Python walkthrough uses the CLI adapter.
+The model and console examples come from the 2026-09-26 walkthrough. Step 6 describes the native TypeScript ScratchPad client and its persistent workspace. The [native client contract](../../../docs/scratchpad-native.md) defines that interface; [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19) holds delivery and validation status. The Python walkthrough uses the native Python client.
 
 You will put one agent on the fabric and grow it in six steps. Each step adds one thing, and after each you look at what the console shows and why.
 
@@ -246,7 +246,7 @@ SCRATCHPAD_VOLUME=AssistantReplies
 SCRATCHPAD_DIR=/var/lib/assistant/scratchpad
 ```
 
-The directory must be writable by this agent and survive restarts. There is no temporary-directory default. `SCRATCHPAD_GRANT_TTL_S` defaults to 600 seconds. A Python helper still uses the CLI adapter; follow its `env.example` for `sp` and workspace settings.
+The directory must be writable by this agent and survive restarts. There is no temporary-directory default. `SCRATCHPAD_GRANT_TTL_S` defaults to 600 seconds. A Python helper uses its native client on Python 3.12+ with its own persistent `SCRATCHPAD_DIR`; follow its `env.example` for the settings. Neither reference agent needs `sp`.
 
 A native client cannot automatically adopt a CLI workspace or an existing writer whose journal is missing. Recover pending work with its original client and journal. If you deliberately abandon that recovery promise, stop the old writer and call `resetWriter({ target, expectedGeneration })` with the exact volume incarnation and observed writer generation. See [persistence and recovery](../../../docs/scratchpad-native.md#persistence-and-recovery) for inspection and reset behavior.
 

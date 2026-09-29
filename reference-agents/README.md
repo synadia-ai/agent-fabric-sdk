@@ -131,7 +131,7 @@ The assistant's model called `discover_agents`, read the helper's description, a
 Ask your deployment to provision a volume for each agent's account and user (`AssistantReplies`, `HelperReplies`: letters and digits only). Set `SCRATCHPAD_VOLUME` in each agent's `.env` to that volume.
 
 - **TypeScript:** the native client uses the agent's NATS connection and needs no `sp` binary. Set `SCRATCHPAD_DIR` to a private directory on persistent local storage, such as `/var/lib/my-agent/scratchpad`. This setting is required; there is no temporary-directory default.
-- **Python:** the CLI adapter still needs `sp` on PATH or at `SCRATCHPAD_BIN`. Its `env.example` describes its workspace and connection settings.
+- **Python:** the native client uses the agent's NATS connection and needs no `sp` binary. Use Python 3.12+ and set `SCRATCHPAD_DIR` to a private persistent directory, as for TypeScript. Its `env.example` describes the settings. `SCRATCHPAD_BIN` applies only when an application explicitly selects the separate CLI adapter.
 
 Keep one workspace per writer. A native client cannot automatically adopt a CLI workspace or an established writer with a missing journal. Recover pending work with its original client and journal. To abandon that recovery promise deliberately, use `resetWriter({ target, expectedGeneration })` with the exact volume incarnation and observed writer generation. Stop the previous writer first. The [native client contract](../docs/scratchpad-native.md) defines recovery and reset behavior.
 
@@ -158,7 +158,7 @@ node --env-file=.env.caller --import tsx src/prompt.ts assistant \
 
 The assistant grants the helper read right before `prompt_agent` sends: one agent, the one path the reference names, read only, ten minutes (`SCRATCHPAD_GRANT_TTL_S`). Nothing is granted when content is committed, and never to every agent discovered. The helper reads the text by the reference. In the console the tree shows, in order: the assistant's `read`, its `grant` under the tool call, the helper's `read`, `commit` and `grant` on the child thread, and the assistant's `commit` and `grant` for its reply to you. An agent that hands on content another agent created asks the creator, in code, to grant the recipient; "The rules for references" below has the rule.
 
-The native TypeScript client and the Python CLI adapter use the same v2 reference format and service API. Delivery and review findings belong in [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19).
+The native TypeScript and Python clients use the same v2 reference format and service API. Delivery and review findings belong in [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19).
 
 ## The agent tools
 
@@ -215,7 +215,7 @@ The rules are the fabric package's code; they are stated here once.
 
 **Least authority.** A reference opens nothing until its creator grants the reader. A grant goes to one agent, on the one path the reference names, read only, with an expiry (ten minutes by default, `SCRATCHPAD_GRANT_TTL_S`), immediately before the reference is sent, and only to an identity discovery verified. Nothing is granted when content is committed, and never to every agent discovered.
 
-**Who reads references says so** (`docs/findings.md` F11). An agent that reads the references it is handed registers `scratchpad_refs_ok: "true"`; discovery shows it as `reads_scratchpad_references`. A reference goes only to such an agent. For any other, the harnesses among them, the references are taken out of the prompt, the rest is sent, nothing is asked or granted, and the result says how many were removed. A prompt that was nothing but references is not sent.
+**Who reads references says so** (`docs/findings.md` F11). An agent that reads the references it is handed registers `scratchpad_refs_ok: "true"`; discovery shows it as `reads_scratchpad_references`. A reference goes only to such an agent. All three harness add-ons register that capability when ScratchPad is configured. For an agent without it, the references are taken out of the prompt, the rest is sent, nothing is asked or granted, and the result says how many were removed. A prompt that was nothing but references is not sent.
 
 **Only a reference the agent was given.** It committed it, or it arrived in a prompt it served or in a reply or question it received. Any other token, one a model wrote itself or copied with a character wrong (F11), is refused before anything is read, asked or granted, with words that say to copy the reference exactly.
 
@@ -225,7 +225,7 @@ The rules are the fabric package's code; they are stated here once.
 
 **First-hand, and on request** (F13 item 9). A grant is first-hand when the creator handed the reference itself: to the verified caller of its reply, or to the agent it prompted with a reference of its own. A grant made because another agent asked is on request. Only a first-hand grant entitles its holder to ask; a grant made on request lets its holder read and confers no right to ask for anyone. So content travels at most one hop beyond the agents its creator chose. The creator's ledger, in the package's ScratchPad, keeps the two kinds apart, because ScratchPad knows the grants and not how they came about.
 
-**Persistence.** The native TypeScript client keeps its grant ledger in the persistent workspace. The Python CLI adapter's ledger remains in memory. The fabric extension's set of given references is process-local in both languages: after a restart it must receive a reference again before the tools can hand it on. An unknown reference is refused. Separate agent instances do not share this state or a writer workspace.
+**Persistence.** Both native clients keep their grant ledger in the persistent workspace. The separate CLI adapters keep that ledger in memory. The fabric extension's set of given references is process-local in both languages: after a restart it must receive a reference again before the tools can hand it on. An unknown reference is refused. Separate agent instances do not share this state or a writer workspace.
 
 ### The guards
 

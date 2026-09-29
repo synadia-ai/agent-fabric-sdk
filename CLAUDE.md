@@ -9,8 +9,8 @@ its examples beside each package (moved from the examples repository on
 2026-09-27). Private while it is built, public at the release.
 
 Under `plugins/` sit the fabric add-ons for the harness plugins, one small
-TypeScript package per harness, `plugins/pi` and `plugins/openclaw` built
-and Claude Code's to come. Each is an extension module the public plugin in
+TypeScript package per harness: `plugins/pi`, `plugins/openclaw`, and
+`plugins/claude-code`. Each is an extension module the public plugin in
 `synadia-agents` loads by name and hands the SDK's hooks and the harness's
 events; the add-on wires `fabricTracing()` in and adds the harness piece.
 The plugins stay in the public repo and are never copied here;
