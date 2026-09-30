@@ -784,3 +784,22 @@ async def test_the_cli_gets_its_directorys_real_path(rig: Rig) -> None:
     linked = rig.make(dir=str(rig.tmp / "link" / "work"))
     await linked.commit("hello", "/replies/t5.md", TRACE)
     assert {f["dir"] for _, f in rig.calls()} == {str((rig.tmp / "real" / "work").resolve())}
+
+
+async def test_short_token_resolution_and_fresh_adapter_read(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = Path(__file__).parents[2] / "test-fixtures/scratchpad/reference-short-v1.json"
+    monkeypatch.setenv("FAKE_SP_REFERENCE_FILE", str(file))
+    fixture = json.loads(file.read_text())
+    sp = rig.make()
+    assert await sp.read(fixture["resolved"]["short"], TRACE) == "short read"
+    assert (
+        await sp.resolve_reference(fixture["resolved"]["short"]) == fixture["resolved"]["expanded"]
+    )
+    assert await rig.make().read(fixture["resolved"]["short"], TRACE) == "short read"
+    assert rig.commands() == ["resolve", "read", "resolve", "read"]
+    assert all(
+        flags["ref"] == fixture["resolved"]["short"] and "volume" not in flags
+        for _, flags in rig.calls()
+    )

@@ -3,6 +3,7 @@ import type { Msg, NatsConnection } from "@nats-io/nats-core";
 import { verifyObject } from "./codec";
 import { NativeScratchPadError, failed, invalid } from "./errors";
 import * as p from "./protocol";
+import * as r from "./references";
 
 export interface RequestOptions {
   signal?: AbortSignal;
@@ -19,6 +20,7 @@ function pathRequest(v: Record<string, unknown>): void {
 }
 function validateRequest(verb: string, value: unknown): void {
   switch (verb) {
+    case "reference.info":
     case "info":
       p.validateEmpty(value);
       return;
@@ -75,6 +77,21 @@ function validateRequest(verb: string, value: unknown): void {
       p.validateTarget(v.target);
       p.validateContentObject(v.object);
       p.uint(v.epoch);
+      return;
+    }
+    case "reference.retain":
+      r.validateReferenceRetainRequest(value);
+      return;
+    case "reference.publish":
+    case "reference.receipt":
+      r.validateReferencePublishRequest(value);
+      return;
+    case "reference.resolve":
+    case "reference.stat": {
+      const v = p.record(value, ["reference", "trace"]);
+      p.text(v.reference, r.SHORT_REFERENCE_BYTES, r.SHORT_REFERENCE_BYTES);
+      r.decodeShortReference(v.reference);
+      p.validateTrace(v.trace);
       return;
     }
     case "checkpoint.publish": {
@@ -462,6 +479,144 @@ export class ScratchPadTransport {
         p.sameValue(normalize(result.command), normalize(expected.command)),
       true,
       "receipt names another command",
+    );
+    return result;
+  }
+  /** Unknown reference verbs on older services return invalid. Other failures propagate. */
+  async referenceInfo(options: RequestOptions = {}): Promise<r.ReferenceCapabilities | undefined> {
+    try {
+      return await this.control(
+        "reference.info",
+        {},
+        r.validateReferenceCapabilities,
+        false,
+        options,
+      );
+    } catch (error) {
+      if (
+        error instanceof NativeScratchPadError &&
+        error.code === "invalid" &&
+        !error.local &&
+        !error.unknown
+      )
+        return undefined;
+      throw error;
+    }
+  }
+  private async referencePublication(
+    verb: "reference.publish" | "reference.receipt",
+    request: r.ReferencePublishRequest,
+    options: RequestOptions,
+  ): Promise<r.ReferencePublishResult> {
+    const expected = structuredClone(request),
+      mutation = verb === "reference.publish";
+    const result = await this.control(
+      verb,
+      expected,
+      r.validateReferencePublishResult,
+      mutation,
+      options,
+    );
+    this.matching(
+      result.receipt.volume === expected.target.volume &&
+        p.sameValue(
+          {
+            ...result.receipt.command,
+            trace: Object.fromEntries(
+              Object.entries(result.receipt.command.trace).filter(([, value]) => value !== ""),
+            ),
+          },
+          {
+            ...expected.command,
+            trace: Object.fromEntries(
+              Object.entries(expected.command.trace).filter(([, value]) => value !== ""),
+            ),
+          },
+        ) &&
+        result.references.length === expected.reference.paths.length &&
+        result.references.every(
+          (pair, index) =>
+            pair.expanded.creator === expected.reference.creator &&
+            pair.expanded.path === expected.reference.paths[index],
+        ),
+      mutation,
+      "referenced receipt names another intent",
+    );
+    return result;
+  }
+  referencePublish(
+    request: r.ReferencePublishRequest,
+    options: RequestOptions = {},
+  ): Promise<r.ReferencePublishResult> {
+    return this.referencePublication("reference.publish", request, options);
+  }
+  referenceReceipt(
+    request: r.ReferencePublishRequest,
+    options: RequestOptions = {},
+  ): Promise<r.ReferencePublishResult> {
+    return this.referencePublication("reference.receipt", request, options);
+  }
+  async referenceResolve(
+    request: r.ReferenceResolveRequest,
+    options: RequestOptions = {},
+  ): Promise<r.ResolvedReference> {
+    const expected = structuredClone(request);
+    const result = await this.control(
+      "reference.resolve",
+      expected,
+      r.validateResolvedReference,
+      false,
+      options,
+    );
+    this.matching(result.short === expected.reference, false, "resolution names another reference");
+    return result;
+  }
+  async referenceStat(
+    request: r.ReferenceResolveRequest,
+    options: RequestOptions = {},
+  ): Promise<r.ReferenceStatResult> {
+    const expected = structuredClone(request);
+    const result = await this.control(
+      "reference.stat",
+      expected,
+      r.validateReferenceStatResult,
+      false,
+      options,
+    );
+    this.matching(
+      result.reference.short === expected.reference,
+      false,
+      "stat names another reference",
+    );
+    return result;
+  }
+  async referenceRetain(
+    request: r.ReferenceRetainRequest,
+    options: RequestOptions = {},
+  ): Promise<r.ReferenceRetainResult> {
+    const expected = structuredClone(request),
+      retain = expected.retain;
+    const result = await this.control(
+      "reference.retain",
+      expected,
+      r.validateReferenceRetainResult,
+      true,
+      options,
+    );
+    this.matching(
+      p.sameValue(result.volume.target, retain.target) &&
+        result.references.length === expected.reference.paths.length &&
+        result.references.every(
+          (pair, index) =>
+            pair.expanded.creator === expected.reference.creator &&
+            pair.expanded.path === expected.reference.paths[index] &&
+            pair.expanded.root === retain.root &&
+            pair.expanded.expires_at === retain.until &&
+            pair.expanded.retention.slot === retain.slot &&
+            pair.expanded.retention.generation === retain.generation + 1,
+        ),
+      true,
+      "retained references name another intent",
     );
     return result;
   }

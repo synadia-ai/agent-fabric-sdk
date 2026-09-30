@@ -111,9 +111,34 @@ describe("the ScratchPad wrapper over the sp command line", () => {
   });
 
   afterEach(async () => {
-    for (const k of ["FAKE_SP_LOG", "FAKE_SP_STATE", "FAKE_SP_FAULTS", "FAKE_SP_LOCK"])
+    for (const k of [
+      "FAKE_SP_LOG",
+      "FAKE_SP_STATE",
+      "FAKE_SP_FAULTS",
+      "FAKE_SP_LOCK",
+      "FAKE_SP_REFERENCE_FILE",
+    ])
       delete process.env[k];
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it("resolves a short token through the CLI and reads the original token after a fresh adapter", async () => {
+    const file = fileURLToPath(
+      new URL("../../../test-fixtures/scratchpad/reference-short-v1.json", import.meta.url),
+    );
+    process.env["FAKE_SP_REFERENCE_FILE"] = file;
+    const fixture = JSON.parse(await readFile(file, "utf8")) as {
+      resolved: { short: string; expanded: { creator: string } };
+    };
+    expect(await pad.read(fixture.resolved.short, TRACE)).toBe("short read");
+    expect(await pad.resolveReference!(fixture.resolved.short)).toEqual(fixture.resolved.expanded);
+    expect(await make().read(fixture.resolved.short, TRACE)).toBe("short read");
+    expect((await calls()).map((c) => c.command)).toEqual(["resolve", "read", "resolve", "read"]);
+    expect(
+      (await calls()).every(
+        (c) => c.flags["ref"] === fixture.resolved.short && c.flags["volume"] === undefined,
+      ),
+    ).toBe(true);
   });
 
   async function raw(): Promise<Call[]> {

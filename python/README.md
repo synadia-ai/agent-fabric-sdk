@@ -67,3 +67,12 @@ and `read(reference, trace)`.
 
 The CLI adapter and native client implement the same `ScratchPadClient` port.
 Both require ScratchPad's service import in the tenant's NATS account.
+
+Short artifact references
+-------------------------
+
+The client accepts `sp-r1:` short tokens and existing `sp-ref:` tokens.
+Publication uses the short form when the service and the selected client support it.
+Copy the returned token unchanged into prompts and replies.
+The token survives client restarts; each content read still requires current authorization.
+See the [native client contract](../docs/scratchpad-native.md) for recovery and capability fallback.

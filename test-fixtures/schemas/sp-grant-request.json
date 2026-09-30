@@ -12,7 +12,7 @@
   "properties": {
     "reference": {
       "type": "string",
-      "pattern": "^sp-ref:[A-Za-z0-9_-]+$",
+      "pattern": "^sp-(?:ref|r1):[A-Za-z0-9_-]+$",
       "description": "the reference token, exactly as the requester was given it"
     },
     "grantee": {

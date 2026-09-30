@@ -10,18 +10,23 @@ from ._scratchpad_native.client import (
     native_scratchpad,
     native_scratchpad_from_env,
 )
+from ._scratchpad_native.codec import decode_reference, encode_reference
 from ._scratchpad_native.errors import NativeScratchPadError
 from ._scratchpad_native.reader import (
     DEFAULT_READ_LIMIT_BYTES,
     ScratchPadReader,
     scratchpad_reader,
 )
+from ._scratchpad_native.references import decode_short_reference
 
 __all__ = [
     "DEFAULT_READ_LIMIT_BYTES",
     "NativeScratchPad",
     "NativeScratchPadError",
     "ScratchPadReader",
+    "decode_reference",
+    "decode_short_reference",
+    "encode_reference",
     "native_scratchpad",
     "native_scratchpad_from_env",
     "scratchpad_reader",

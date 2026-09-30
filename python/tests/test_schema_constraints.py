@@ -1,13 +1,8 @@
-"""The vendored schemas' constraints are the source's, byte for byte in meaning.
+"""Pin each schema's constraints independently of descriptive text.
 
-The four files under ``test-fixtures/schemas/`` are vendored from the
-fabric's schemas, with one exception: their texts (``description``,
-``$comment``, ``title``) were reworded here for publication on 2026-09-29.
-Every constraint stays as at the source's commit. The digest below is of
-each file with those texts removed, canonical JSON with sorted keys, taken
-from the files as vendored before the rewording; it moves only when a
-constraint does, and then the schemas were copied again and this test is
-updated with them.
+Source histories and the additive short-reference grant-request pattern are
+recorded in test-fixtures/README.md. A contract change updates this digest
+and its behavior tests together; prose changes leave the digest unchanged.
 """
 
 from __future__ import annotations
@@ -28,7 +23,7 @@ NAMED_MAPS = {"properties", "patternProperties", "$defs", "definitions", "depend
 CONSTRAINTS_SHA256 = {
     "edge.json": "be35efc3036d07529375c1284c79b47abe60317bd9af480cdb30bd7ac9a617e6",
     "served.json": "7912268857448be1af22aa54cecb5f4e350720992f508443bf934c05e30b0eee",
-    "sp-grant-request.json": "48045a583b4dc4f30b696d0f5d1065f5f44808bd7c4a7cd03d2a6957a0b8dc39",
+    "sp-grant-request.json": "340ed503c22eb9f7da9af88cdceca82ff8765c24e6677f9482c91dc0a85e29c1",
     "sp-grant-reply.json": "417a1b1cc3683daad122c6f6ce9478bef86d4a4538f72fb14460b3bb2c44ba49",
 }
 
@@ -46,7 +41,7 @@ def _constraints(node: Any, parent: str | None = None) -> Any:
 
 
 @pytest.mark.parametrize("name", sorted(CONSTRAINTS_SHA256))
-def test_constraints_are_the_sources(name: str) -> None:
+def test_constraints_match_the_pinned_contract(name: str) -> None:
     schema = json.loads((SCHEMAS / name).read_text(encoding="utf-8"))
     canonical = json.dumps(
         _constraints(schema), sort_keys=True, separators=(",", ":"), ensure_ascii=False

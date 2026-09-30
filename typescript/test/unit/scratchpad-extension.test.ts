@@ -391,3 +391,41 @@ describe("the reply side", () => {
     await expect(ext.grantCaller(pad.commit(), verified)).rejects.toThrow("permission_denied");
   });
 });
+
+describe("short-reference creator routing", () => {
+  const short = "sp-r1:" + "A".repeat(60);
+  it("resolves through the port and asks the verified creator with the original token", async () => {
+    const { pad, stub } = setup();
+    const resolved: string[] = [];
+    const ext = scratchPadExtension({
+      agents: stub.agents,
+      scratchPad: {
+        owns: () => false,
+        granted: (token, who) => pad.granted(token, who),
+        grantRead: (token, who, trace, call, kind) => pad.grantRead(token, who, trace, call, kind),
+        resolveReference: (token) => {
+          resolved.push(token);
+          return Promise.resolve({ creator: CREATOR });
+        },
+      },
+    });
+    ext.remember(short);
+    expect(await ext.beforePrompt(promptContext(target, short))).toBeUndefined();
+    expect(resolved).toEqual([short]);
+    expect(stub.requests).toHaveLength(1);
+    expect((JSON.parse(stub.requests[0]!.payload) as { reference: string }).reference).toBe(short);
+    const typo = short.slice(0, -1) + "B";
+    const refused = await ext.beforePrompt(promptContext(target, typo));
+    expect(refused && "error" in refused ? refused.error : "").toMatch(/not one you were given/);
+    expect(resolved).toHaveLength(1);
+  });
+  it("removes an unresolved short reference and keeps old ports valid", async () => {
+    const { ext, stub } = setup();
+    ext.remember(short);
+    expect(await ext.beforePrompt(promptContext(target, `read ${short}`))).toMatchObject({
+      prompt: "read",
+      fields: { references_removed: 1 },
+    });
+    expect(stub.requests).toEqual([]);
+  });
+});

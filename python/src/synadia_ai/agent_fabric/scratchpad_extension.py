@@ -44,6 +44,7 @@ from synadia_ai.agents import (
 
 from .grant_request import DEFAULT_GRANT_REQUEST_TIMEOUT_S, GrantReply, request_grant
 from .scratchpad import (
+    ResolvesReferences,
     ScratchPad,
     TraceIds,
     _resolve,
@@ -257,6 +258,13 @@ class ScratchPadExtension(AgentToolsExtension):
         # anyone else could not be answered with a grant anyway. A target
         # that is the creator reads its own volume and needs no grant.
         address = reference_creator(reference)
+        if address is None and isinstance(self._scratch_pad, ResolvesReferences):
+            try:
+                address = (await _resolve(self._scratch_pad.resolve_reference(reference, trace)))[
+                    "creator"
+                ]
+            except Exception:
+                return {"granted": False, "reason": "the reference could not be resolved"}
         if address is None:
             return {"granted": False, "reason": "the reference does not name its creator"}
         if address == target_address:

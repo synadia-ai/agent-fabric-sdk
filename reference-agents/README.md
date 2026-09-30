@@ -144,14 +144,14 @@ node --env-file=.env.caller --import tsx src/prompt.ts assistant "Write four lin
 ```
 … four lines …
 
-sp-ref:eyJ2ZXJzaW9uIjoy…
-reference: sp-ref:eyJ2ZXJzaW9uIjoy…
+sp-r1:…
+reference: sp-r1:…
 ```
 
 The reference is data, not a key: holding it opens nothing, a grant does. Hand it on:
 
 ```sh
-REF='sp-ref:…'
+REF='sp-r1:…'
 node --env-file=.env.caller --import tsx src/prompt.ts assistant \
   "Ask the helper how many words the text at this reference has, and tell me its answer: $REF"
 ```

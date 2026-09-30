@@ -7,6 +7,7 @@ what the agent is taken to have been given.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -375,3 +376,35 @@ async def test_a_failing_grant_on_the_reply_side_goes_to_the_agent() -> None:
     pad.fail_grants = "permission_denied"
     with pytest.raises(RuntimeError, match="permission_denied"):
         await ext.grant_caller(pad.commit(), VERIFIED)
+
+
+async def test_short_creator_routes_through_port_with_original_token(s: Setup) -> None:
+    short = "sp-r1:" + "A" * 60
+    resolved: list[str] = []
+
+    class ResolvingPad(MemoryScratchPad):
+        async def resolve_reference(
+            self, reference: str, trace: TraceIds | None = None
+        ) -> dict[str, Any]:
+            resolved.append(reference)
+            return {"creator": CREATOR}
+
+    pad = ResolvingPad("vol-self", SELF)
+    ext = scratch_pad_extension(scratch_pad=pad, agents=s.stub.as_agents())
+    ext.remember(short)
+    assert await ext.before_prompt(prompt_context(TARGET, short)) is None
+    assert resolved == [short]
+    assert len(s.stub.requests) == 1
+    assert json.loads(s.stub.requests[0][1])["reference"] == short
+    refused = await ext.before_prompt(prompt_context(TARGET, short[:-1] + "B"))
+    assert refused is not None and "not one you were given" in (refused.error or "")
+    assert resolved == [short]
+
+
+async def test_short_reference_on_old_port_is_removed_without_grants(s: Setup) -> None:
+    short = "sp-r1:" + "A" * 60
+    s.ext.remember(short)
+    rewrite = await s.ext.before_prompt(prompt_context(TARGET, f"read {short}"))
+    assert rewrite is not None and rewrite.prompt == "read"
+    assert rewrite.fields is not None and rewrite.fields["references_removed"] == 1
+    assert s.stub.requests == []

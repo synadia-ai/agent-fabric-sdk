@@ -98,7 +98,7 @@ travels in the prompt's `context`: `toolCallId` in TypeScript,
 
 The agent tools (`AgentTools`, the protocol SDK's `docs/agent-tools.md`)
 let a model prompt other agents. On the fabric a prompt may hand content
-over by reference: an `sp-ref:` token that points into the sender's
+over by reference: an `sp-r1:` token (or `sp-ref:` on an older service) that points into the sender's
 ScratchPad volume and opens nothing until the volume's owner grants the
 reader. The extension keeps the fabric's rules for that
 (`agent-fabric` `docs/agent-tools.md` §2.2), on `AgentTools`' three hooks:
@@ -106,7 +106,7 @@ reader. The extension keeps the fabric's rules for that
 | Hook | What it does | Field it adds |
 | --- | --- | --- |
 | discovery fields | reads `scratchpad_refs_ok: "true"` from the agent's registration | `reads_scratchpad_references` |
-| prompt rewrite | checks each `sp-ref:` token and gets the target read on it before sending | `references_removed` and `note` |
+| prompt rewrite | checks each reference token and gets the target read on it before sending | `references_removed` and `note` |
 | reply look | remembers the references that arrive in a reply or a question | none |
 
 The prompt rewrite, for each reference in the prompt:
@@ -230,7 +230,7 @@ The same surface in both languages (TypeScript names; Python in snake_case):
 | `nativeScratchPadFromEnv(env, { nc, creator })` | Native TypeScript configuration; requires `SCRATCHPAD_DIR` when a volume is enabled. |
 | `spCliScratchPad({ volume, nats, bin?, dir?, grantTtlS?, creator? })` → `ScratchPadClient` | The port's ready implementation over the sp v2 command line, with the agent's `commit(text, path, trace)` and `read(reference, trace)`; a refusal or failure of `sp` is a `ScratchPadError` with its `code` and whether the outcome is `unknown`. Python: `SpCliScratchPad(...)` |
 | `scratchPadFromEnv(env?, { creator?, nats? })` → `ScratchPadClient \| undefined` | The same from `SCRATCHPAD_VOLUME` (unset: off), `SCRATCHPAD_BIN`, `SCRATCHPAD_DIR`, `SCRATCHPAD_GRANT_TTL_S` and the agent's `NATS_CREDS`/`NATS_URL` (`sp` reads no NATS context). Python: `scratchpad_from_env(env=None, *, creator=None, nats=None)` |
-| `findReferences`, `removeReferences`, `referenceCreator`, `readsReferences`, `granteeFromIdentity`, `READS_REFERENCES_KEY`, `REFERENCE_PREFIX` | The references' vocabulary |
+| `findReferences`, `removeReferences`, `referenceCreator`, `readsReferences`, `granteeFromIdentity`, `READS_REFERENCES_KEY`, `REFERENCE_PREFIX`, `SHORT_REFERENCE_PREFIX` | The references' vocabulary |
 | `requestGrant(agents, creatorAddress, request, { timeoutMs? })` | The requester's side; never throws, a refusal carries its reason |
 | `grantRequestEndpoint({ promptAddress, scratchPad, logger? })` | The creator's side: an extra endpoint for the agent's `AgentService` (`extraEndpoints` / `extra_endpoints`) |
 | `answerGrantRequest(requester, payload, scratchPad)`, `encodeGrantRequest`, `encodeGrantReply`, `grantSubject`, `GrantRequest`, `GrantReply` | The creator's rule for an already verified requester, and the wire shapes |
@@ -263,7 +263,7 @@ Byte for byte what the protocol SDK wrote before tracing moved out of it
 One signed NATS request, one JSON reply, the shapes of
 `test-fixtures/schemas/sp-grant-{request,reply}.json` (vendored from
 the fabric's design documents), the same bytes from both packages:
-`{"reference":"sp-ref:…","grantee":"<account>.<user>","trace":{"thread_id":"…","root_id":"…","tool_call_id":"…"}}`,
+`{"reference":"sp-r1:…","grantee":"<account>.<user>","trace":{"thread_id":"…","root_id":"…","tool_call_id":"…"}}`,
 `trace` only inside a served prompt and `tool_call_id` only when valid;
 `{"granted":true}` or `{"granted":false,"reason":"…"}`, one reason per line
 of the creator's rule. The `Agent-Sender` signature is over the grant

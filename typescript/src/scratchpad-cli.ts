@@ -3,10 +3,10 @@
 //
 // ScratchPad is the fabric's store for what agents produce: durable,
 // permissioned volumes, every commit, grant and read written to the agent's
-// timeline. There is no ScratchPad client for TypeScript yet, so this drives
-// the sp v2 command line from the ScratchPad repository
-// (`go build -o sp ./cmd/sp`). The binary must be on the machine; it
-// connects with the agent's own credentials. Five operations are all an
+// timeline. This optional adapter drives the sp v2 command line.
+// For direct NATS access, use nativeScratchPad from this package.
+// The binary must be on the machine; it connects with the agent's own
+// credentials. Five operations are all an
 // agent needs:
 //
 //   commit(text, path)     publish the text as this agent's reply, retained
@@ -23,8 +23,7 @@
 //
 // The last three are the {@link ScratchPad} port the extension and the
 // grant request run on; the first two are the agent's own. Together they
-// are {@link ScratchPadClient}, which a later implementation speaking NATS
-// directly will satisfy as well, once a TypeScript ScratchPad client exists.
+// are {@link ScratchPadClient}, which the native implementation also satisfies.
 //
 // Every call carries the served prompt's thread and root ids, so the
 // commit, the grant and the read show up on the thread in the console next
@@ -53,15 +52,11 @@
 // saved in the workspace; the next mutation asks the CLI to recover it, so
 // an interrupted cleanup never leaves the volume closed.
 //
-// The token: `sp-ref:` followed by base64url JSON, made by the CLI: the
-// account and volume (with the incarnation, `creation_id`), the immutable
-// root, the path, the retention slot, the expiry, and `creator`, the prompt
-// address of the agent that committed it, so an agent handed the reference
-// knows whom to ask when it wants to hand it on (`referenceCreator`). This
-// returns the token exactly as the CLI made it. It checks a token's shape
-// before starting the CLI, so a malformed or oversized one is refused
-// early; the CLI checks it completely. The Python package reads and writes
-// the same token.
+// The CLI returns one token unchanged: service-issued `sp-r1:` or the
+// existing `sp-ref:` form. resolveReference expands short metadata through
+// `sp resolve`; a bounded cache helps creator and grant routing. Reads pass
+// the original token to `sp read` so cached metadata never skips current
+// token validity or content authorization. Python follows the same rules.
 //
 // Who may read: nobody but the volume's owner, until the owner grants it.
 // The token is application data, not a credential: ScratchPad
@@ -97,6 +92,12 @@ import {
   type TraceIds,
 } from "./scratchpad.js";
 import { activeTrace } from "./trace.js";
+import {
+  SHORT_REFERENCE_PREFIX,
+  decodeShortReference,
+  validateResolvedReference,
+} from "./scratchpad-native/references";
+import { encodeReference } from "./scratchpad-native/codec";
 
 /**
  * The agent's ScratchPad: the {@link ScratchPad} port, which the rules for
@@ -504,6 +505,33 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
     return next;
   }
 
+  const expansions = new Map<string, Reference>();
+  async function resolveReference(token: string, trace?: TraceIds): Promise<Reference> {
+    if (!token.startsWith(SHORT_REFERENCE_PREFIX)) return decodeReference(token);
+    decodeShortReference(token);
+    const cached = expansions.get(token);
+    if (cached && cached.expires_at > now()) return structuredClone(cached);
+    const reply = await sp<{ reference: unknown; full_reference: string }>(
+      "resolve",
+      ["--ref", token],
+      { trace },
+    );
+    const pair = { short: token, expanded: reply?.reference };
+    validateResolvedReference(pair);
+    if (reply.full_reference !== encodeReference(pair.expanded))
+      throw new ScratchPadError(
+        "sp resolve: expanded token differs from descriptor",
+        "malformed_reply",
+        false,
+      );
+    const ref = decodeReference(reply.full_reference);
+    if (ref.expires_at <= now()) throw new Error("the reference has expired");
+    expansions.delete(token);
+    expansions.set(token, ref);
+    if (expansions.size > 64) expansions.delete(expansions.keys().next().value!);
+    return structuredClone(ref);
+  }
+
   async function workspace(): Promise<string> {
     dir ??= (async () => {
       await mkdir(configuredDir, { recursive: true, mode: 0o700 });
@@ -528,7 +556,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
       : [];
     if (opts.trace && opts.toolCallId !== undefined) trace.push("--tool-call-id", opts.toolCallId);
     // A read targets the reference's volume, which can belong to another agent.
-    const volume = command === "read" ? [] : ["--volume", options.volume];
+    const volume = ["read", "resolve"].includes(command) ? [] : ["--volume", options.volume];
     const argv = [command, ...connection, "--dir", await workspace(), ...volume, ...args, ...trace];
     const maxStdout = opts.maxStdout ?? MAX_STDOUT;
     const { code, stdout, stderr } = await new Promise<{
@@ -814,7 +842,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
         true,
       );
     }
-    const ref = decodeReference(token);
+    const ref = await resolveReference(token, trace);
     if (!ownedBy(ref, own) || ref.path !== path || ref.creator !== options.creator) {
       throw new ScratchPadError(
         "sp publish-file: the reference names another volume, path or creator",
@@ -842,7 +870,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
     toolCallId: string | undefined,
     kind: GrantKind,
   ): Promise<void> {
-    const ref = decodeReference(reference);
+    const ref = await resolveReference(reference, trace);
     if (!ownedBy(ref, await describe(trace))) {
       // Only a volume's owner grants on it. Reading someone else's content
       // and granting on a copy would pass on a permission this agent was
@@ -914,7 +942,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
     },
 
     async read(reference, trace) {
-      const ref = decodeReference(reference);
+      const ref = await resolveReference(reference, trace);
       // An expired reference opens nothing; the CLI would refuse it too.
       if (ref.expires_at <= now()) throw new Error("the reference has expired");
       const got = await sp<{ data_base64?: unknown; bytes?: unknown }>(
@@ -949,6 +977,8 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
       }
     },
 
+    resolveReference,
+
     async owns(reference) {
       // A token that does not decode is nobody's. An agent that has
       // committed nothing yet has no volume, and owns nothing; asking never
@@ -956,7 +986,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
       // question still goes on that prompt's thread.
       let ref: Reference;
       try {
-        ref = decodeReference(reference);
+        ref = await resolveReference(reference);
       } catch {
         return false;
       }
@@ -968,18 +998,21 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
     },
 
     granted(reference, grantee) {
-      let ref: Reference;
+      const find = (ref: Reference): GrantKind | undefined => {
+        if (!ownedBy(ref, binding)) return undefined;
+        const until = ledger.get(ledgerKey(ref, grantee)),
+          t = now();
+        if ((until?.["first-hand"] ?? 0) > t) return "first-hand";
+        if ((until?.["on-request"] ?? 0) > t) return "on-request";
+        return undefined;
+      };
+      if (reference.startsWith(SHORT_REFERENCE_PREFIX))
+        return resolveReference(reference).then(find, () => undefined);
       try {
-        ref = decodeReference(reference);
+        return find(decodeReference(reference));
       } catch {
         return undefined;
       }
-      if (!ownedBy(ref, binding)) return undefined;
-      const until = ledger.get(ledgerKey(ref, grantee));
-      const t = now();
-      if ((until?.["first-hand"] ?? 0) > t) return "first-hand";
-      if ((until?.["on-request"] ?? 0) > t) return "on-request";
-      return undefined;
     },
   };
   return pad;

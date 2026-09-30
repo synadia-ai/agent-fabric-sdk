@@ -63,6 +63,7 @@ import {
   type GrantKind,
   type Grantee,
   type ScratchPad,
+  type TraceIds,
 } from "./scratchpad.js";
 import {
   SCRATCHPAD_BIN_VAR,
@@ -384,7 +385,7 @@ export interface RecordedGrant {
   readonly reference: string;
 }
 
-const RECORDED_LINE = /^(\d+) (\S+) (\S+) (sp-ref:[A-Za-z0-9_-]+)$/;
+const RECORDED_LINE = /^(\d+) (\S+) (\S+) (sp-(?:ref|r1):[A-Za-z0-9_-]+)$/;
 
 /** The grants recorded in `file`; none when it does not exist. Malformed lines are skipped. */
 export function readRecordedGrants(file: string): RecordedGrant[] {
@@ -442,6 +443,12 @@ export function withRecordedGrants(
   now: () => number = () => Date.now() / 1000,
 ): ScratchPad {
   return {
+    ...(port.resolveReference
+      ? {
+          resolveReference: (reference: string, trace?: TraceIds) =>
+            port.resolveReference!(reference, trace),
+        }
+      : {}),
     owns: (reference) => port.owns(reference),
     grantRead: (reference, grantee, trace, toolCallId, kind) =>
       port.grantRead(reference, grantee, trace, toolCallId, kind),

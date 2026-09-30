@@ -105,7 +105,9 @@ function fail(code, message, unknown = false) {
   process.exit(1);
 }
 
-for (const f of command === "read" ? ["url", "creds"] : ["url", "creds", "dir", "volume"]) {
+for (const f of ["read", "resolve"].includes(command)
+  ? ["url", "creds"]
+  : ["url", "creds", "dir", "volume"]) {
   if (!flags[f]) fail("usage", `--${f} is required`);
 }
 
@@ -129,6 +131,20 @@ const refusedPreparation = command === "publish-file" && fault?.code === "capaci
 if (fault?.code !== undefined && !fault.after && !fault.stage && !refusedPreparation)
   fail(fault.code, "injected", fault.unknown);
 
+// An explicit public vector exercises short adapter reads independently of this
+// older full-reference simulator's deliberately synthetic NKEYs.
+if (process.env.FAKE_SP_REFERENCE_FILE && ["resolve", "read"].includes(command)) {
+  const fixture = load(process.env.FAKE_SP_REFERENCE_FILE, {});
+  if (flags.ref !== fixture.resolved.short) fail("not_found", "unknown fixture reference");
+  console.log(
+    JSON.stringify(
+      command === "resolve"
+        ? { reference: fixture.resolved.expanded, full_reference: fixture.full_token }
+        : { data_base64: Buffer.from("short read").toString("base64"), bytes: 10 },
+    ),
+  );
+  process.exit(0);
+}
 const now = Math.floor(Date.now() / 1000);
 const token = (ref) => `sp-ref:${Buffer.from(JSON.stringify(ref)).toString("base64url")}`;
 const decode = (t) => {
