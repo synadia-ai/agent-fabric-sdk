@@ -34,7 +34,11 @@ words. That prose change preserved the constraints. `python/tests/test_schema_co
 the digest of each file with those texts removed: it moves only when a
 constraint does, and a new copy updates it.
 
-The grant-request schema accepts both `sp-r1:` and `sp-ref:` reference prefixes.
-This additive local contract preserves every other grant-request field and byte order.
+The grant-request fixture is synchronized with the proposed canonical Fabric
+grant-request contract dated 2026-09-30. It accepts both `sp-r1:` and `sp-ref:`;
+every other request constraint is unchanged. This extension follows the baseline
+provenance in the table above. The proposal remains under review, with acceptance
+and activation gated separately. See the [native client contract](../docs/scratchpad-native.md#activate-short-references)
+for rollout requirements.
 The durable-reference vector in `scratchpad/reference-short-v1.json` is generated
 from the existing public v2 descriptor; see `scratchpad/README.md`.

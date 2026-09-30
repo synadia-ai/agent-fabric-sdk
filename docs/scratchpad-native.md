@@ -35,6 +35,13 @@ Transport, authentication and malformed-reply failures propagate; they do not se
 An unsupported capability version or different advertised limits also fails without fallback.
 The existing checkpoint receipt and volume reply shapes remain unchanged.
 
+### Activate short references
+
+Keep service publication disabled until all participating native clients and CLI readers support `sp-r1:`.
+The `scratchpad_refs_ok` discovery metadata does not negotiate reference formats.
+For harness readers, select a compatible `sp` through `SCRATCHPAD_BIN` before activation.
+Coordinate activation with the service upgrade; publication changes require compatible service workers too.
+
 ### Workflow boundary
 
 The client supports initialization, artifact publication, granted reads, recovery, and required retention cleanup.
