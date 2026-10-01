@@ -3,16 +3,19 @@
 # (synadia-agents agents/<harness>) with this repo's add-on (plugins/<harness>)
 # and ScratchPad's skill, bundled so nothing needs installing:
 #
-#   fabric-claude.tar.gz    fabric-claude/, for `claude --plugin-dir`; the
-#                           tarball's root is also a marketplace, `fabric`
-#   fabric-pi.tar.gz        fabric-pi/, a PI package (`pi install`, or
-#                           `pi -e fabric-pi/dist/nats-channel.js`)
-#   fabric-openclaw.tar.gz  fabric-openclaw/, an OpenClaw plugin
-#                           (`openclaw plugins install`, or plugins.load.paths)
+#   fabric-claude-<v>.tar.gz    fabric-claude/, for `claude --plugin-dir`; the
+#                               tarball's root is also a marketplace, `fabric`
+#   fabric-pi-<v>.tar.gz        fabric-pi/, a PI package (`pi install`, or
+#                               `pi -e fabric-pi/dist/nats-channel.js`)
+#   fabric-openclaw-<v>.tar.gz  fabric-openclaw/, an OpenClaw plugin
+#                               (`openclaw plugins install`, or plugins.load.paths)
 #
 # The plugins are used, never copied: each is bundled from the synadia-agents
-# checkout at whatever commit it is on, and the commits of both repos are
-# recorded in the bundle's BUILD file and its version.
+# checkout at whatever commit it is on. The bundle's version is the plugin's
+# plus both repos' commits, <plugin version>+fabric.<synadia-agents>.<this
+# repo>, in its manifest and BUILD file; <v> in the file name is the same
+# with dashes, <plugin version>-<synadia-agents>-<this repo>, since a + does
+# not survive URLs and release assets.
 #
 # Usage: bundles/build.sh [claude-code|pi|openclaw|all] [out dir]
 # Defaults: all, and bundles/out.
@@ -212,12 +215,17 @@ for harness in $harnesses; do
   manifest "$harness"
 
   step "$harness: packing"
+  case $harness in
+    claude-code) version=$(node -p "require('$plugin/.claude-plugin/plugin.json').version") ;;
+    *) version=$(node -p "require('$plugin/package.json').version") ;;
+  esac
+  file=$out/$name-$version-$agents_rev-$fabric_rev.tar.gz
   if [ -n "$market" ]; then
-    tar -C "$market" -czf "$out/$name.tar.gz" .claude-plugin "$name"
+    tar -C "$market" -czf "$file" .claude-plugin "$name"
   else
-    tar -C "$out" -czf "$out/$name.tar.gz" "$name"
+    tar -C "$out" -czf "$file" "$name"
   fi
-  ls -lh "$out/$name.tar.gz"
+  ls -lh "$file"
 done
 
 printf '\nsynadia-agents %s, agent-fabric-sdk %s\n' "$agents_rev" "$fabric_rev"
