@@ -23,6 +23,7 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   src/trace.ts       the vocabulary: options, scope, traceHeaders, edge record, counts
   src/tracing.ts     fabricTracing(): the SDK's three hooks built from it
   src/served.ts      the served record's vocabulary and its publisher, for the harness add-ons
+  src/durable.ts     durableRunId, durableTrace, durableHeaders: a durable run joined to its task (docs/durable.md)
   src/scratchpad.ts  references' vocabulary, and the ScratchPad port the extension runs on
   src/grant-request.ts            requestGrant, grantRequestEndpoint, the creator's rule
   src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
@@ -37,7 +38,7 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   test/harness/      nats-server launcher (adapted from the protocol SDK's); fake-sp.mjs, a stand-in `sp`
   test/support/      fixtures, the schema validators, host/caller helpers, the ScratchPad fake
 python/              synadia-ai-agent-fabric — uv, ruff, mypy (strict), pytest
-  src/synadia_ai/agent_fabric/{trace,tracing,served}.py   the same three modules
+  src/synadia_ai/agent_fabric/{trace,tracing,served,durable}.py   the same four modules
   src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension,scratchpad_cli}.py
   tests/             the same suites; conftest starts the servers lazily
 test-fixtures/       shared by both suites — see its README for every file's source
@@ -45,6 +46,7 @@ test-fixtures/       shared by both suites — see its README for every file's s
                      and the grant request's two shapes, sp-grant-{request,reply}.json
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
+  durable/           the seven JetStream resources of the durable-execution library, as the fabric's onboarding creates them
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
   scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, load-sp.mjs, install.sh
   pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
@@ -65,8 +67,9 @@ bundles/             self-contained harness plugins, built from the public plugi
                      with ScratchPad; Claude's tarball is also a marketplace, `fabric`
   bundle.ts          one Bun build of plugin and add-on with shared chunks: one copy of the SDK
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
-  typescript/        the TypeScript agent: src/agent.ts (the four behaviours), its caller, its echo; vitest
-  python/            the Python agent: fabric_agent/agent.py, the same; pytest, with the interop of the two
+  typescript/        the TypeScript agent: src/agent.ts (the five behaviours), its caller, its echo; vitest
+                     src/durable.ts, the durable workflow behind AGENT_DURABLE=1, on the library's checkout
+  python/            the Python agent: fabric_agent/agent.py, the same, and fabric_agent/durable.py; pytest, with the interop of the two
   docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
   Makefile, scripts/setup.sh   `make setup` (the SDK checked and built, this package built, both agents installed), `make test`
 ```
@@ -85,9 +88,11 @@ reference-agents/    the two reference agents, the package's worked example — 
   fabric; nothing fabric-specific goes back into it.
 - **The two packages are wire-identical.** Same edge record bytes and key
   order, same envelope fields, same headers, same 400s, same heartbeat
-  counts, same grant request and reply bytes, same served record. Change
+  counts, same grant request and reply bytes, same served record, same
+  durable run ids and trace. Change
   both languages in one commit; `python/tests/test_trace_wire_parity.py`,
-  `test_served_wire_parity.py` and `test_grant_wire_parity.py` compare the
+  `test_served_wire_parity.py`, `test_grant_wire_parity.py` and
+  `test_durable_wire_parity.py` compare the
   bytes against the TypeScript package, and the interop tests run each
   language against the other's host.
 - **`edge.json` is the contract.** Both suites validate records against the
@@ -147,7 +152,11 @@ the checkout of `synadia-agents` on `main` (everything of the rollout merged the
 - The reference agents, `reference-agents/typescript` and
   `reference-agents/python`: this package by relative path
   (`file:../../typescript`, `path = "../../python"`), the SDK by the same
-  sibling links (`file:../../../synadia-agents/…`). Like the packages they
+  sibling links (`file:../../../synadia-agents/…`), and the durable-execution
+  library, for the durable workflow, from its checkout next to this repo,
+  `../synadia-durable-execution` (`file:` to the built package, an editable
+  uv path source to its `python/`). That checkout is read, built and
+  imported, never edited; the package itself depends on no such library. Like the packages they
   commit their lockfiles, `package-lock.json` and `uv.lock`, as they did in
   the examples repository. `make setup` in `reference-agents/` does the
   builds above and installs both.

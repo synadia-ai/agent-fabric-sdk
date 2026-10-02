@@ -12,6 +12,7 @@ dependencies = [
     { name = "synadia-ai-agent-fabric" },
     { name = "synadia-ai-agent-service" },
     { name = "synadia-ai-agents" },
+    { name = "synadia-durable" },
 ]
 
 [package.dev-dependencies]
@@ -29,6 +30,7 @@ requires-dist = [
     { name = "synadia-ai-agent-fabric", editable = "../../python" },
     { name = "synadia-ai-agent-service", editable = "../../../synadia-agents/agent-sdk/python" },
     { name = "synadia-ai-agents", editable = "../../../synadia-agents/client-sdk/python" },
+    { name = "synadia-durable", editable = "../../../synadia-durable-execution/python" },
 ]
 
 [package.metadata.requires-dev]
@@ -656,6 +658,32 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "rich", specifier = ">=13" },
     { name = "ruff", specifier = ">=0.5" },
+]
+
+[[package]]
+name = "synadia-durable"
+version = "0.1.0"
+source = { editable = "../../../synadia-durable-execution/python" }
+dependencies = [
+    { name = "nats-py" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", marker = "extra == 'crypto'", specifier = ">=42" },
+    { name = "nats-py", specifier = ">=2.15.0" },
+]
+provides-extras = ["crypto"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "cryptography", specifier = ">=42" },
+    { name = "mypy", specifier = ">=1.13" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pytest-cov", specifier = ">=6" },
+    { name = "ruff", specifier = ">=0.8" },
+    { name = "synadia-ai-agent-service", specifier = ">=0.4.1" },
 ]
 
 [[package]]

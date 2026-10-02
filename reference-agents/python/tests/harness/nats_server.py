@@ -73,6 +73,22 @@ class LocalNatsServer:
         return cls._launch(binary, directory, config)
 
     @classmethod
+    def start_tenant(cls, binary: str, users: list[NatsUser], *, max_streams: int) -> LocalNatsServer:
+        """Start a server with JetStream whose ``users`` are in one account
+        ``TENANT``, under the limits a tenant's tier sets: file storage only,
+        ``max_bytes`` required on every stream, and ``max_streams`` streams."""
+        directory = Path(tempfile.mkdtemp(prefix="fabric-examples-nats-"))
+        config = directory / "server.conf"
+        entries = ", ".join(f'{{ nkey: "{u.public_key}" }}' for u in users)
+        config.write_text(
+            f'jetstream {{ store_dir: "{directory / "js"}" }}\n'
+            f"accounts {{ TENANT {{ users: [ {entries} ], jetstream {{ max_streams: {max_streams}, "
+            "max_mem: 0, max_file: 4GB, max_bytes_required: true } } }\n",
+            encoding="utf-8",
+        )
+        return cls._launch(binary, directory, config)
+
+    @classmethod
     def start_with_config(cls, binary: str, config: Path) -> LocalNatsServer:
         """Start a server from a port-less configuration file, such as the
         operator-mode one in this repository's ``test-fixtures/identity/``,

@@ -89,6 +89,9 @@ class AgentConfig:
     model: ModelConfig
     #: How long one prompt to another agent may run before it is given up (the tools' ``max_wait_s``).
     reply_timeout_s: float
+    #: ``AGENT_DURABLE=1``: the agent runs the durable workflow ``durable-task``
+    #: and offers the model ``run_durable_task`` (``durable.py``). Off by default.
+    durable: bool = False
 
 
 def load_env_file(path: str | Path) -> dict[str, str]:
@@ -172,6 +175,9 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
     min_sender_trust = optional("AGENT_MIN_SENDER_TRUST") or "any"
     if min_sender_trust not in ("any", "signed"):
         raise ValueError(f'AGENT_MIN_SENDER_TRUST must be "any" or "signed", got "{min_sender_trust}"')
+    durable = optional("AGENT_DURABLE") or "0"
+    if durable not in ("0", "1"):
+        raise ValueError(f'AGENT_DURABLE must be "0" or "1", got "{durable}"')
     tools_setting = optional("AGENT_TOOLS") or DEFAULT_TOOLS
     if tools_setting not in ("blocking", "all", "none"):
         raise ValueError(f'AGENT_TOOLS must be "blocking", "all" or "none", got "{tools_setting}"')
@@ -215,4 +221,5 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
             timeout_s=number("MODEL_TIMEOUT_MS", 120_000) / 1000 if timeout is not None else None,
         ),
         reply_timeout_s=number("AGENT_REPLY_TIMEOUT_MS", DEFAULT_REPLY_TIMEOUT_S * 1000) / 1000,
+        durable=durable == "1",
     )

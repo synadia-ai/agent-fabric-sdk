@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Installs the two agents' packages. Until the protocol SDK and the fabric
-# package are published, the agents link them by relative path (`file:` in
-# typescript/package.json, uv path sources in python/pyproject.toml): the SDK
-# from a checkout next to this repository, the fabric package from this
-# repository itself. Their TypeScript halves are built in place first.
+# Installs the two agents' packages. Until the protocol SDK, the fabric
+# package and the durable-execution library are published, the agents link
+# them by relative path (`file:` in typescript/package.json, uv path sources
+# in python/pyproject.toml): the SDK and the library from checkouts next to
+# this repository, the fabric package from this repository itself. Their
+# TypeScript halves are built in place first.
 #
 # Called by `make setup`, which names the SDK's checkout and its branch. Safe
 # to run twice: a package is built only when its sources are newer than its
-# build. In the SDK's checkout it writes build output and nothing else.
+# build. In the SDK's and the library's checkouts it writes build output and
+# nothing else.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
 repo="$(cd "$here/.." && pwd)"
 sdk="$(cd "$repo/.." && pwd)/${SDK_DIR:?}"
+de="$(cd "$repo/.." && pwd)/${DE_DIR:?}"
 
 # The SDK's checkout must be there, and on the branch these agents are written
 # against: another branch builds, and then the agents fail in ways that point
@@ -26,6 +29,13 @@ on="$(git -C "$sdk" rev-parse --abbrev-ref HEAD)"
 if [ "$on" != "${SDK_BRANCH:?}" ] && [ -z "${ANY_BRANCH:-}" ]; then
   echo "setup: $sdk is on branch $on, not $SDK_BRANCH" >&2
   echo "  switch it (git -C $sdk switch $SDK_BRANCH), or run with ANY_BRANCH=1 to build it as it is" >&2
+  exit 1
+fi
+
+# The durable-execution library's checkout, for the durable workflow.
+if [ ! -f "$de/package.json" ] || [ ! -f "$de/python/pyproject.toml" ]; then
+  echo "setup: no durable-execution library at $de" >&2
+  echo "  clone it next to this repository, as $(basename "$de")" >&2
   exit 1
 fi
 
@@ -51,6 +61,12 @@ for pkg in client-sdk agent-sdk; do
     built=1
   fi
 done
+# The durable-execution library: built in place, like the SDK; in its
+# checkout it writes build output and nothing else.
+if stale "$de"; then
+  echo "setup: building $de"
+  (cd "$de" && { [ -d node_modules ] || bun install --frozen-lockfile; } && bun run build)
+fi
 # This repository's package, after the SDK it builds on, with npm. Its lockfile
 # is not committed while its links point outside the repository, so a fresh
 # clone installs; a checkout that has one installs exactly that.

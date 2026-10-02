@@ -1,6 +1,6 @@
 # The reference agents
 
-The worked example of this repository's package, `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric`: two agents for the Synadia Agent Fabric, one in TypeScript and one in Python, built on the protocol SDK and this package and nothing else. Each does the four things a participant of the fabric does: it takes prompts under a signed identity, calls its model through the fabric's model proxy, finds and prompts other agents, and hands work over by ScratchPad reference. With them comes a caller that prompts an agent from outside. Copy one agent and adapt it to your fabric.
+The worked example of this repository's package, `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric`: two agents for the Synadia Agent Fabric, one in TypeScript and one in Python, built on the protocol SDK and this package and nothing else. Each does the four things a participant of the fabric does: it takes prompts under a signed identity, calls its model through the fabric's model proxy, finds and prompts other agents, and hands work over by ScratchPad reference. A fifth is optional: it runs durable work, a workflow its model starts, joined to the task that started it. With them comes a caller that prompts an agent from outside. Copy one agent and adapt it to your fabric.
 
 | Path | What |
 | --- | --- |
@@ -12,14 +12,15 @@ The worked example of this repository's package, `@synadia-ai/agent-fabric` and 
 
 The two agents behave the same, give their models the same tools in the same words, and write the same reference token, so either one prompts, and hands work to, the other.
 
-## Where the four behaviours are
+## Where the five behaviours are
 
-Read `typescript/src/agent.ts` or `python/fabric_agent/agent.py`. The file is the list of the four, and each is marked `(1)` to `(4)` in the code where it happens. Both files have the same shape: `startAgent` (`start_agent`) wires everything once, and `serve` answers one prompt.
+Read `typescript/src/agent.ts` or `python/fabric_agent/agent.py`. The file is the list of the five, and each is marked `(1)` to `(5)` in the code where it happens. Both files have the same shape: `startAgent` (`start_agent`) wires everything once, and `serve` answers one prompt.
 
 1. **Receive prompts under a signed identity.** Marker `(1)`: `resolveNatsConnectionBundle` reads the credentials file once and gives both the connection and a signer. `new AgentService({ …, identity: { signer } })` puts the agent at `agents.prompt.<kind>.<owner>.<name>` and signs its registration and every heartbeat, so callers can verify who answers. `service.onPrompt` hands each prompt to `serve`.
 2. **The model through the proxy, with the trace headers.** Marker `(2)` and `src/model.ts` (`fabric_agent/model.py`): `createModelClient` sends the virtual key as the bearer token, and `converse` calls the fabric package's `traceHeaders()` on every model call. The two headers put the call on the thread of the prompt being served. `fabricTracing()` gives the service the interceptor that starts that thread.
 3. **Discover and prompt through the SDK's agent tools.** Marker `(3)`: the `Agents` client with the fabric package's prompt interceptor, and `new AgentTools(…)` over it. `src/tools.ts` (`fabric_agent/tools.py`) shows the model the tools' definitions as chat-completions functions, word for word, and runs each call with the model's tool-call id. A prompt the model sends becomes a child thread under the tool call that sent it.
 4. **ScratchPad by reference.** Marker `(4)`, optional: the agent reads the references it is handed, commits its reply, grants the verified caller read on it and appends the reference. TypeScript awaits `nativeScratchPadFromEnv(process.env, { nc, creator: address })`; Python awaits `native_scratchpad_from_env(env, nc=nc, creator=address)`. Both borrow their existing authenticated connection. `scratchPadExtension({ scratchPad, agents })` applies the fabric's reference rules to either client. Without `SCRATCHPAD_VOLUME` the factory returns no client, and the agent hands work over as text.
+5. **Durable work, joined to its task.** Marker `(5)` and `src/durable.ts` (`fabric_agent/durable.py`), optional, with `AGENT_DURABLE=1`: a worker of the durable-execution library (`@synadia-ai/durable`, `synadia-durable`) on the agent's own connection runs one workflow, `durable-task`, of two steps. `ask-model` calls the model through the proxy with the trace headers from the run's input and a short instruction; `write-result` writes the answer into the run's result. The model is offered one more tool, `run_durable_task`. Its runner starts the run with the fabric package's `durableRunId(<the model's tool-call id>)` (`durable_run_id`), so the run id is `<thread_id>-<tool call id>`, puts `durableTrace()` (`durable_trace()`) in the input, waits for the result and hands it back as the tool's text. The step runs on the worker, outside the prompt, so its model call takes its headers from that trace with `durableHeaders` (`durable_headers`) and lands on the prompt's thread. The library's resources are the tenant's, created by the fabric's onboarding: the worker and the client are given no sizing and create nothing. [`../docs/durable.md`](../docs/durable.md) has the convention.
 
 ## Copy and adapt
 
@@ -35,6 +36,7 @@ Copy `typescript/` or `python/`, and `env.example` to `.env`. Until the packages
 | `AGENT_TOOLS` | which agent tools the model sees: `blocking` (the default: `discover_agents`, `prompt_agent`, `answer_agent`), `all` (the six), or `none` for a role that must answer itself |
 | `MODEL_PROXY_URL`, `MODEL_VIRTUAL_KEY`, `MODEL_NAME` | the proxy, this agent's virtual key, and a model the key's provider serves |
 | `NATS_URL`, `NATS_CREDS` | where the fabric is, and this agent's own user; one user per agent |
+| `AGENT_DURABLE` | `1` runs the durable workflow and offers `run_durable_task`; off by default. The account must hold the durable-execution library's resources |
 
 **In the code.**
 
@@ -43,7 +45,7 @@ Copy `typescript/` or `python/`, and `env.example` to `.env`. Until the packages
 - **What a prompt does** is `serve` in `agent.ts` (`agent.py`): what goes in front of the model, and what happens to the reply. The history is kept per caller, keyed by the verified sender's agent ID, for the 32 callers served last (`history.ts`, `history.py`). A caller whose signature did not verify gets none, so what one caller said is never shown to the model serving another. An exchange keeps the prompt and the reply, not the tool traffic between them. When the model used tools, one line in front of the reply names them and the agents it prompted, for example `[tools used: discover_agents; prompt_agent x2 to agents.prompt.researcher.acme.r1, agents.prompt.checker.acme.c1]`, with no arguments and no results. Without that line, a model that delegated is shown its earlier prompts each answered at once with a finished reply, and it learns from those examples to answer the next prompt the same way, without its tools. `AGENT_MAX_HISTORY=0` turns the history off: the model gets the system prompt and the prompt, nothing else. That fits an agent whose prompts are independent tasks.
 - **A tool of your own** goes in `src/tools.ts` (`fabric_agent/tools.py`), next to the agent tools: its definition in the list `toolRunner` (`tool_runner`) gives the model, and a branch in its `call`.
 
-Keep the four behaviours. An agent without the signer is not verified, and callers cannot tell who answered. A model call without the trace headers lands on no thread. A client without the prompt interceptor starts no child thread.
+Keep the four behaviours; the fifth is yours to keep or leave. An agent without the signer is not verified, and callers cannot tell who answered. A model call without the trace headers lands on no thread. A client without the prompt interceptor starts no child thread.
 
 ## Install
 
@@ -53,9 +55,9 @@ On your machine: Node 22.13 or later with npm for the TypeScript native ScratchP
 make setup
 ```
 
-It installs three packages in each language. `@synadia-ai/agents` and `synadia-ai-agents` are the agent protocol's caller side and the agent tools. `@synadia-ai/agent-service` and `synadia-ai-agent-service` are its host side. `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric` are the fabric's tracing and its rules for ScratchPad references.
+It installs four packages in each language. `@synadia-ai/agents` and `synadia-ai-agents` are the agent protocol's caller side and the agent tools. `@synadia-ai/agent-service` and `synadia-ai-agent-service` are its host side. `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric` are the fabric's tracing, its rules for ScratchPad references and the durable run's id and trace. `@synadia-ai/durable` and `synadia-durable` are the durable-execution library behind the fifth behaviour.
 
-Until the packages are published, the agents link them by relative path. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `main`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build, `uv` installs all three editable. It is safe to run again.
+Until the packages are published, the agents link them by relative path. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `main`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The durable-execution library comes from its checkout next to this repository too, `../synadia-durable-execution`. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build, `uv` installs all four editable. It is safe to run again.
 
 ```sh
 make test         # both agents' tests; nats-server on PATH

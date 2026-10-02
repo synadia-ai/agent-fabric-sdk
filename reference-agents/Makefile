@@ -16,12 +16,15 @@
 SDK_DIR       := synadia-agents
 SDK_BRANCH    := main
 ANY_BRANCH    ?=
+# The durable-execution library, for the durable workflow (AGENT_DURABLE=1):
+# from its checkout next to this repository, until it is published.
+DE_DIR        := synadia-durable-execution
 
 .PHONY: setup agent-ts test-ts agent-py test-py test test-reply-controls
 
 # The packages, built and installed. Safe to run twice.
 setup:
-	@SDK_DIR=$(SDK_DIR) SDK_BRANCH=$(SDK_BRANCH) ANY_BRANCH=$(ANY_BRANCH) scripts/setup.sh
+	@SDK_DIR=$(SDK_DIR) SDK_BRANCH=$(SDK_BRANCH) ANY_BRANCH=$(ANY_BRANCH) DE_DIR=$(DE_DIR) scripts/setup.sh
 
 # One TypeScript agent, configured by typescript/.env.
 agent-ts:

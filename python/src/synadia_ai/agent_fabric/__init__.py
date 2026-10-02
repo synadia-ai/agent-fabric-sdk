@@ -12,6 +12,9 @@ It carries tracing and the agent tools' ScratchPad extension:
 * :func:`trace_headers` — ``X-Synadia-Thread-ID`` / ``X-Synadia-Root-ID``
   for the model calls a handler makes.
 * :func:`active_trace`, :func:`bind_active_trace` — the ambient scope.
+* :func:`durable_run_id`, :func:`durable_trace`, :func:`durable_headers` — a
+  durable run joined to the task that started it: its run id, the trace for
+  its input, the proxy's headers inside a step.
 * :func:`build_edge_record`, :func:`trace_record_counts` and the rest of the
   vocabulary.
 * :func:`served_publisher`, :func:`build_served_record` — the ``served``
@@ -39,6 +42,7 @@ wire-identical.
 
 from __future__ import annotations
 
+from .durable import DurableTrace, durable_headers, durable_run_id, durable_trace
 from .grant_request import (
     DEFAULT_GRANT_REQUEST_TIMEOUT_S,
     GRANT_REQUEST_ENDPOINT,
@@ -165,6 +169,7 @@ __all__ = [
     "THREAD_ID_HEX_LEN",
     "TOOL_CALL_ID_CONTEXT_KEY",
     "TOOL_CALL_ID_MAX",
+    "DurableTrace",
     "FabricTracing",
     "GrantKind",
     "GrantReply",
@@ -200,6 +205,9 @@ __all__ = [
     "count_trace_record_published",
     "decode_reference",
     "decode_short_reference",
+    "durable_headers",
+    "durable_run_id",
+    "durable_trace",
     "encode_grant_reply",
     "encode_grant_request",
     "encode_reference",
