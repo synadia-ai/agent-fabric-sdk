@@ -27,7 +27,20 @@ Reads validate offsets, lengths, content identities, and explicit byte limits.
 Use safe integer validation for wire counters; refuse values that JavaScript cannot represent exactly.
 
 The codec must reproduce the Go fixtures exactly, including canonical CBOR and content digests.
-References use the current `sp-ref:` v2 shape and never supply authentication.
+References use a service-issued `sp-r1:` token when `reference.info` enables the feature.
+The token has 66 ASCII characters and identifies one retained immutable path.
+Clients also accept the existing `sp-ref:` v2 form. Neither form supplies authentication.
+An older service's explicit `invalid` reply to `reference.info`, or `enabled: false`, selects the full form.
+Transport, authentication and malformed-reply failures propagate; they do not select a fallback.
+An unsupported capability version or different advertised limits also fails without fallback.
+The existing checkpoint receipt and volume reply shapes remain unchanged.
+
+### Activate short references
+
+Keep service publication disabled until all participating native clients and CLI readers support `sp-r1:`.
+The `scratchpad_refs_ok` discovery metadata does not negotiate reference formats.
+For harness readers, select a compatible `sp` through `SCRATCHPAD_BIN` before activation.
+Coordinate activation with the service upgrade; publication changes require compatible service workers too.
 
 ### Workflow boundary
 
@@ -73,6 +86,17 @@ await pad.close(); // closes the workspace; the NATS connection still belongs to
 ```
 
 Pass `pad` to `scratchPadExtension` and `grantRequestEndpoint` through their existing ports.
+`resolveReference(token)` returns the expanded descriptor for programmatic use (`resolve_reference` in Python).
+Ordinary `commit` and publication results return one token; pass that token unchanged to the model.
+The extension uses the port's optional resolution operation to find the creator of a short token.
+It verifies that creator through Fabric discovery and keeps the exact received token in grant requests.
+Existing ports that handle only full references remain valid.
+
+Each short-token content read calls `reference.stat`, even when its metadata is cached.
+The service checks current token validity and content authorization before returning the initial stat.
+Subsequent ranges use the expanded descriptor with normal authorization.
+Both forms enforce the descriptor deadline before and after each content range and before successful completion, including empty files. Each reader caches at most 64 metadata expansions for creator and grant routing.
+A fresh reader, or eviction from this disposable cache, requires another service lookup.
 `commit(text, path, trace)` returns a reference; `read(reference, trace)` returns verified UTF-8 text.
 `nativeScratchPadFromEnv(env, { nc, creator })` uses `SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, and `SCRATCHPAD_GRANT_TTL_S`.
 An unset volume disables ScratchPad. A configured volume requires a persistent directory; there is no temporary-directory default.
@@ -122,6 +146,10 @@ Reset does not undo an accepted publication or release its retention.
 
 After `NativeScratchPadError.unknown`, call `recover()` before starting another mutation.
 Recovery compares the full stored receipt before reading local payloads.
+A short publication saves its creator and canonical path list with the command before transmission.
+Recovery reads `reference.receipt` with that complete saved intent.
+A plain checkpoint receipt or a changed creator/path list cannot settle this publication.
+A `not_found` receipt read leaves the intent pending; it does not prove that an earlier request failed.
 It otherwise uploads the saved bytes and repeats the exact command once.
 Repeated `operationId` values reuse the saved payload and do not consume a replacement input stream.
 Changed content needs a new operation ID. The local retry window stores the last publication only.
@@ -178,6 +206,7 @@ Transfers use 512 KiB chunks. `publishStream` spools one artifact with bounded c
 Streamed bytes are provisional until successful completion; write to a temporary destination before exposing a download.
 
 `release(reference)` releases a finished handoff only when no live grant still names it.
+An expired short token no longer resolves; use `maintain()` to release expired unprotected retention handles from the current volume view.
 `maintain()` releases expired unprotected pins, collects unreachable content, and reopens its own maintenance interval.
 The client checks capacity and retention before saving a new publish command.
 Admission conservatively allows space for existing content plus the new artifact, even when some objects could be shared.

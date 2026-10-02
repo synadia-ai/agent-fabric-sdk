@@ -138,6 +138,27 @@ describe("the grants scripts/sp recorded", () => {
     expect(await ported.granted(recorded, { account: "ACALLER", user: "UOTHER" })).toBeUndefined();
   });
 
+  it("retains short-token grant records and the optional resolver through the wrapper", async () => {
+    const token = "sp-r1:" + "A".repeat(60),
+      ledger = join(dir, "short");
+    writeFileSync(ledger, `2000 ACALLER UCALLER ${token}\n`);
+    const wrapped = withRecordedGrants(
+      {
+        owns: () => true,
+        granted: () => undefined,
+        grantRead: () => {},
+        resolveReference: () => Promise.resolve({ creator: "agents.prompt.creator.team.main" }),
+      },
+      ledger,
+      () => 1500,
+    );
+    expect(await wrapped.granted(token, CALLER)).toBe("first-hand");
+    expect(await wrapped.granted(token.slice(0, -1) + "B", CALLER)).toBeUndefined();
+    expect(await wrapped.resolveReference!(token)).toEqual({
+      creator: "agents.prompt.creator.team.main",
+    });
+  });
+
   it("keeps the port's own answer when nothing live is recorded", async () => {
     const other = pad.commit("/granted-on-request.txt");
     await ported.grantRead(other, CALLER, undefined, undefined, "on-request");

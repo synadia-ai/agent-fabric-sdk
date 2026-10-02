@@ -47,7 +47,7 @@ const FAKE_SP = `#!/bin/sh
 if [ -n "\${FAKE_JSON:-}" ]; then
   for a in "$@"; do
     case $a in
-      publish-file) echo '{"receipt":{"head":1},"reference":"sp-ref:abc123"}'; exit "\${FAKE_EXIT:-0}" ;;
+      publish-file) printf '{"receipt":{"head":1},"reference":"%s"}\\n' "\${FAKE_REFERENCE:-sp-ref:abc123}"; exit "\${FAKE_EXIT:-0}" ;;
       grant)
         if [ -n "\${FAKE_GRANT_FAIL:-}" ]; then
           echo '{"error":{"code":"denied","message":"refused","unknown":false}}' >&2; exit 1
@@ -466,6 +466,19 @@ describe("a publication while a prompt with a verified caller is served", () => 
     );
   });
 
+  it("hands a short token to the caller grant without expanding its output", () => {
+    const token = "sp-r1:" + "A".repeat(60);
+    const r = publish({ ...CALLER, FAKE_REFERENCE: token });
+    expect(r.status).toBe(0);
+    expect(r.out).toEqual({
+      receipt: { head: 1 },
+      reference: token,
+      granted_to_caller: { handle: { slot: 0, generation: 4 }, expires_at: 99 },
+    });
+    expect(r.calls).toHaveLength(2);
+    expect(r.calls[1]).toContain("grant --ref " + token);
+  });
+
   it("reports a grant that failed next to the publication, which stands", () => {
     const r = publish({ ...CALLER, FAKE_GRANT_FAIL: "1" });
     expect(r.status).toBe(0);
@@ -530,6 +543,16 @@ describe("the record of a grant, in SP_GRANTS_FILE", () => {
     expect(spRun(["-ref", "sp-ref:one", "grant"], CALLER).recorded).toEqual([
       "99 ACALLER UCALLER sp-ref:one",
     ]);
+  });
+
+  it("records a short publication for later creator grant requests", () => {
+    const token = "sp-r1:" + "A".repeat(60);
+    const r = spRun(["publish-file", "--source", "-", "--path", "/r.txt"], {
+      ...CALLER,
+      FAKE_REFERENCE: token,
+    });
+    expect(r.status).toBe(0);
+    expect(r.recorded).toEqual([`99 ACALLER UCALLER ${token}`]);
   });
 
   it("records the grant after a publication", () => {

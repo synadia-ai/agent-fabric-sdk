@@ -256,7 +256,14 @@ export class ScratchPadExtension implements AgentToolsExtension {
     trace: TraceIds | undefined,
     toolCallId: string | undefined,
   ): Promise<GrantReply> {
-    const address = referenceCreator(reference);
+    let address = referenceCreator(reference);
+    if (address === undefined && this.#scratchPad.resolveReference) {
+      try {
+        address = (await this.#scratchPad.resolveReference(reference, trace)).creator;
+      } catch {
+        return { granted: false, reason: "the reference could not be resolved" };
+      }
+    }
     if (address === undefined) {
       return { granted: false, reason: "the reference does not name its creator" };
     }

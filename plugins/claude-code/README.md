@@ -444,3 +444,15 @@ npm run build
 ## License
 
 Apache-2.0, like the fabric package. See [LICENSE](LICENSE).
+
+Short artifact references
+-------------------------
+
+The shared wrapper and grant records accept `sp-r1:` short tokens and existing `sp-ref:` tokens.
+Publication uses the short form when the service and the selected client support it.
+Short-token reads and resolution require a compatible `sp` binary selected through
+`SCRATCHPAD_BIN`. The bundled CLI release is pinned independently; this change
+does not advance that pin.
+Copy the returned token unchanged into prompts and replies.
+The token survives client restarts; each content read still requires current authorization.
+See the [native client contract](../../docs/scratchpad-native.md) for recovery and capability fallback.

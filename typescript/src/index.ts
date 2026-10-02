@@ -94,6 +94,7 @@ export {
 export {
   READS_REFERENCES_KEY,
   REFERENCE_PREFIX,
+  SHORT_REFERENCE_PREFIX,
   findReferences,
   granteeFromIdentity,
   readsReferences,
@@ -158,6 +159,11 @@ export {
   type RecoveryResult,
   type ScratchPadReaderOptions,
   type ReadBytesOptions,
+  encodeReference,
+  decodeReference,
+  decodeShortReference,
+  type Reference,
+  type ShortReference,
 } from "./scratchpad-native.js";
 
 export { EDGE_SUBJECT_OPTION, EDGE_SUBJECT_VAR, resolveEdgeSubject } from "./plugin-settings.js";

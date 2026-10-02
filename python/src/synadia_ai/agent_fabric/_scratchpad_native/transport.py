@@ -10,6 +10,7 @@ from collections.abc import Callable
 from nats import NATS
 
 from . import protocol as p
+from . import references as r
 from .codec import verify_object
 from .errors import NativeScratchPadError, failed, invalid
 from .protocol import Wire
@@ -45,7 +46,7 @@ def _object_request(value: object, *, prepare: bool) -> None:
 
 # Keep each current Go verb's field contract visible in one flat dispatch.
 def _validate_request(verb: str, value: object) -> None:  # noqa: PLR0912, PLR0915
-    if verb == "info":
+    if verb in ("info", "reference.info"):
         p.validate_empty(value)
     elif verb == "volume.create":
         v = p.record(value, ("volume", "action"))
@@ -60,6 +61,14 @@ def _validate_request(verb: str, value: object) -> None:  # noqa: PLR0912, PLR09
         p.validate_target(v["target"])
         p.validate_content_object(v["object"])
         p.uint(v["epoch"])
+    elif verb == "reference.retain":
+        r.validate_reference_retain_request(value)
+    elif verb in ("reference.publish", "reference.receipt"):
+        r.validate_reference_publish_request(value)
+    elif verb in ("reference.resolve", "reference.stat"):
+        v = p.record(value, ("reference", "trace"))
+        r.decode_short_reference(v["reference"])
+        p.validate_trace(v["trace"])
     elif verb == "checkpoint.publish":
         v = p.record(value, ("target", "command"))
         target = p.validate_target(v["target"])
@@ -343,6 +352,107 @@ class ScratchPadTransport:
             and normalize(result["command"]) == normalize(request["command"]),
             mutation=True,
             detail="receipt names another command",
+        )
+        return result
+
+    async def reference_info(self) -> Wire | None:
+        """Only an older service's explicit invalid response permits fallback."""
+        try:
+            return await self._control(
+                "reference.info", {}, r.validate_reference_capabilities, mutation=False
+            )
+        except NativeScratchPadError as error:
+            if error.code == "invalid" and not error.local and not error.unknown:
+                return None
+            raise
+
+    async def _reference_publication(self, verb: str, request: Wire) -> Wire:
+        expected = copy.deepcopy(request)
+        mutation = verb == "reference.publish"
+        result = await self._control(
+            verb, expected, r.validate_reference_publish_result, mutation=mutation
+        )
+        self._matching(
+            result["receipt"]["volume"] == expected["target"]["volume"]
+            and {
+                **result["receipt"]["command"],
+                "trace": {
+                    key: value
+                    for key, value in result["receipt"]["command"]["trace"].items()
+                    if value != ""
+                },
+            }
+            == {
+                **expected["command"],
+                "trace": {
+                    key: value for key, value in expected["command"]["trace"].items() if value != ""
+                },
+            }
+            and len(result["references"]) == len(expected["reference"]["paths"])
+            and all(
+                pair["expanded"]["creator"] == expected["reference"]["creator"]
+                and pair["expanded"]["path"] == path
+                for pair, path in zip(
+                    result["references"], expected["reference"]["paths"], strict=False
+                )
+            ),
+            mutation=mutation,
+            detail="referenced receipt names another intent",
+        )
+        return result
+
+    async def reference_publish(self, request: Wire) -> Wire:
+        return await self._reference_publication("reference.publish", request)
+
+    async def reference_receipt(self, request: Wire) -> Wire:
+        return await self._reference_publication("reference.receipt", request)
+
+    async def reference_resolve(self, request: Wire) -> Wire:
+        expected = copy.deepcopy(request)
+        result = await self._control(
+            "reference.resolve", expected, r.validate_resolved_reference, mutation=False
+        )
+        self._matching(
+            result["short"] == expected["reference"],
+            mutation=False,
+            detail="resolution names another reference",
+        )
+        return result
+
+    async def reference_stat(self, request: Wire) -> Wire:
+        expected = copy.deepcopy(request)
+        result = await self._control(
+            "reference.stat", expected, r.validate_reference_stat_result, mutation=False
+        )
+        self._matching(
+            result["reference"]["short"] == expected["reference"],
+            mutation=False,
+            detail="stat names another reference",
+        )
+        return result
+
+    async def reference_retain(self, request: Wire) -> Wire:
+        expected = copy.deepcopy(request)
+        retain = expected["retain"]
+        result = await self._control(
+            "reference.retain", expected, r.validate_reference_retain_result, mutation=True
+        )
+        self._matching(
+            result["volume"]["target"] == retain["target"]
+            and len(result["references"]) == len(expected["reference"]["paths"])
+            and all(
+                pair["expanded"]["creator"] == expected["reference"]["creator"]
+                and pair["expanded"]["path"] == path
+                and pair["expanded"]["root"] == retain["root"]
+                and pair["expanded"]["expires_at"] == retain["until"]
+                and pair["expanded"]["retention"]["slot"] == retain["slot"]
+                and pair["expanded"]["retention"]["generation"] == retain["generation"] + 1
+                for pair, path in zip(
+                    result["references"], expected["reference"]["paths"], strict=False
+                )
+            ),
+            mutation=True,
+            detail="retained references name another intent",
         )
         return result
 

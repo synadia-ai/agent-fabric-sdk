@@ -52,15 +52,11 @@ cleanup the CLI cannot finish stays saved in the workspace; the next mutation
 asks the CLI to recover it, so an interrupted cleanup never leaves the volume
 closed.
 
-The token: ``sp-ref:`` followed by base64url JSON, no padding, made by the
-CLI: the account and volume (with the incarnation, ``creation_id``), the
-immutable root, the path, the retention slot, the expiry, and ``creator``,
-the prompt address of the agent that committed it, so an agent handed the
-reference knows whom to ask when it wants to hand it on
-(:func:`reference_creator`). This returns the token exactly as the CLI made
-it. It checks a token's shape before starting the CLI, so a malformed or
-oversized one is refused early; the CLI checks it completely. The TypeScript
-package reads and writes the same token.
+The CLI returns one token unchanged: service-issued ``sp-r1:`` or the
+existing ``sp-ref:`` form. ``resolve_reference`` expands short metadata through
+``sp resolve``; a bounded cache helps creator and grant routing. Reads pass
+the original token to ``sp read`` so cached metadata never skips current
+token validity or content authorization. TypeScript follows the same rules.
 
 Who may read: nobody but the volume's owner, until the owner grants it. The
 token is application data, not a credential: ScratchPad authenticates the
@@ -95,11 +91,18 @@ import re
 import tempfile
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard
 
+from ._scratchpad_native.codec import encode_reference
+from ._scratchpad_native.references import (
+    SHORT_REFERENCE_PREFIX,
+    decode_short_reference,
+    validate_resolved_reference,
+)
 from .scratchpad import REFERENCE_PREFIX, Grantee, GrantKind, ScratchPad, TraceIds
 from .trace import active_trace
 
@@ -495,6 +498,7 @@ class SpCliScratchPad:
             dir if dir is not None else os.path.join(tempfile.gettempdir(), f"scratchpad-{volume}")
         )
         self._ready = False
+        self._expansions: dict[str, dict[str, Any]] = {}
         self._volume_name = volume
         self._grant_ttl_s = min(grant_ttl_s, DEFAULT_GRANT_TTL_S)
         self._creator = creator
@@ -542,7 +546,7 @@ class SpCliScratchPad:
         mutation: bool = False,
     ) -> Any:
         # A read targets the reference's volume, which can belong to another agent.
-        volume = [] if command == "read" else ["--volume", self._volume_name]
+        volume = [] if command in ("read", "resolve") else ["--volume", self._volume_name]
         argv = [
             command,
             *self._connection,
@@ -805,7 +809,7 @@ class SpCliScratchPad:
             raise ScratchPadError(
                 "sp publish-file: the reply names no receipt and reference", "malformed_reply", True
             )
-        ref = decode_reference(token)
+        ref = await self.resolve_reference(token, trace)
         if not self._owned_by(ref, own) or ref["path"] != path or ref["creator"] != self._creator:
             raise ScratchPadError(
                 "sp publish-file: the reference names another volume, path or creator",
@@ -814,9 +818,37 @@ class SpCliScratchPad:
             )
         return token  # exactly the token the CLI made
 
+    async def resolve_reference(self, token: str, trace: TraceIds | None = None) -> dict[str, Any]:
+        """Resolve metadata through the CLI; the original token still authorizes no content."""
+        if not token.startswith(SHORT_REFERENCE_PREFIX):
+            return decode_reference(token)
+        decode_short_reference(token)
+        cached = self._expansions.get(token)
+        if cached and cached["expires_at"] > int(time.time()):
+            return deepcopy(cached)
+        reply = await self._sp("resolve", ["--ref", token], trace)
+        pair = validate_resolved_reference(
+            {
+                "short": token,
+                "expanded": reply.get("reference") if isinstance(reply, dict) else None,
+            }
+        )
+        if reply.get("full_reference") != encode_reference(pair["expanded"]):
+            raise ScratchPadError(
+                "sp resolve: expanded token differs from descriptor", "malformed_reply", False
+            )
+        ref = decode_reference(reply["full_reference"])
+        if ref["expires_at"] <= int(time.time()):
+            raise ValueError("the reference has expired")
+        self._expansions.pop(token, None)
+        self._expansions[token] = ref
+        if len(self._expansions) > 64:  # noqa: PLR2004 -- disposable metadata cache
+            del self._expansions[next(iter(self._expansions))]
+        return deepcopy(ref)
+
     async def read(self, reference: str, trace: TraceIds | None) -> str:
         """Fetch the exact bytes ``reference`` names, as text."""
-        ref = decode_reference(reference)
+        ref = await self.resolve_reference(reference)
         # An expired reference opens nothing; the CLI would refuse it too.
         if ref["expires_at"] <= int(time.time()):
             raise ValueError("the reference has expired")
@@ -847,7 +879,7 @@ class SpCliScratchPad:
         # one. The port passes no thread; inside a served prompt the question
         # still goes on that prompt's thread.
         try:
-            ref = decode_reference(reference)
+            ref = await self.resolve_reference(reference)
         except ValueError:
             return False
         return self._owned_by(ref, await self._describe(_served_trace()))
@@ -898,7 +930,7 @@ class SpCliScratchPad:
         tool_call_id: str | None,
         kind: GrantKind,
     ) -> None:
-        ref = decode_reference(reference)
+        ref = await self.resolve_reference(reference)
         if not self._owned_by(ref, await self._describe(trace)):
             # Only a volume's owner grants on it. Reading someone else's content
             # and granting on a copy would pass on a permission this agent was
@@ -954,25 +986,34 @@ class SpCliScratchPad:
                 self._pending_grant = ([*args, *_trace_flags(trace, tool_call_id)], key, kind, ref)
             raise
 
-    def granted(self, reference: str, grantee: Grantee) -> GrantKind | None:
-        """The live grant this agent made to ``grantee`` on the root and path
-        ``reference`` names, by kind, or ``None`` when there is none or it has
-        expired: the question a creator asks before it lets one reader pass
-        the reference on. A first-hand grant still running is not hidden by a
-        later one made on request."""
+    def granted(
+        self, reference: str, grantee: Grantee
+    ) -> GrantKind | Awaitable[GrantKind | None] | None:
+        """Look up the live grant by the immutable descriptor in either token form."""
+
+        def find(ref: dict[str, Any]) -> GrantKind | None:
+            if not self._owned_by(ref, self._binding):
+                return None
+            until = self._ledger.get(self._ledger_key(ref, grantee), {})
+            now = int(time.time())
+            if until.get("first-hand", 0) > now:
+                return "first-hand"
+            if until.get("on-request", 0) > now:
+                return "on-request"
+            return None
+
+        async def resolved() -> GrantKind | None:
+            try:
+                return find(await self.resolve_reference(reference))
+            except (ValueError, ScratchPadError):
+                return None
+
+        if reference.startswith(SHORT_REFERENCE_PREFIX):
+            return resolved()
         try:
-            ref = decode_reference(reference)
+            return find(decode_reference(reference))
         except ValueError:
             return None
-        if not self._owned_by(ref, self._binding):
-            return None
-        until = self._ledger.get(self._ledger_key(ref, grantee), {})
-        now = int(time.time())
-        if until.get("first-hand", 0) > now:
-            return "first-hand"
-        if until.get("on-request", 0) > now:
-            return "on-request"
-        return None
 
 
 def scratchpad_from_env(

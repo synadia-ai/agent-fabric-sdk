@@ -7,14 +7,14 @@ import os
 import re
 import time
 import uuid
-from collections.abc import AsyncIterable, AsyncIterator, Iterable, Mapping
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Iterable, Mapping
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from typing import Any, NoReturn
 
 from nats.aio.client import Client as NatsClient
 
-from ..scratchpad import Grantee, GrantKind, TraceIds
+from ..scratchpad import Grantee, GrantKind, TraceIds, _resolve
 from .codec import (
     chunk_stream,
     decode_reference,
@@ -44,6 +44,12 @@ from .protocol import (
     validate_writer,
 )
 from .reader import ScratchPadReader, wire_trace
+from .references import (
+    SHORT_REFERENCE_PREFIX,
+    validate_reference_publish_result,
+    validate_reference_spec,
+    validate_resolved_reference,
+)
 from .store import WorkspaceStore
 from .transport import ScratchPadTransport
 
@@ -117,10 +123,17 @@ def validate_state(value: Any) -> None:  # noqa: PLR0912, PLR0915 -- one case pe
         uint(handle["slot"], 15)
         uint(handle["generation"], minimum=1)
     if "last" in state:
-        last = record(state["last"], ["reference", "receipt", "path", "ttl"])
+        last = record(state["last"], ["reference", "receipt", "path", "ttl"], ["resolved"])
         validate_receipt(last["receipt"])
         text(last["reference"], 8192, 1)
-        reference = decode_reference(last["reference"])
+        if last["reference"].startswith(SHORT_REFERENCE_PREFIX):
+            pair = validate_resolved_reference(last.get("resolved"))
+            validate_reference_publish_result({"receipt": last["receipt"], "references": [pair]})
+            check(pair["short"] == last["reference"], "saved short reference differs")
+            reference = pair["expanded"]
+        else:
+            check("resolved" not in last, "full reference has unexpected expansion")
+            reference = decode_reference(last["reference"])
         validate_path(last["path"], 256)
         uint(last["ttl"], MAX_GRANT_SECONDS, 1)
         check(
@@ -138,7 +151,13 @@ def validate_state(value: Any) -> None:  # noqa: PLR0912, PLR0915 -- one case pe
     check(isinstance(pending, dict), "invalid pending operation")
     kind = pending.get("kind")
     if kind == "publish":
-        record(pending, ["kind", "command", "path", "ttl"], ["expiry_revision"])
+        record(pending, ["kind", "command", "path", "ttl"], ["expiry_revision", "reference"])
+        if "reference" in pending:
+            spec = validate_reference_spec(pending["reference"])
+            check(
+                spec["creator"] == state["creator"] and spec["paths"] == [pending["path"]],
+                "saved reference intent differs from publication",
+            )
         validate_command(pending["command"])
         validate_path(pending["path"], 256)
         uint(pending["ttl"], MAX_GRANT_SECONDS, 1)
@@ -394,6 +413,14 @@ class NativeScratchPad(ScratchPadReader):
                     labels,
                 )
                 return deepcopy({"reference": last["reference"], "receipt": last["receipt"]})
+            capabilities = await self._transport.reference_info()
+            reference = (
+                {"creator": self._state["creator"], "paths": [path]}
+                if capabilities and capabilities["enabled"]
+                else None
+            )
+            if reference:
+                validate_reference_spec(reference)
             self._store.clear_objects()
             ordinal, total_bytes = 0, 0
 
@@ -488,6 +515,8 @@ class NativeScratchPad(ScratchPadReader):
                     },
                 }
                 publication = {"kind": "publish", "command": command, "path": path, "ttl": ttl}
+                if reference:
+                    publication["reference"] = reference
                 self._change(publication)
                 return await self._resume_publish(publication)
             except BaseException:
@@ -510,12 +539,32 @@ class NativeScratchPad(ScratchPadReader):
                 "operation ID is bound to another publication; recovery uses saved bytes",
             )
 
-    async def _resume_publish(self, publication: dict[str, Any]) -> dict[str, Any]:
+    async def _resume_publish(self, publication: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0912 -- exact receipt and expiry recovery branches
+        if "reference" in publication:
+            try:
+                result = await self._transport.reference_receipt(
+                    {
+                        "target": self._target(),
+                        "command": publication["command"],
+                        "reference": publication["reference"],
+                    }
+                )
+                if result["receipt"]["principal"] != self._principal:
+                    raise unknown(None, "referenced receipt names another principal")
+                return self._accept(publication, result["receipt"], result["references"][0])
+            except NativeScratchPadError as error:
+                if error.code != "not_found" or error.unknown:
+                    raise
         view = await self._transport.get_volume(self._target())
         command = publication["command"]
         slot = view["writers"][command["writer"]["slot"]]
         receipt = slot.get("receipt")
-        if receipt and receipt["command"] == command and receipt["principal"] == self._principal:
+        if (
+            "reference" not in publication
+            and receipt
+            and receipt["command"] == command
+            and receipt["principal"] == self._principal
+        ):
             return self._accept(publication, receipt)
         if (
             slot["generation"] != command["writer"]["generation"]
@@ -530,14 +579,27 @@ class NativeScratchPad(ScratchPadReader):
         if command["retention"]["until"] > now():
             await self._upload()
         try:
-            receipt = await self._transport.publish({"target": self._target(), "command": command})
+            resolved = None
+            if "reference" in publication:
+                result = await self._transport.reference_publish(
+                    {
+                        "target": self._target(),
+                        "command": command,
+                        "reference": publication["reference"],
+                    }
+                )
+                receipt, resolved = result["receipt"], result["references"][0]
+            else:
+                receipt = await self._transport.publish(
+                    {"target": self._target(), "command": command}
+                )
         except NativeScratchPadError as error:
             if error.code == "expired" and not error.unknown:
                 await self._fence_expired(publication, view)
             raise
         if receipt["command"] != command or receipt["principal"] != self._principal:
             raise unknown(None, "publish receipt differs from the saved command")
-        return self._accept(publication, receipt)
+        return self._accept(publication, receipt, resolved)
 
     async def _fence_expired(self, publication: dict[str, Any], view: dict[str, Any]) -> None:
         revision = publication.get("expiry_revision")
@@ -575,19 +637,32 @@ class NativeScratchPad(ScratchPadReader):
         self._save({**self._state, "pending": continuation}, remote=True, clear_objects=True)
         await self._control(continuation, fresh=True)
 
-    def _accept(self, publication: dict[str, Any], receipt: dict[str, Any]) -> dict[str, Any]:
-        reference = encode_reference(
-            {
-                "version": 2,
-                "creator": self._state["creator"],
-                "account": self._principal["account"],
-                "target": self._target(),
-                "root": receipt["head"]["root"],
-                "generation": receipt["head"]["generation"],
-                "path": publication["path"],
-                "retention": receipt["retention"],
-                "expires_at": publication["command"]["retention"]["until"],
-            }
+    def _accept(
+        self,
+        publication: dict[str, Any],
+        receipt: dict[str, Any],
+        resolved: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        check(
+            ("reference" in publication) == (resolved is not None),
+            "referenced publication lost its descriptor",
+        )
+        reference = (
+            resolved["short"]
+            if resolved
+            else encode_reference(
+                {
+                    "version": 2,
+                    "creator": self._state["creator"],
+                    "account": self._principal["account"],
+                    "target": self._target(),
+                    "root": receipt["head"]["root"],
+                    "generation": receipt["head"]["generation"],
+                    "path": publication["path"],
+                    "retention": receipt["retention"],
+                    "expires_at": publication["command"]["retention"]["until"],
+                }
+            )
         )
         state = {
             **self._state,
@@ -597,10 +672,13 @@ class NativeScratchPad(ScratchPadReader):
                 "receipt": receipt,
                 "path": publication["path"],
                 "ttl": publication["ttl"],
+                **({"resolved": resolved} if resolved else {}),
             },
         }
         state.pop("pending", None)
         self._save(state, remote=True, clear_objects=True)
+        if resolved:
+            self._cache_reference(resolved)
         return deepcopy({"reference": reference, "receipt": receipt})
 
     async def _upload(self) -> None:
@@ -658,34 +736,61 @@ class NativeScratchPad(ScratchPadReader):
         reference: str = result["reference"]
         return reference
 
-    def owns(self, reference: str) -> bool:
-        try:
-            ref = self._reference(reference)
+    def owns(self, reference: str) -> bool | Awaitable[bool]:
+        def matches(ref: dict[str, Any]) -> bool:
             return bool(
                 ref["creator"] == self._state["creator"]
                 and ref["target"] == self._state.get("target")
             )
+
+        async def resolved() -> bool:
+            try:
+                return matches(await self.resolve_reference(reference))
+            except (NativeScratchPadError, ValueError):
+                return False
+
+        if reference.startswith(SHORT_REFERENCE_PREFIX):
+            return resolved()
+        try:
+            return matches(self._reference(reference))
         except (NativeScratchPadError, ValueError):
             return False
 
-    def granted(self, reference: str, grantee: Grantee) -> GrantKind | None:
-        if not self.owns(reference):
-            return None
-        ref = self._reference(reference)
-        kind: GrantKind | None = None
-        for entry in self._state["grants"]:
-            request = entry["request"]
-            if (
-                request["until"] > now()
-                and request["principal"] == {"account": grantee.account, "user": grantee.user}
-                and request["root"] == ref["root"]
-                and request["path"] == ref["path"]
-                and request["retention"] == ref["retention"]
+    def granted(
+        self, reference: str, grantee: Grantee
+    ) -> GrantKind | Awaitable[GrantKind | None] | None:
+        def find(ref: dict[str, Any]) -> GrantKind | None:
+            if ref["creator"] != self._state["creator"] or ref["target"] != self._state.get(
+                "target"
             ):
-                if entry["kind"] == "first-hand":
-                    return "first-hand"
-                kind = "on-request"
-        return kind
+                return None
+            kind: GrantKind | None = None
+            for entry in self._state["grants"]:
+                request = entry["request"]
+                if (
+                    request["until"] > now()
+                    and request["principal"] == {"account": grantee.account, "user": grantee.user}
+                    and request["root"] == ref["root"]
+                    and request["path"] == ref["path"]
+                    and request["retention"] == ref["retention"]
+                ):
+                    if entry["kind"] == "first-hand":
+                        return "first-hand"
+                    kind = "on-request"
+            return kind
+
+        async def resolved() -> GrantKind | None:
+            try:
+                return find(await self.resolve_reference(reference))
+            except (NativeScratchPadError, ValueError):
+                return None
+
+        if reference.startswith(SHORT_REFERENCE_PREFIX):
+            return resolved()
+        try:
+            return find(self._reference(reference))
+        except (NativeScratchPadError, ValueError):
+            return None
 
     async def grant_read(
         self,
@@ -700,9 +805,12 @@ class NativeScratchPad(ScratchPadReader):
             validate_principal(principal)
             check(kind in ("first-hand", "on-request"), "invalid grant provenance")
             labels = wire_trace(trace, tool_call_id)
-            if not self.owns(reference) or grantee.account != self._principal["account"]:
+            if (
+                not await _resolve(self.owns(reference))
+                or grantee.account != self._principal["account"]
+            ):
                 refuse("denied", "only the owner can grant this same-account reference")
-            ref = self._reference(reference)
+            ref = await self.resolve_reference(reference, trace)
             if self._state.get("pending"):
                 await self._recover_pending()
             view = await self._transport.get_volume(self._target())
@@ -773,7 +881,11 @@ class NativeScratchPad(ScratchPadReader):
         async with self._mutation():
             if self._state.get("pending"):
                 refuse("busy", "recover the pending operation before release")
-            ref = decode_reference(reference)
+            ref = (
+                await self.resolve_reference(reference)
+                if reference.startswith(SHORT_REFERENCE_PREFIX)
+                else decode_reference(reference)
+            )
             if ref["account"] != self._principal["account"] or ref["target"] != self._state.get(
                 "target"
             ):

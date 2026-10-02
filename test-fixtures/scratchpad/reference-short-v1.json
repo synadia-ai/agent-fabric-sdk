@@ -1,0 +1,33 @@
+{
+  "source": "durable-reference-v1 deterministic public vector",
+  "resolved": {
+    "short": "sp-r1:rwxmJU9MR2qrq6urq6urq6urq6urq6urAAAAAAAAAAkQb4WlVJM_S1l6lm-1",
+    "expanded": {
+      "version": 2,
+      "creator": "agent://writer/<reply>&\u2028line\u2029end",
+      "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+      "target": {
+        "volume": "Replies",
+        "creation_id": "abababababababababababababababab"
+      },
+      "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "generation": 7,
+      "path": "/replies/1.txt",
+      "retention": {
+        "slot": 2,
+        "generation": 9
+      },
+      "expires_at": 1900000600
+    }
+  },
+  "full_token": "sp-ref:eyJ2ZXJzaW9uIjoyLCJjcmVhdG9yIjoiYWdlbnQ6Ly93cml0ZXIvPHJlcGx5PiZcdTIwMjhsaW5lXHUyMDI5ZW5kIiwiYWNjb3VudCI6IkFDR0FDSFVGUzJHTklPVENMT0Y1QVJYWVFYMlMyRkNETklSVlQyM09aNkQ3S1VFTEtDQjY3VENTIiwidGFyZ2V0Ijp7InZvbHVtZSI6IlJlcGxpZXMiLCJjcmVhdGlvbl9pZCI6ImFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiIn0sInJvb3QiOiJBUUlEQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBIiwiZ2VuZXJhdGlvbiI6NywicGF0aCI6Ii9yZXBsaWVzLzEudHh0IiwicmV0ZW50aW9uIjp7InNsb3QiOjIsImdlbmVyYXRpb24iOjl9LCJleHBpcmVzX2F0IjoxOTAwMDAwNjAwfQ",
+  "locator": {
+    "route": "af0c66254f4c476a",
+    "creation_id": "abababababababababababababababab",
+    "retention": {
+      "slot": 2,
+      "generation": 9
+    },
+    "path_index": 0
+  }
+}

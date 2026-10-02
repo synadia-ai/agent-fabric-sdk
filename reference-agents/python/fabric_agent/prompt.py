@@ -20,13 +20,12 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import sys
 import time
 from pathlib import Path
 
 import nats
-from synadia_ai.agent_fabric import fabric_tracing
+from synadia_ai.agent_fabric import fabric_tracing, find_references
 from synadia_ai.agents import Agents, Identity, Query, ResponseChunk, resolve_nats_connection_bundle
 
 from .config import load_env_file
@@ -73,7 +72,7 @@ async def main() -> int:
                 # The agent asked something mid-reply; a command line has no one to ask.
                 await msg.reply("The caller is a command line and cannot answer; continue with your best judgement.")
         print(flush=True)
-        references = re.findall(r"sp-ref:[A-Za-z0-9_-]+", "".join(reply))
+        references = find_references("".join(reply))
         if references:
             print(f"reference: {references[-1]}", file=sys.stderr)
         print(f"{time.monotonic() - started:.1f} s", file=sys.stderr)

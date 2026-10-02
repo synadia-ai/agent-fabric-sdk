@@ -3,15 +3,10 @@
 And the port the agent's own ScratchPad client plugs into. Mirrors
 ``typescript/src/scratchpad.ts``.
 
-A reference is one token that fits in a prompt: ``sp-ref:`` followed by the
-reply of ScratchPad's ``ref.make`` (the volume, the immutable root, the path,
-its expiry, and the source sequence), base64url-encoded without padding,
-plus ``creator``, the prompt address of the agent that committed the
-content. A model copies the token from one reply into the next prompt
-without understanding it; code decodes it. The token is application data,
-not a credential: ScratchPad authenticates the reader and checks the grants
-on the volume, so a reference opens nothing until its creator grants the
-reader. The ``creator`` field says whom to ask, and proves nothing.
+A reference is one opaque token: service-issued ``sp-r1:`` or the existing
+expanded ``sp-ref:`` form. Models copy it unchanged; clients resolve metadata.
+Neither form grants authority. ScratchPad authenticates every reader and checks
+current grants. The creator is a routing claim that discovery verifies.
 
 The rules the fabric keeps around references (the reference agents'
 ``tools/README.md``, ``agent-fabric`` ``docs/agent-tools.md`` §2.2):
@@ -39,12 +34,14 @@ import json
 import re
 from collections.abc import Awaitable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol, TypeVar
+from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
-#: Every reference starts with this.
+#: Prefix of the expanded reference token.
 REFERENCE_PREFIX = "sp-ref:"
 
-_REFERENCE_RE = re.compile(r"sp-ref:[A-Za-z0-9_-]+")
+SHORT_REFERENCE_PREFIX = "sp-r1:"
+
+_REFERENCE_RE = re.compile(r"sp-(?:ref|r1):[A-Za-z0-9_-]+")
 
 #: The service metadata key an agent that reads the references it is handed
 #: registers, with the value ``"true"`` (the SDK's ``extra_metadata``). A
@@ -123,6 +120,15 @@ class ScratchPad(Protocol):
         ...
 
 
+@runtime_checkable
+class ResolvesReferences(Protocol):
+    """Optional metadata operation on a ScratchPad port; old ports remain valid."""
+
+    def resolve_reference(
+        self, reference: str, trace: TraceIds | None = None
+    ) -> Awaitable[dict[str, Any]] | dict[str, Any]: ...
+
+
 def find_references(text: str) -> list[str]:
     """Every reference token in ``text``, in order, repeats included."""
     return _REFERENCE_RE.findall(text)
@@ -186,8 +192,10 @@ async def _resolve(value: Awaitable[_T] | _T) -> _T:
 __all__ = [
     "READS_REFERENCES_KEY",
     "REFERENCE_PREFIX",
+    "SHORT_REFERENCE_PREFIX",
     "GrantKind",
     "Grantee",
+    "ResolvesReferences",
     "ScratchPad",
     "TraceIds",
     "find_references",

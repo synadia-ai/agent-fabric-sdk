@@ -16,7 +16,7 @@
 //                       minutes, because a chain of agents takes minutes
 
 import { connect } from "@nats-io/transport-node";
-import { fabricTracing } from "@synadia-ai/agent-fabric";
+import { fabricTracing, findReferences } from "@synadia-ai/agent-fabric";
 import { Agents, resolveNatsConnectionBundle, type NatsConnectionSource } from "@synadia-ai/agents";
 
 const [who, ...rest] = process.argv.slice(2);
@@ -65,7 +65,7 @@ try {
     }
   }
   process.stdout.write("\n");
-  const reference = reply.match(/sp-ref:[A-Za-z0-9_-]+/g)?.at(-1);
+  const reference = findReferences(reply).at(-1);
   if (reference !== undefined) console.error(`reference: ${reference}`);
   console.error(`${((Date.now() - started) / 1000).toFixed(1)} s`);
 } catch (err) {

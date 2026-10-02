@@ -78,3 +78,12 @@ retained for ten minutes, and its reference is valid as long; a grant goes
 only to an agent in the reference's own account, as `sp` refuses any other; ScratchPad must be reachable in the tenant's
 account. Both native and CLI clients implement the existing `ScratchPadClient`
 interface; the Fabric reference policy uses that interface.
+
+Short artifact references
+-------------------------
+
+The client accepts `sp-r1:` short tokens and existing `sp-ref:` tokens.
+Publication uses the short form when the service and the selected client support it.
+Copy the returned token unchanged into prompts and replies.
+The token survives client restarts; each content read still requires current authorization.
+See the [native client contract](../docs/scratchpad-native.md) for recovery and capability fallback.

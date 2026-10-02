@@ -1,6 +1,6 @@
 ---
 name: scratchpad
-description: Read ScratchPad references (sp-ref:…) handed to you, and publish, share, hydrate and recover bounded ScratchPad artifacts of your own, through this skill's scripts/sp.
+description: Read ScratchPad references (sp-r1:… or sp-ref:…) handed to you, and publish, share, hydrate and recover bounded ScratchPad artifacts of your own, through this skill's scripts/sp.
 ---
 
 # ScratchPad
@@ -45,7 +45,10 @@ Do not print credential contents.
 
 ## Read an artifact handed to you
 
-A reference is one token that starts with `sp-ref:`. Copy it exactly.
+A reference is one token that starts with `sp-r1:`. Copy the complete token exactly.
+Services that do not enable short references return a longer `sp-ref:` token; copy that token unchanged too.
+Keep the returned token in prompts and replies. Do not expand, shorten, repair, or reconstruct it.
+A short reference can be read after an agent restart; it does not depend on a session alias table.
 
 ```sh
 scripts/sp read --ref "$REFERENCE"

@@ -2,16 +2,10 @@
 // reference on the fabric, and the port the agent's own ScratchPad client
 // plugs into. Mirrors `synadia_ai/agent_fabric/scratchpad.py`.
 //
-// A reference is one token that fits in a prompt: `sp-ref:` followed by
-// the reply of ScratchPad's `ref.make` (the volume, the immutable root, the
-// path, its expiry, and the source sequence), base64url-encoded without
-// padding, plus `creator`, the prompt address of the agent that committed
-// the content. A model copies the token from one reply into the next prompt
-// without understanding it; code decodes it. The token is application data,
-// not a credential: ScratchPad authenticates the reader and checks the
-// grants on the volume, so a reference opens nothing until its creator
-// grants the reader. The `creator` field says whom to ask, and proves
-// nothing.
+// A reference is one opaque token: service-issued `sp-r1:` or the existing
+// expanded `sp-ref:` form. Models copy it unchanged; clients resolve metadata.
+// Neither form grants authority. ScratchPad authenticates every reader and
+// checks current grants. The creator is a routing claim that discovery verifies.
 //
 // The rules the fabric keeps around references (the reference agents'
 // `tools/README.md`, `agent-fabric` `docs/agent-tools.md` §2.2):
@@ -29,10 +23,12 @@
 // This package holds that policy. It does not talk to ScratchPad: the
 // agent brings its own client, behind the {@link ScratchPad} port.
 
-/** Every reference starts with this. */
+/** Prefix of the expanded reference token. */
 export const REFERENCE_PREFIX = "sp-ref:";
 
-const REFERENCE_RE = /sp-ref:[A-Za-z0-9_-]+/g;
+export const SHORT_REFERENCE_PREFIX = "sp-r1:";
+
+const REFERENCE_RE = /sp-(?:ref|r1):[A-Za-z0-9_-]+/g;
 
 /**
  * The service metadata key an agent that reads the references it is handed
@@ -76,6 +72,11 @@ type MaybePromise<T> = T | Promise<T>;
  * implementation keeps the ledger.
  */
 export interface ScratchPad {
+  /** Resolve reference metadata through the implementation's authenticated client. */
+  resolveReference?(
+    reference: string,
+    trace?: TraceIds,
+  ): MaybePromise<{ readonly creator: string }>;
   /** Whether `reference` points into this agent's own volume, where it may grant. */
   owns(reference: string): MaybePromise<boolean>;
   /**

@@ -257,8 +257,8 @@ uv run python -m fabric_agent.prompt .env.caller assistant "Write four lines abo
 ```
 … four lines …
 
-sp-ref:eyJyZWYiOnsidHlwZSI6…
-reference: sp-ref:eyJyZWYiOnsidHlwZSI6…
+sp-r1:…
+reference: sp-r1:…
 ```
 
 The agent committed its reply, granted you read on it, and only then appended the reference. The reference is a few hundred characters; the last line repeats it for copying. It is data, not a key: holding it opens nothing. What opens the content is the grant, and ScratchPad checks the grant against the identity your connection logged in with.
@@ -266,7 +266,7 @@ The agent committed its reply, granted you read on it, and only then appended th
 Now hand it on. Paste the whole reference:
 
 ```sh
-REF='sp-ref:…'
+REF='sp-r1:…'
 uv run python -m fabric_agent.prompt .env.caller assistant \
   "Ask the helper how many words the text at this reference has, and tell me its answer: $REF"
 ```
@@ -276,7 +276,7 @@ The helper agent said the text has **25 words**.
 26.9 s
 ```
 
-The helper's terminal shows the handoff arriving: `[e2abeb00] read sp-ref:eyJyZWYi… (135 chars)`.
+The helper's terminal shows the handoff arriving: `[e2abeb00] read sp-r1:… (135 chars)`.
 
 **In the console.** Open the tree, or either agent's page for its timeline. In order:
 

@@ -1,13 +1,13 @@
 # test-fixtures/
 
 Shared by the TypeScript and Python suites, so both packages are tested
-against the same bytes. Everything here is either vendored — copied, with
-its source and commit below, never edited — or the fabric's own. The one
-exception is the four schemas' texts: see below.
+against the same bytes. Everything here is either vendored, with its source
+and commit below, or the fabric's own. Schema text changes and the additive
+grant-request reference pattern are recorded below.
 
 | Path | What | Source |
 | --- | --- | --- |
-| `scratchpad/` | Canonical content bytes, rejection cases, and an exact v2 reference for native clients | Protocol vector set `scratchpad-v2-vector-build-2f59c514`; [vector details](scratchpad/README.md) |
+| `scratchpad/` | Canonical content bytes, rejection cases, full and short references, and an escaped JSON byte-bound intent | Protocol vector set `scratchpad-v2-vector-build-2f59c514` and locally generated public reference vectors; [vector details](scratchpad/README.md) |
 | `schemas/edge.json` | The edge record's JSON Schema, the contract every record must validate against (the fabric's design, §6.2) | The fabric's design documents, `docs/schemas/edge.json`: the constraints as at `f92ba41` (last changed in `2c93858`, 2026-09-16); the texts reworded here for publication on 2026-09-29, the source to follow |
 | `schemas/served.json` | The served record's JSON Schema: a harness plugin's binding of a thread to the harness's own thread ID, two per received prompt (the fabric's design, §8.3) | The fabric's design documents, `docs/schemas/served.json`: the constraints as at `5b13989` (last changed in `235e73f`, 2026-09-17); the texts reworded here for publication on 2026-09-29, the source to follow |
 | `schemas/sp-grant-request.json`, `schemas/sp-grant-reply.json` | The grant request's two shapes: what a requester sends a reference's creator, and what the creator answers | The fabric's design documents, `docs/schemas/`: the constraints as at `d0f4188` (last changed in `9b5a9d3`, 2026-09-22); from the examples repository's `tools/` until 2026-09-22; the request's texts reworded here for publication on 2026-09-29, the source to follow |
@@ -30,7 +30,15 @@ records and requests.
 **The schemas' texts.** On 2026-09-29 their `description`, `$comment` and
 `title` texts were reworded here for publication: no colleague, internal
 decision or internal document named, no dated proposal, the rule in plain
-words. Nothing else changed; the source takes the same bytes afterwards, so
-the copies are equal again. `python/tests/test_schema_constraints.py` holds
+words. That prose change preserved the constraints. `python/tests/test_schema_constraints.py` holds
 the digest of each file with those texts removed: it moves only when a
 constraint does, and a new copy updates it.
+
+The grant-request fixture is synchronized with the proposed canonical Fabric
+grant-request contract dated 2026-09-30. It accepts both `sp-r1:` and `sp-ref:`;
+every other request constraint is unchanged. This extension follows the baseline
+provenance in the table above. The proposal remains under review, with acceptance
+and activation gated separately. See the [native client contract](../docs/scratchpad-native.md#activate-short-references)
+for rollout requirements.
+The durable-reference vector in `scratchpad/reference-short-v1.json` is generated
+from the existing public v2 descriptor; see `scratchpad/README.md`.

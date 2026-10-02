@@ -149,7 +149,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — one branch per command, as the
                 json.dump(store, f)
             os.replace(f"{path}.{os.getpid()}", path)
 
-    required = ("url", "creds") if command == "read" else ("url", "creds", "dir", "volume")
+    required = (
+        ("url", "creds") if command in ("read", "resolve") else ("url", "creds", "dir", "volume")
+    )
     for f in required:
         if not flags.get(f):
             fail("usage", f"--{f} is required")
@@ -176,6 +178,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — one branch per command, as the
     ):
         fail(fault["code"], "injected", fault.get("unknown", False))
 
+    # The public vector uses valid NKEYs independently of this older simulator.
+    if os.environ.get("FAKE_SP_REFERENCE_FILE") and command in ("resolve", "read"):
+        fixture = load("FAKE_SP_REFERENCE_FILE")
+        if flags.get("ref") != fixture["resolved"]["short"]:
+            fail("not_found", "unknown fixture reference")
+        resolved_reply = (
+            {"reference": fixture["resolved"]["expanded"], "full_reference": fixture["full_token"]}
+            if command == "resolve"
+            else {"data_base64": base64.b64encode(b"short read").decode(), "bytes": 10}
+        )
+        sys.stdout.write(json.dumps(resolved_reply) + "\n")
+        return
     now = int(time.time())
     store.setdefault("volumes", {})
     store.setdefault("roots", {})

@@ -259,8 +259,8 @@ node --env-file=.env.caller --import tsx src/prompt.ts assistant "Write four lin
 ```
 … four lines …
 
-sp-ref:eyJ2ZXJzaW9uIjoy…
-reference: sp-ref:eyJ2ZXJzaW9uIjoy…
+sp-r1:…
+reference: sp-r1:…
 ```
 
 The agent committed its reply, granted you read on it, and only then appended the reference. The reference is a few hundred characters; the last line repeats it for copying. It is data, not a key: holding it opens nothing. What opens the content is the grant, and ScratchPad checks the grant against the identity your connection logged in with.
@@ -268,7 +268,7 @@ The agent committed its reply, granted you read on it, and only then appended th
 Now hand it on. Paste the whole reference:
 
 ```sh
-REF='sp-ref:…'
+REF='sp-r1:…'
 node --env-file=.env.caller --import tsx src/prompt.ts assistant \
   "Ask the helper how many words the text at this reference has, and tell me its answer: $REF"
 ```

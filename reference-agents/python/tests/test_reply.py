@@ -30,3 +30,10 @@ def test_bounded_reply_language_contract(item):
     assert delivered_reply(text, reference) == (expected, expected if item["large"] else text)
     if item["large"]:
         assert len(expected.encode()) < 1024
+
+
+def test_large_reply_exposes_only_short_handoff_token():
+    reference = "sp-r1:" + "A" * 60
+    reply, history = delivered_reply("x" * 65537, reference)
+    assert reply.endswith(reference) and "sp-ref:" not in reply
+    assert history == reply

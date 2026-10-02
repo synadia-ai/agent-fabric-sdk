@@ -20,3 +20,12 @@ describe("bounded reply language contract", () => {
     });
   }
 });
+
+
+it("returns only the short handoff token in a large model-facing reply", () => {
+  const reference = "sp-r1:" + "A".repeat(60);
+  const result = deliveredReply("x".repeat(65537), reference);
+  expect(result.reply.endsWith(reference)).toBe(true);
+  expect(result.reply).not.toContain("sp-ref:");
+  expect(result.history).toBe(result.reply);
+});

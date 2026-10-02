@@ -50,6 +50,15 @@ import { ScratchPadReader, wireTrace } from "./reader";
 import type { ScratchPadReaderOptions } from "./reader";
 import { ScratchPadTransport } from "./transport";
 import { WorkspaceStore } from "./store";
+import {
+  SHORT_REFERENCE_PREFIX,
+  validateReferenceSpec,
+  validateResolvedReference,
+  validateReferencePublishResult,
+  type ReferenceSpec,
+  type ResolvedReference,
+} from "./references";
+import type { Reference } from "./codec";
 
 export interface NativeScratchPadOptions extends ScratchPadReaderOptions {
   /** Private directory on a persistent local filesystem. One client owns it at a time. */
@@ -79,6 +88,7 @@ interface Publication {
   path: string;
   ttl: number;
   expiry_revision?: number;
+  reference?: ReferenceSpec;
 }
 interface Granted {
   request: GrantIssueRequest;
@@ -100,7 +110,7 @@ interface State {
   writer?: Writer;
   next: number;
   pending?: Pending;
-  last?: PublishResult & { path: string; ttl: number };
+  last?: PublishResult & { path: string; ttl: number; resolved?: ResolvedReference };
   grants: Granted[];
 }
 
@@ -151,10 +161,19 @@ function validateState(value: unknown): asserts value is State {
     uint(h.generation, undefined, 1);
   }
   if (s.last !== undefined) {
-    const last = record(s.last, ["reference", "receipt", "path", "ttl"]);
+    const last = record(s.last, ["reference", "receipt", "path", "ttl"], ["resolved"]);
     validateReceipt(last.receipt);
     text(last.reference, 8192, 1);
-    const reference = decodeReference(last.reference);
+    let reference: Reference;
+    if (last.reference.startsWith(SHORT_REFERENCE_PREFIX)) {
+      validateResolvedReference(last.resolved);
+      validateReferencePublishResult({ receipt: last.receipt, references: [last.resolved] });
+      check(last.resolved.short === last.reference, "saved short reference differs");
+      reference = last.resolved.expanded;
+    } else {
+      check(last.resolved === undefined, "full reference has unexpected expansion");
+      reference = decodeReference(last.reference);
+    }
     validatePath(last.path, 256);
     uint(last.ttl, MAX_GRANT_SECONDS, 1);
     check(
@@ -171,7 +190,14 @@ function validateState(value: unknown): asserts value is State {
     const p = s.pending as Pending;
     switch (p.kind) {
       case "publish":
-        record(p, ["kind", "command", "path", "ttl"], ["expiry_revision"]);
+        record(p, ["kind", "command", "path", "ttl"], ["expiry_revision", "reference"]);
+        if (p.reference !== undefined) {
+          validateReferenceSpec(p.reference);
+          check(
+            p.reference.creator === s.creator && sameValue(p.reference.paths, [p.path]),
+            "saved reference intent differs from publication",
+          );
+        }
         validateCommand(p.command);
         validatePath(p.path, 256);
         uint(p.ttl, MAX_GRANT_SECONDS, 1);
@@ -454,6 +480,11 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
         );
         return { reference: last.reference, receipt: last.receipt };
       }
+      const capabilities = await this.transport.referenceInfo();
+      const reference: ReferenceSpec | undefined = capabilities?.enabled
+        ? { creator: this.state.creator, paths: [path] }
+        : undefined;
+      if (reference) validateReferenceSpec(reference);
       // Local preparation carries no remote mutation. An interrupted build can
       // be replaced; only the atomic save of the complete intent makes it pending.
       this.store.clearObjects();
@@ -536,7 +567,13 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
             until: now() + ttl,
           },
         };
-        const publication: Publication = { kind: "publish", command, path, ttl };
+        const publication: Publication = {
+          kind: "publish",
+          command,
+          path,
+          ttl,
+          ...(reference ? { reference } : {}),
+        };
         this.change(publication);
         return await this.resumePublish(publication);
       } catch (error) {
@@ -560,11 +597,31 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
   }
 
   private async resumePublish(publication: Publication): Promise<PublishResult> {
+    if (publication.reference) {
+      try {
+        const result = await this.transport.referenceReceipt({
+          target: this.target(),
+          command: publication.command,
+          reference: publication.reference,
+        });
+        if (!sameValue(result.receipt.principal, this.principal))
+          throw unknown(undefined, "referenced receipt names another principal");
+        return this.accept(publication, result.receipt, result.references[0]);
+      } catch (error) {
+        if (!(
+          error instanceof NativeScratchPadError &&
+          error.code === "not_found" &&
+          !error.unknown
+        ))
+          throw error;
+      }
+    }
     const view = await this.transport.getVolume(this.target());
     const slot = view.writers[publication.command.writer.slot]!;
     // Read authoritative receipts before touching the spool: accepted data may
     // already have been collected, and a lost local spool does not erase success.
     if (
+      !publication.reference &&
       slot.receipt &&
       sameValue(slot.receipt.command, publication.command) &&
       sameValue(slot.receipt.principal, this.principal)
@@ -583,12 +640,22 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
     // refusal needs a durable revision fence before an earlier in-flight CAS
     // can be ruled out; a clock check alone does not provide that fence.
     if (publication.command.retention.until > now()) await this.upload();
-    let receipt: Receipt;
+    let receipt: Receipt, resolved: ResolvedReference | undefined;
     try {
-      receipt = await this.transport.publish({
-        target: this.target(),
-        command: publication.command,
-      });
+      if (publication.reference) {
+        const result = await this.transport.referencePublish({
+          target: this.target(),
+          command: publication.command,
+          reference: publication.reference,
+        });
+        receipt = result.receipt;
+        resolved = result.references[0];
+      } else {
+        receipt = await this.transport.publish({
+          target: this.target(),
+          command: publication.command,
+        });
+      }
     } catch (error) {
       if (error instanceof NativeScratchPadError && error.code === "expired" && !error.unknown) {
         await this.fenceExpired(publication, view);
@@ -600,7 +667,7 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       !sameValue(receipt.principal, this.principal)
     )
       throw unknown(undefined, "publish receipt differs from the saved command");
-    return this.accept(publication, receipt);
+    return this.accept(publication, receipt, resolved);
   }
 
   private async fenceExpired(publication: Publication, view: VolumeView): Promise<void> {
@@ -641,25 +708,42 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
     await this.control(continuation, true);
   }
 
-  private accept(publication: Publication, receipt: Receipt): PublishResult {
-    const reference = encodeReference({
-      version: 2,
-      creator: this.state.creator,
-      account: this.principal.account,
-      target: this.target(),
-      root: receipt.head.root,
-      generation: receipt.head.generation,
-      path: publication.path,
-      retention: receipt.retention,
-      expires_at: publication.command.retention.until,
-    });
+  private accept(
+    publication: Publication,
+    receipt: Receipt,
+    resolved?: ResolvedReference,
+  ): PublishResult {
+    check(
+      Boolean(publication.reference) === Boolean(resolved),
+      "referenced publication lost its descriptor",
+    );
+    const reference =
+      resolved?.short ??
+      encodeReference({
+        version: 2,
+        creator: this.state.creator,
+        account: this.principal.account,
+        target: this.target(),
+        root: receipt.head.root,
+        generation: receipt.head.generation,
+        path: publication.path,
+        retention: receipt.retention,
+        expires_at: publication.command.retention.until,
+      });
     const state: State = {
       ...this.state,
       next: receipt.command.number + 1,
-      last: { reference, receipt, path: publication.path, ttl: publication.ttl },
+      last: {
+        reference,
+        receipt,
+        path: publication.path,
+        ttl: publication.ttl,
+        ...(resolved ? { resolved } : {}),
+      },
     };
     delete state.pending;
     this.save(state, true, true);
+    if (resolved) this.cacheReference(resolved);
     return { reference, receipt };
   }
 
@@ -726,33 +810,45 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
     return result.reference;
   }
 
-  owns(token: string): boolean {
+  owns(token: string): boolean | Promise<boolean> {
+    const matches = (ref: Reference): boolean =>
+      ref.creator === this.state.creator && sameValue(ref.target, this.state.target);
+    if (token.startsWith(SHORT_REFERENCE_PREFIX))
+      return this.resolveReference(token).then(matches, () => false);
     try {
-      const ref = this.reference(token);
-      return ref.creator === this.state.creator && sameValue(ref.target, this.state.target);
+      return matches(this.reference(token));
     } catch {
       return false;
     }
   }
 
-  granted(token: string, grantee: Grantee): GrantKind | undefined {
-    if (!this.owns(token)) return undefined;
-    const ref = this.reference(token);
-    let kind: GrantKind | undefined;
-    for (const grant of this.state.grants) {
-      const q = grant.request;
-      if (
-        q.until > now() &&
-        sameValue(q.principal, grantee) &&
-        q.root === ref.root &&
-        q.path === ref.path &&
-        sameValue(q.retention, ref.retention)
-      ) {
-        if (grant.kind === "first-hand") return grant.kind;
-        kind = grant.kind;
+  granted(token: string, grantee: Grantee): GrantKind | undefined | Promise<GrantKind | undefined> {
+    const find = (ref: Reference): GrantKind | undefined => {
+      if (ref.creator !== this.state.creator || !sameValue(ref.target, this.state.target))
+        return undefined;
+      let kind: GrantKind | undefined;
+      for (const grant of this.state.grants) {
+        const q = grant.request;
+        if (
+          q.until > now() &&
+          sameValue(q.principal, grantee) &&
+          q.root === ref.root &&
+          q.path === ref.path &&
+          sameValue(q.retention, ref.retention)
+        ) {
+          if (grant.kind === "first-hand") return grant.kind;
+          kind = grant.kind;
+        }
       }
+      return kind;
+    };
+    if (token.startsWith(SHORT_REFERENCE_PREFIX))
+      return this.resolveReference(token).then(find, () => undefined);
+    try {
+      return find(this.reference(token));
+    } catch {
+      return undefined;
     }
-    return kind;
   }
 
   grantRead(
@@ -765,9 +861,9 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
     return this.run(async () => {
       validatePrincipal(grantee);
       const labels = wireTrace(trace, toolCallId);
-      if (!this.owns(token) || grantee.account !== this.principal.account)
+      if (!(await this.owns(token)) || grantee.account !== this.principal.account)
         refuse("denied", "only the owner can grant this same-account reference");
-      const ref = this.reference(token);
+      const ref = await this.resolveReference(token, trace);
       if (this.state.pending) await this.recoverPending();
       const view = await this.transport.getVolume(this.target()),
         clock = now();
@@ -823,7 +919,9 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
   release(token: string): Promise<void> {
     return this.run(async () => {
       if (this.state.pending) refuse("busy", "recover the pending operation before release");
-      const ref = decodeReference(token);
+      const ref = token.startsWith(SHORT_REFERENCE_PREFIX)
+        ? await this.resolveReference(token)
+        : decodeReference(token);
       if (ref.account !== this.principal.account || !sameValue(ref.target, this.state.target))
         refuse("denied", "reference belongs to another workspace");
       const view = await this.transport.getVolume(this.target());
