@@ -60,6 +60,10 @@ plugins/             the fabric add-ons for the harness plugins, one package per
     src/scratchpad.ts  ScratchPad: the shared pieces, and the file scripts/sp reads (the module cannot reach Bash's environment)
     .claude-plugin/, hooks/  the plugin `agent-fabric`: the SessionStart hook that names that file; skills/scratchpad (npm run build:sp)
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
+bundles/             self-contained harness plugins, built from the public plugin and this repo's add-on
+  build.sh           [claude-code|pi|openclaw|all] → bundles/out/fabric-{claude,pi,openclaw}.tar.gz, each
+                     with ScratchPad; Claude's tarball is also a marketplace, `fabric`
+  bundle.ts          one Bun build of plugin and add-on with shared chunks: one copy of the SDK
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
   typescript/        the TypeScript agent: src/agent.ts (the four behaviours), its caller, its echo; vitest
   python/            the Python agent: fabric_agent/agent.py, the same; pytest, with the interop of the two

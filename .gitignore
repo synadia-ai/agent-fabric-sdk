@@ -6,3 +6,6 @@
 .env
 .env.*
 __pycache__/
+
+# Plugin bundles built by bundles/*/build.sh
+bundles/out/
