@@ -14,7 +14,7 @@
 # ANY_BRANCH=1. The fabric package is this repository's own: ../typescript
 # and ../python.
 SDK_DIR       := synadia-agents
-SDK_BRANCH    := sdk-release-rollout
+SDK_BRANCH    := main
 ANY_BRANCH    ?=
 
 .PHONY: setup agent-ts test-ts agent-py test-py test test-reply-controls
