@@ -55,7 +55,7 @@ make setup
 
 It installs three packages in each language. `@synadia-ai/agents` and `synadia-ai-agents` are the agent protocol's caller side and the agent tools. `@synadia-ai/agent-service` and `synadia-ai-agent-service` are its host side. `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric` are the fabric's tracing and its rules for ScratchPad references.
 
-Until the packages are published, the agents link them by relative path. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `sdk-release-rollout`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build, `uv` installs all three editable. It is safe to run again.
+Until the packages are published, the agents link them by relative path. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `main`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build, `uv` installs all three editable. It is safe to run again.
 
 ```sh
 make test         # both agents' tests; nats-server on PATH

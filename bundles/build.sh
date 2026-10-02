@@ -21,7 +21,7 @@
 # Defaults: all, and bundles/out.
 #
 # synadia-agents is where this repo's file: links expect it (CLAUDE.md):
-# ../synadia-agents, on sdk-release-rollout. Needs bun, node/npm, and gh
+# ../synadia-agents, on main. Needs bun, node/npm, and gh
 # logged in when ScratchPad's release cannot be downloaded anonymously.
 set -eu
 
@@ -41,8 +41,8 @@ step() { printf '\n== %s\n' "$*"; }
 
 step "checking the checkouts"
 branch=$(git -C "$agents" branch --show-current)
-[ "$branch" = sdk-release-rollout ] || {
-  echo "synadia-agents is on '$branch'; this repo builds against sdk-release-rollout" >&2
+[ "$branch" = main ] || {
+  echo "synadia-agents is on '$branch'; this repo builds against main" >&2
   exit 1
 }
 agents_rev=$(git -C "$agents" rev-parse --short HEAD)

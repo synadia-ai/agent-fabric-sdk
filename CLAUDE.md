@@ -121,7 +121,7 @@ reference-agents/    the two reference agents, the package's worked example — 
 ## The protocol SDK during development
 
 Until the SDK with the hooks is published, both packages resolve it from
-the checkout of `synadia-agents` on branch `sdk-release-rollout`, expected at
+the checkout of `synadia-agents` on `main` (everything of the rollout merged there on 2026-10-02), expected at
 `../synadia-agents` next to this repo:
 
 - TypeScript: `file:` dependencies in `typescript/package.json`. They point
