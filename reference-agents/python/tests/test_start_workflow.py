@@ -1,5 +1,6 @@
-"""The durable workflow (5): a run started by the model's tool call joins the
-task that started it, and starting the worker creates nothing.
+"""Durable work delegated (5): a workflow started by the model's
+``start_workflow`` call joins the tool call that started it, and starting the
+worker creates nothing.
 
     server  — a nats-server with JetStream and one account shaped like a
               tenant's: file storage only, ``max_bytes`` required, room for
@@ -10,7 +11,7 @@ task that started it, and starting the worker creates nothing.
               JetStream API advisories, and reads the run's journal back
     agent   — ``start_agent()`` with ``durable=True``, pointed at the fake
     fake    — the model behind a fake proxy: a prompt "durable: <task>" asks
-              for ``run_durable_task`` under a tool-call id with a dot and a
+              for ``start_workflow`` of ``durable-task`` under a tool-call id with a dot and a
               space in it; the step's call answers "step answer: …"; a tool
               result is answered "done: …"
 
@@ -42,7 +43,7 @@ from synadia_ai.agents import Agents, DiscoverFilter, Identity, ResponseChunk, s
 
 from fabric_agent.agent import start_agent
 from fabric_agent.config import AgentConfig, AgentIdentityConfig, ModelConfig, NatsConfig, load_config
-from fabric_agent.durable import DURABLE_STEP_INSTRUCTION, RUN_DURABLE_TASK
+from fabric_agent.durable import DURABLE_STEP_INSTRUCTION, START_WORKFLOW
 from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_user
 
 binary = nats_server_on_path()
@@ -87,11 +88,14 @@ class _Fake:
                     message = {"role": "assistant", "content": f"step answer: {content}"}
                 elif last["role"] == "tool":
                     message = {"role": "assistant", "content": f"done: {content}"}
-                elif content.startswith("durable: ") and RUN_DURABLE_TASK in offered:
+                elif content.startswith("durable: ") and START_WORKFLOW in offered:
                     call = {
                         "id": TOOL_CALL_ID,
                         "type": "function",
-                        "function": {"name": RUN_DURABLE_TASK, "arguments": json.dumps({"task": content[9:]})},
+                        "function": {
+                            "name": START_WORKFLOW,
+                            "arguments": json.dumps({"name": "durable-task", "input": {"task": content[9:]}}),
+                        },
                     }
                     message = {"role": "assistant", "content": "", "tool_calls": [call]}
                 else:
@@ -181,7 +185,7 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
 
             # The served prompt's first model call names its thread.
             served_headers, served_body = fake.requests[0]
-            assert RUN_DURABLE_TASK in [t["function"]["name"] for t in served_body["tools"]]
+            assert START_WORKFLOW in [t["function"]["name"] for t in served_body["tools"]]
             thread = served_headers["x-synadia-thread-id"]
             root = served_headers["x-synadia-root-id"]
             run_id = f"{thread}-{SANITISED}"
@@ -189,8 +193,7 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
             # The tool's result came back to the model, and the reply carries it.
             assert json.loads(reply.removeprefix("done: ")) == {
                 "run_id": run_id,
-                "task": "count to three",
-                "answer": "step answer: count to three",
+                "result": {"task": "count to three", "answer": "step answer: count to three"},
             }
 
             # The journal's start entry, read back as the tenant.
@@ -199,7 +202,10 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
             start = json.loads(base64.b64decode(got["message"]["data"]))
             assert start["kind"] == "start"
             assert start["wf"] == "durable-task"
-            assert start["input"] == {"task": "count to three", "trace": {"thread_id": thread, "root_id": root}}
+            assert start["input"] == {
+                "input": {"task": "count to three"},
+                "trace": {"thread_id": thread, "root_id": root},
+            }
 
             # The step's model call, made on the worker, carried the same trace.
             step = next(h for h, b in fake.requests if b["messages"][0].get("content") == DURABLE_STEP_INSTRUCTION)

@@ -33,7 +33,7 @@ async def main() -> None:
     print(f"identity: {agent.identity or 'none'}")
     print(f"model: {cfg.model.model} through {cfg.model.proxy_url}")
     print(f"scratchpad: {env.get('SCRATCHPAD_VOLUME') or 'off'}")
-    print(f"durable: {'on (durable-task, run_durable_task)' if cfg.durable else 'off'}")
+    print(f"durable: {'on (start_workflow: durable-task)' if cfg.durable else 'off'}")
     print("press Ctrl+C to stop (the conversation lives in memory and is gone on restart)")
 
     stop = asyncio.Event()

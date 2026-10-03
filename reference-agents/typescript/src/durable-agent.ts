@@ -117,7 +117,7 @@ export interface QuestionAnswer {
 }
 
 /** What the model is told in place of an empty answer. */
-const NO_REPLY = "Your last answer was empty. Answer the prompt you are serving in words.";
+export const NO_REPLY = "Your last answer was empty. Answer the prompt you are serving in words.";
 
 type Enter = <R>(fn: () => R) => R;
 

@@ -1,12 +1,20 @@
 # Durable runs on the fabric
 
-**Version:** 0.1.0-alpha · **Date:** 2026-10-03 · **Status:** the helper in both packages; the reference agents run a durable workflow with `AGENT_DURABLE=1`; a durable reference agent in TypeScript
+**Version:** 0.1.0-alpha · **Date:** 2026-10-03 · **Status:** the helper in both packages; the reference agents delegate durable work with `AGENT_DURABLE=1`; a durable reference agent in each language
 
 An agent on the fabric can hand work to a durable-execution library: a workflow
 whose steps are journaled on NATS, so the work survives a restart of the agent
 and a finished step is not run again. Such a run is started from inside a
 prompt, usually by a tool call of the agent's model, and it belongs to that
 prompt's task. This page is how the run says so.
+
+Two things follow from it. **Durable agents**, where even the model calls are
+durable: the model loop is the workflow, and a crash of the agent loses no
+model turn it had finished. And **durable work for every agent on the
+fabric**, harness agents included: any agent can hand a job to a workflow, and
+the run is shown under the tool call that started it. One limit is named
+below: the reply of a prompt that was being served when its process died is
+not delivered.
 
 The join is a convention, not a record. Nothing is written for a run: its id
 names the task that started it, and a model call inside one of its steps
@@ -151,29 +159,52 @@ or update for existing resources. An account without the resources refuses
 the worker at its first create that does not fit; ask your deployment for
 them.
 
-## The reference agents
+## The reference agents: durable work, delegated
 
-Both reference agents run one durable workflow when `AGENT_DURABLE=1` (off by
+Both reference agents delegate durable work when `AGENT_DURABLE=1` (off by
 default): `reference-agents/typescript/src/durable.ts` and
 `reference-agents/python/fabric_agent/durable.py`, marked `(5)` where the run
-joins its task. The workflow `durable-task` has two steps: `ask-model` calls
-the model through the proxy with `durableHeaders` from the run's input and a
-short instruction, and `write-result` writes the step's answer into the
-result. The model sees one more tool, `run_durable_task`. Its runner starts the
-run with `durableRunId(<the model's tool-call id>)` and the trace from
-`durableTrace()` in the input, awaits the result, and returns it as the tool's
-text, with the run id.
+joins its task. This is the shape for an agent whose model loop is not
+durable, a plain SDK agent or a harness: the model hands a job to a workflow
+the agent's process hosts, by name with an input, and gets back the run id and
+the result.
 
-Their tests (`test/durable.test.ts`, `tests/test_durable.py`) run on a
-throwaway `nats-server` with JetStream and one account shaped like a tenant's:
-file storage only, `max_bytes` required on every stream, room for seven
-streams. The seven are created first from the configurations the onboarding
-applies (`test-fixtures/durable/`, at one replica). A prompt's tool call
-starts the run, and the tests check that the journal's start entry has the run
-id `<served thread>-<tool call id>` and the trace in its input, that the
-step's model call reached the stub proxy with the two headers equal to that
+The process hosts a small registry of named workflows, run by a worker on the
+agent's connection. The model sees one more tool, `start_workflow`, defined
+word for word the same in both languages:
+
+```json
+{"type": "function", "function": {
+  "name": "start_workflow",
+  "description": "Starts a durable workflow this agent hosts and waits for its result. Each step of a workflow is journaled, so the work survives a restart of this agent and a finished step is not done again. Use it when the prompt asks for durable work. The workflows: durable-task: carries out a task given in words with one model call, then writes the answer into its result; input {\"task\": \"<the task>\"}. Returns the run id and the workflow's result.",
+  "parameters": {"type": "object", "properties": {
+    "name": {"type": "string", "enum": ["durable-task"], "description": "The workflow to start."},
+    "input": {"type": "object", "description": "The workflow's input, as its description says."}},
+    "required": ["name", "input"]},
+  "strict": false}}
+```
+
+The `enum` and the list in the description are built from the registry. Its one
+entry is a demo, `durable-task`, of two steps: `ask-model` calls the model
+through the proxy with `durableHeaders` from the run's input and a short
+instruction, and `write-result` writes the step's answer into the result. The
+tool's runner starts the run under `durableRunId(<the model's tool-call id>)`,
+with `{ "input": <the model's input>, "trace": durableTrace() }` as the run's
+input, awaits the result, and returns `{ "run_id", "result" }` as the tool's
+text. The console shows the run under the tool call that started it.
+
+Their tests (`test/start-workflow.test.ts`, `tests/test_start_workflow.py`) run
+on a throwaway `nats-server` with JetStream and one account shaped like a
+tenant's: file storage only, `max_bytes` required on every stream, room for
+seven streams. The seven are created first from the configurations the
+onboarding applies (`test-fixtures/durable/`, at one replica). A prompt's tool
+call starts the run, and the tests check that the journal's start entry has
+the run id `<served thread>-<tool call id>` and the trace in its input, that
+the step's model call reached the stub proxy with the two headers equal to that
 trace, and that the account's JetStream API advisories show no stream create
-or update from the worker's start or the run.
+or update from the worker's start or the run. `tests/test_durable_parity.py`
+compares the tool's definition and the workflows' names and words between the
+two agents, byte for byte.
 
 ## A durable agent
 
@@ -187,9 +218,15 @@ result, and execution resumes at the first step not yet journaled. With the
 fabric's helpers, its model calls before and after a crash land on one thread
 under one agent.
 
-The TypeScript reference package has one: `reference-agents/typescript/src/durable-agent.ts`,
-started with `npm run start:durable` and configured by the same `.env` as
-the reference agent.
+This is the shape for an agent whose own work must survive a crash; it needs no
+`start_workflow`, since its loop is the workflow. Both reference packages have
+one, configured by the same `.env` as the reference agent:
+`reference-agents/typescript/src/durable-agent.ts`, started with
+`npm run start:durable`, and `reference-agents/python/fabric_agent/durable_agent.py`,
+started with `uv run python -m fabric_agent.durable_main`. The Python host
+serves one prompt at a time unless told otherwise, and the front door waits on
+the run's result while it serves, so the Python agent sets
+`max_concurrent_prompts` as the reference agent does.
 
 **The front door** is the fabric's: `AgentService` with `fabricTracing()`'s
 interceptors and the signed identity. It is a thin relay and not durable
@@ -217,12 +254,13 @@ the run it started.
 | --- | --- |
 | `llm-N` | a model turn through the proxy, with `durableHeaders(input.trace)` |
 | `tool-N-i` | a tool call, in the run's tool scope and inside `withDurableTrace(input.trace, N + 1, …)` |
-| `ask-request-N-i`, then the signal `ask-N-i` | a question the prompted agent asked: the run parks on `ctx.await`; the front door asks the caller and signals the answer |
+| `ask-request-N-i`, then the signal `ask-N-i` | a question the prompted agent asked: the run parks on `ctx.await` (`ctx.wait` in Python); the front door asks the caller and signals the answer |
 | `answer-N-i` | the caller's answer, carried back to the prompted agent with `answer_agent` |
 
 The tools are the fabric's agent tools, with the ScratchPad extension when
 ScratchPad is configured. A worker serves no prompt, so the tools need a scope
-of their own: `AgentTools.runInPromptScope(fn, { caller })` opens one, with
+of their own: `AgentTools.runInPromptScope(fn, { caller })` opens one
+(`async with tools.prompt_scope(caller=…)` in Python), with
 the verified caller for the loop guard. A call that asked a question has to
 stay open while the run waits for the answer, across steps, so the agent holds
 one scope per run open until the run ends, and each tool step enters it.
@@ -241,7 +279,7 @@ dead worker's lease on the run has lapsed.
 - A tool call in flight when the process died runs again. `prompt_agent`
   carries no idempotency key, so the prompted agent may be prompted twice,
   and a second edge is written for it.
-- A question parked on `ctx.await` survives a crash in the journal. The call
+- A question parked on a durable signal survives a crash in the journal. The call
   that asked it does not: it lived on the dead process's connection. An answer
   signalled later reaches `answer_agent` as a call it does not know, and the
   model reads that in words.
@@ -250,12 +288,14 @@ dead worker's lease on the run has lapsed.
   stream ended with the process. Delivering that reply needs a durable prompt,
   which the protocol does not have yet. The agent does not work around it.
 
-Its tests: `test/durable-agent.test.ts` runs the agent as a child process
+Its tests, the same in both languages: `test/durable-agent.test.ts` and
+`tests/test_durable_agent.py` run the agent as a child process
 against a stub model and a tenant-shaped server. The stub holds the second
 model turn. The test kills the agent after the run's first step has ended and
 starts it again. The run completes, with one `step-end` per step. The stub saw
 the first model turn exactly once, every model call of both processes carried
 the same two headers, and the caller's prompt ended without the reply.
-`test/durable-agent-question.test.ts` relays a prompted agent's question to
+`test/durable-agent-question.test.ts` and `tests/test_durable_agent_question.py`
+relay a prompted agent's question to
 the caller through `ask-0-0`, and checks the edge `prompt_agent` wrote from the
 worker: under the served thread, under the model's call.

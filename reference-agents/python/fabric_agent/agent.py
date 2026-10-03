@@ -19,10 +19,10 @@ happens, so the file can be read as the list:
         own content, in code, by a fixed rule. All of it is the fabric
         package's, the rules and the ScratchPad they run on; this agent writes
         no ScratchPad code, it is configured (``SCRATCHPAD_VOLUME``);
-    (5) optionally, it runs durable work: a workflow of the durable-execution
-        library on its own connection, started by a tool call, whose run id
-        names the served thread and the call, and whose model call lands on
-        that thread (``durable.py``, ``AGENT_DURABLE=1``).
+    (5) optionally, it delegates durable work: the model starts a workflow
+        this process hosts, by name with an input (``start_workflow``); the
+        run's id names the served thread and the tool call, and its model
+        calls land on that thread (``durable.py``, ``AGENT_DURABLE=1``).
 
 The same agent as ``typescript/src/agent.ts``, in Python: the same tool
 definitions, the same words to the model, the same reference token, and the
@@ -225,9 +225,9 @@ async def start_agent(
     histories = Histories(cfg.agent.max_history_exchanges)
 
     # (5) Durable work, with ``AGENT_DURABLE=1``: a worker of the durable-execution
-    # library on this connection runs the workflow ``durable-task``, and the
-    # model is offered ``run_durable_task``, which starts a run joined to the
-    # prompt being served. The library's resources are the tenant's already;
+    # library on this connection runs the workflows this process hosts
+    # (``durable.py``), and the model is offered ``start_workflow``, which starts
+    # one under the tool call, joined to the prompt being served. The library's resources are the tenant's already;
     # the worker is given no sizing and creates nothing.
     durable: DurableTasks | None = (
         await start_durable_tasks(nc, model, result_timeout_s=cfg.reply_timeout_s, log=log)

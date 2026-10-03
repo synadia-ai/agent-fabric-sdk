@@ -1,5 +1,6 @@
-// The durable workflow (5): a run started by the model's tool call joins the
-// task that started it, and starting the worker creates nothing.
+// Durable work delegated (5): a workflow started by the model's
+// `start_workflow` call joins the tool call that started it, and starting the
+// worker creates nothing.
 //
 //   server  — a nats-server with JetStream and one account shaped like a
 //             tenant's: file storage only, `max_bytes` required, room for
@@ -10,7 +11,7 @@
 //             JetStream API advisories, and reads the run's journal back
 //   agent   — `startAgent()` with `durable: true`, pointed at the fake
 //   fake    — the model behind a fake proxy: a prompt "durable: <task>"
-//             asks for `run_durable_task` under a tool-call id with a dot
+//             asks for `start_workflow` of `durable-task` under a tool-call id with a dot
 //             and a space in it; the step's call answers "step answer: …";
 //             a tool result is answered "done: …"
 //
@@ -32,7 +33,7 @@ import { Agents, signerFromSeed } from "@synadia-ai/agents";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startAgent, type RunningAgent } from "../src/agent.js";
 import { loadConfig, type AgentConfig } from "../src/config.js";
-import { DURABLE_STEP_INSTRUCTION, RUN_DURABLE_TASK } from "../src/durable.js";
+import { DURABLE_STEP_INSTRUCTION, START_WORKFLOW } from "../src/durable.js";
 import type { ChatMessage } from "../src/model.js";
 import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server.js";
 
@@ -58,7 +59,7 @@ describe("AGENT_DURABLE", () => {
   });
 });
 
-describe.skipIf(binary === undefined)("a durable run joined to the task that started it", () => {
+describe.skipIf(binary === undefined)("start_workflow: a durable run joined to the tool call that started it", () => {
   let server: TestNatsServer;
   let fake: Server;
   let dir: string;
@@ -122,7 +123,7 @@ describe.skipIf(binary === undefined)("a durable run joined to the task that sta
           message = { role: "assistant", content: `step answer: ${last.content}` };
         } else if (last.role === "tool") {
           message = { role: "assistant", content: `done: ${last.content}` };
-        } else if ((last.content ?? "").startsWith("durable: ") && body.tools?.some((t) => t.function.name === RUN_DURABLE_TASK)) {
+        } else if ((last.content ?? "").startsWith("durable: ") && body.tools?.some((t) => t.function.name === START_WORKFLOW)) {
           message = {
             role: "assistant",
             content: "",
@@ -130,7 +131,10 @@ describe.skipIf(binary === undefined)("a durable run joined to the task that sta
               {
                 id: TOOL_CALL_ID,
                 type: "function",
-                function: { name: RUN_DURABLE_TASK, arguments: JSON.stringify({ task: last.content!.slice(9) }) },
+                function: {
+                  name: START_WORKFLOW,
+                  arguments: JSON.stringify({ name: "durable-task", input: { task: last.content!.slice(9) } }),
+                },
               },
             ],
           };
@@ -194,15 +198,18 @@ describe.skipIf(binary === undefined)("a durable run joined to the task that sta
 
     // The served prompt's first model call names its thread.
     const served = requests[0]!;
-    expect(served.body.tools?.map((t) => t.function.name)).toContain(RUN_DURABLE_TASK);
+    expect(served.body.tools?.map((t) => t.function.name)).toContain(START_WORKFLOW);
     const thread = served.headers["x-synadia-thread-id"] as string;
     const root = served.headers["x-synadia-root-id"] as string;
     expect(thread).toMatch(/^[0-9a-f]{32}$/);
     const runId = `${thread}-${SANITISED}`;
 
     // The tool's result came back to the model, and the reply carries it.
-    const result = JSON.parse(reply.replace(/^done: /, "")) as Record<string, string>;
-    expect(result).toEqual({ run_id: runId, task: "count to three", answer: "step answer: count to three" });
+    const result = JSON.parse(reply.replace(/^done: /, "")) as Record<string, unknown>;
+    expect(result).toEqual({
+      run_id: runId,
+      result: { task: "count to three", answer: "step answer: count to three" },
+    });
 
     // The journal's start entry, read back as the tenant.
     const got = await api<{ message: { subject: string; data: string } }>("$JS.API.STREAM.MSG.GET.DE_JOURNAL", {
@@ -213,11 +220,11 @@ describe.skipIf(binary === undefined)("a durable run joined to the task that sta
     const start = JSON.parse(Buffer.from(got.message.data, "base64").toString()) as {
       kind: string;
       wf: string;
-      input: { task: string; trace: unknown };
+      input: { input: unknown; trace: unknown };
     };
     expect(start.kind).toBe("start");
     expect(start.wf).toBe("durable-task");
-    expect(start.input).toEqual({ task: "count to three", trace: { thread_id: thread, root_id: root } });
+    expect(start.input).toEqual({ input: { task: "count to three" }, trace: { thread_id: thread, root_id: root } });
 
     // The step's model call, made on the worker, carried the same trace.
     const step = requests.find((r) => r.body.messages[0]?.content === DURABLE_STEP_INSTRUCTION);

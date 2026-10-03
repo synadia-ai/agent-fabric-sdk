@@ -55,8 +55,9 @@ export interface AgentConfig {
     readonly replyTimeoutMs: number;
   };
   /**
-   * `AGENT_DURABLE=1`: the agent runs the durable workflow `durable-task`
-   * and offers the model `run_durable_task` (`durable.ts`). Off when absent.
+   * `AGENT_DURABLE=1`: the agent hosts durable workflows, the demo
+   * `durable-task`, and offers the model `start_workflow` (`durable.ts`).
+   * Off when absent.
    */
   readonly durable?: boolean;
 }

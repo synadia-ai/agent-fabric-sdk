@@ -68,9 +68,10 @@ bundles/             self-contained harness plugins, built from the public plugi
   bundle.ts          one Bun build of plugin and add-on with shared chunks: one copy of the SDK
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
   typescript/        the TypeScript agent: src/agent.ts (the five behaviours), its caller, its echo; vitest
-                     src/durable.ts, the durable workflow behind AGENT_DURABLE=1, on the library's checkout
+                     src/durable.ts, start_workflow and the workflows it hosts behind AGENT_DURABLE=1, on the library's checkout
                      src/durable-agent.ts, src/durable-main.ts: the durable agent, the model loop as the workflow (npm run start:durable)
   python/            the Python agent: fabric_agent/agent.py, the same, and fabric_agent/durable.py; pytest, with the interop of the two
+                     fabric_agent/durable_agent.py, durable_main.py: the durable agent (python -m fabric_agent.durable_main)
   docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
   Makefile, scripts/setup.sh   `make setup` (the SDK checked and built, this package built, both agents installed), `make test`
 ```

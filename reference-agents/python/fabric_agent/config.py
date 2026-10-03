@@ -89,8 +89,9 @@ class AgentConfig:
     model: ModelConfig
     #: How long one prompt to another agent may run before it is given up (the tools' ``max_wait_s``).
     reply_timeout_s: float
-    #: ``AGENT_DURABLE=1``: the agent runs the durable workflow ``durable-task``
-    #: and offers the model ``run_durable_task`` (``durable.py``). Off by default.
+    #: ``AGENT_DURABLE=1``: the agent hosts durable workflows, the demo
+    #: ``durable-task``, and offers the model ``start_workflow`` (``durable.py``).
+    #: Off by default.
     durable: bool = False
 
 

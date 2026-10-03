@@ -20,10 +20,10 @@
 //       it is the fabric package's, the rules and the ScratchPad they run
 //       on; this agent writes no ScratchPad code, it is configured
 //       (`SCRATCHPAD_VOLUME`);
-//   (5) optionally, it runs durable work: a workflow of the durable-execution
-//       library on its own connection, started by a tool call, whose run id
-//       names the served thread and the call, and whose model call lands on
-//       that thread (`durable.ts`, `AGENT_DURABLE=1`).
+//   (5) optionally, it delegates durable work: the model starts a workflow
+//       this process hosts, by name with an input (`start_workflow`); the
+//       run's id names the served thread and the tool call, and its model
+//       calls land on that thread (`durable.ts`, `AGENT_DURABLE=1`).
 //
 // Ported from the labs' `06-chat-agent`: the persona and the accumulating
 // history stay, one history per verified caller (`history.ts`).
@@ -189,9 +189,9 @@ export async function startAgent(
   const histories = new Histories(cfg.agent.maxHistoryExchanges);
 
   // (5) Durable work, with `AGENT_DURABLE=1`: a worker of the durable-execution
-  // library on this connection runs the workflow `durable-task`, and the
-  // model is offered `run_durable_task`, which starts a run joined to the
-  // prompt being served. The library's resources are the tenant's already;
+  // library on this connection runs the workflows this process hosts
+  // (`durable.ts`), and the model is offered `start_workflow`, which starts
+  // one under the tool call, joined to the prompt being served. The library's resources are the tenant's already;
   // the worker is given no sizing and creates nothing.
   const durable: DurableTasks | undefined = cfg.durable === true
     ? await startDurableTasks(nc, model, { resultTimeoutMs: cfg.tools.replyTimeoutMs, log: (line) => log(line) })

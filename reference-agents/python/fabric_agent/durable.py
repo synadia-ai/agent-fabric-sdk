@@ -1,31 +1,37 @@
-"""durable.py — a durable workflow the model can start, joined to the task that started it.
+"""durable.py — durable work delegated by the model: the workflows this process hosts, and the tool that starts one.
 
 ``synadia-durable`` runs workflows on NATS: each step is journaled, and a run
-survives a restart of the agent by replaying what its journal holds. This
-agent registers one workflow, ``durable-task``, of two steps:
+survives a restart of the agent by replaying what its journal holds. An agent
+whose own model loop is not durable can still hand a job to a workflow: the
+model calls ``start_workflow`` with a workflow's name and its input, and gets
+back the run id and the result. The workflows are the ones this process
+hosts, in a small registry (:func:`hosted_workflows`); a worker on the agent's
+connection runs them.
+
+One is registered here, a demo, ``durable-task``, of two steps:
 
     ask-model     one model call through the proxy, with the two trace
                   headers taken from the run's input, so the call lands on
                   the thread of the prompt that started the run
     write-result  the step's answer written into the run's result
 
-and offers the model one more tool, ``run_durable_task``, that starts a run
-and waits for its result.
-
-The run joins the task that started it by its id: the fabric package's
+The run joins the tool call that started it by its id: the fabric package's
 ``durable_run_id(tool_call_id)`` is ``<thread_id>-<tool call id>``, the
-served thread and the model's call. A step runs on the worker, outside the
-prompt's trace context, so the trace travels in the run's input
-(``durable_trace()``) and comes back as headers inside the step
-(``durable_headers()``).
+served thread and the model's call, and the console shows the run under that
+call. A step runs on the worker, outside the prompt's trace context, so the
+trace travels in the run's input (``durable_trace()``) and comes back as
+headers inside the step (``durable_headers()``).
 
 The library's seven JetStream resources are the tenant's: the fabric's
 onboarding creates them in the account, sized to its tier. The worker and the
 client are given no sizing and no replicas, so starting them creates nothing
 and changes nothing; they find what is there.
 
-The same as ``typescript/src/durable.ts``: the same workflow name and steps,
-the same tool in the same words, the same result.
+An agent whose model loop is itself durable needs no such tool: its loop is
+the workflow (``durable_agent.py``).
+
+The same as ``typescript/src/durable.ts``: the same workflow, the same tool in
+the same words, the same result.
 """
 
 from __future__ import annotations
@@ -42,45 +48,37 @@ from synadia_durable import Ctx, StartOptions, Workflow, create_client, create_w
 
 from .model import ChatMessage, ModelClient, ToolRunner
 
-#: The workflow's name: a subject token and a consumer name to the library.
-DURABLE_WORKFLOW = "durable-task"
-
 #: The tool the model sees.
-RUN_DURABLE_TASK = "run_durable_task"
+START_WORKFLOW = "start_workflow"
 
-#: What the model reads about the tool; word for word the TypeScript agent's.
-RUN_DURABLE_TASK_TOOL: dict[str, Any] = {
-    "type": "function",
-    "function": {
-        "name": RUN_DURABLE_TASK,
-        "description": (
-            "Runs a task as a durable workflow on this agent: each step is journaled, so the work survives a restart "
-            "and is not done twice. Use it when the prompt asks for durable work. Give the task in words; "
-            "the result is the workflow's answer."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {"task": {"type": "string", "description": "The task, in words."}},
-            "required": ["task"],
-        },
-        "strict": False,
-    },
-}
+#: The demo workflow's name: a subject token and a consumer name to the library.
+DURABLE_TASK = "durable-task"
 
-#: What the step tells the model.
+#: What the demo workflow's step tells the model.
 DURABLE_STEP_INSTRUCTION = "Carry out the task you are given. Answer briefly, in plain text."
 
 
-def durable_task_workflow(model: ModelClient) -> Workflow[dict[str, Any], dict[str, str]]:
-    """The workflow, over this agent's model client.
+@dataclass(frozen=True)
+class HostedWorkflow:
+    """One workflow the process hosts, as the model is told about it.
 
-    Its input is ``{"task": …, "trace": …}``: the task, and the trace of the
-    prompt that started it, under a key of this agent's choosing. Its result
-    is ``{"task": …, "answer": …}``.
+    A run's input is ``{"input": <what the model gave>, "trace": <the prompt's
+    trace>}``, under keys of this agent's choosing.
     """
 
-    async def run(ctx: Ctx, input: dict[str, Any]) -> dict[str, str]:
-        task = str(input["task"])
+    name: str
+    #: One line for the tool's description: what it does and the input it takes.
+    description: str
+    #: Why an input is refused, in words; ``None`` when it is accepted.
+    check: Callable[[dict[str, Any]], str | None]
+    workflow: Workflow[dict[str, Any], Any]
+
+
+def durable_task_workflow(model: ModelClient) -> Workflow[dict[str, Any], dict[str, str]]:
+    """The demo workflow, over this agent's model client."""
+
+    async def run(ctx: Ctx, started: dict[str, Any]) -> dict[str, str]:
+        task = str(started["input"]["task"])
 
         # Step one: the model, with the trace headers from the input. The step
         # runs outside the prompt's context, where ``trace_headers()`` has nothing.
@@ -89,7 +87,7 @@ def durable_task_workflow(model: ModelClient) -> Workflow[dict[str, Any], dict[s
                 {"role": "system", "content": DURABLE_STEP_INSTRUCTION},
                 {"role": "user", "content": task},
             ]
-            completion = await model.complete(messages, [], durable_headers(input.get("trace")))
+            completion = await model.complete(messages, [], durable_headers(started.get("trace")))
             return str(completion.message.get("content") or "")
 
         answer: str = await ctx.run("ask-model", ask_model)
@@ -97,7 +95,53 @@ def durable_task_workflow(model: ModelClient) -> Workflow[dict[str, Any], dict[s
         result: dict[str, str] = await ctx.run("write-result", lambda: {"task": task, "answer": answer})
         return result
 
-    return define_workflow(DURABLE_WORKFLOW, run)
+    return define_workflow(DURABLE_TASK, run)
+
+
+def _check_task(input: dict[str, Any]) -> str | None:
+    task = input.get("task")
+    return None if isinstance(task, str) and task.strip() else "input.task is required"
+
+
+def hosted_workflows(model: ModelClient) -> list[HostedWorkflow]:
+    """The workflows this process hosts: the demo, ``durable-task``. Add yours here."""
+    return [
+        HostedWorkflow(
+            name=DURABLE_TASK,
+            description=(
+                "carries out a task given in words with one model call, then writes the answer into its result; "
+                'input {"task": "<the task>"}'
+            ),
+            check=_check_task,
+            workflow=durable_task_workflow(model),
+        )
+    ]
+
+
+def start_workflow_tool(workflows: list[HostedWorkflow]) -> dict[str, Any]:
+    """The tool's definition, from the workflows hosted; the same words as ``durable.ts``."""
+    return {
+        "type": "function",
+        "function": {
+            "name": START_WORKFLOW,
+            "description": (
+                "Starts a durable workflow this agent hosts and waits for its result. Each step of a workflow is "
+                "journaled, so the work survives a restart of this agent and a finished step is not done again. "
+                "Use it when the prompt asks for durable work. The workflows: "
+                + " ".join(f"{w.name}: {w.description}." for w in workflows)
+                + " Returns the run id and the workflow's result."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "enum": [w.name for w in workflows], "description": "The workflow to start."},
+                    "input": {"type": "object", "description": "The workflow's input, as its description says."},
+                },
+                "required": ["name", "input"],
+            },
+            "strict": False,
+        },
+    }
 
 
 @dataclass
@@ -124,36 +168,47 @@ async def start_durable_tasks(
     result_timeout_s: float,
     log: Callable[[str], None],
 ) -> DurableTasks:
-    """Start the worker, which binds its two durable consumers and nothing else."""
-    workflow = durable_task_workflow(model)
-    worker = create_worker(nc, [workflow], logger=_LibraryLogger(log))
+    """Start the worker, which binds two durable consumers per workflow and nothing else."""
+    hosted = hosted_workflows(model)
+    by_name = {w.name: w for w in hosted}
+    worker = create_worker(nc, [w.workflow for w in hosted], logger=_LibraryLogger(log))
     await worker.start()
     client = create_client(nc)
+
+    def error(message: str) -> str:
+        return json.dumps({"error": f"{START_WORKFLOW}: {message}"})
 
     async def run(args: Any, tool_call_id: str) -> str:
         try:
             parsed = json.loads(args) if isinstance(args, str) else args
-            task = parsed.get("task") if isinstance(parsed, dict) else None
-            if not isinstance(task, str) or not task.strip():
-                raise ValueError("task is required")
-        except ValueError as err:
-            return json.dumps({"error": f"run_durable_task: {err}"})
+        except ValueError:
+            return error("the arguments are not JSON")
+        name = parsed.get("name") if isinstance(parsed, dict) else None
+        hosted_workflow = by_name.get(name) if isinstance(name, str) else None
+        if hosted_workflow is None:
+            return error(f"no workflow named {json.dumps(name)}; the workflows: {', '.join(by_name)}")
+        input = parsed.get("input")
+        if not isinstance(input, dict):
+            return error("input must be an object")
+        refused = hosted_workflow.check(input)
+        if refused is not None:
+            return error(refused)
         try:
-            # (5) The run joins the task that started it: its id names the
-            # served thread and this tool call, and its input carries the
-            # trace. Outside a traced prompt there is no thread to name, and
-            # the run joins no task.
-            run_id = durable_run_id(tool_call_id) or f"{DURABLE_WORKFLOW}-{uuid.uuid4()}"
+            # (5) The run joins the tool call that started it: its id names the
+            # served thread and this call, and its input carries the trace.
+            # Outside a traced prompt there is no thread to name, and the run
+            # joins no task.
+            run_id = durable_run_id(tool_call_id) or f"{hosted_workflow.name}-{uuid.uuid4()}"
             trace = durable_trace()
-            run_input: dict[str, Any] = {"task": task, **({"trace": trace} if trace is not None else {})}
-            handle = await client.start(workflow, run_input, StartOptions(run_id=run_id))
+            started: dict[str, Any] = {"input": input, **({"trace": trace} if trace is not None else {})}
+            handle = await client.start(hosted_workflow.workflow, started, StartOptions(run_id=run_id))
             log(f"durable run {run_id} started")
             result = await handle.result(timeout_ms=result_timeout_s * 1000)
-            return json.dumps({"run_id": run_id, **result})
+            return json.dumps({"run_id": run_id, "result": result})
         except Exception as err:  # noqa: BLE001 — told to the model in words
-            return json.dumps({"error": f"run_durable_task: {err}"})
+            return error(str(err))
 
-    return DurableTasks(definition=RUN_DURABLE_TASK_TOOL, _run=run, _stop=worker.stop)
+    return DurableTasks(definition=start_workflow_tool(hosted), _run=run, _stop=worker.stop)
 
 
 class _WithDurableTasks:
@@ -163,13 +218,13 @@ class _WithDurableTasks:
         self._durable = durable
 
     async def call(self, name: str, args: Any, tool_call_id: str) -> str:
-        if name == RUN_DURABLE_TASK:
+        if name == START_WORKFLOW:
             return await self._durable.run(args, tool_call_id)
         return await self._runner.call(name, args, tool_call_id)
 
 
 def with_durable_tasks(runner: ToolRunner, durable: DurableTasks) -> ToolRunner:
-    """The tool runner with ``run_durable_task`` next to the tools it already has."""
+    """The tool runner with ``start_workflow`` next to the tools it already has."""
     return _WithDurableTasks(runner, durable)
 
 
@@ -197,11 +252,13 @@ class _LibraryLogger:
 
 __all__ = [
     "DURABLE_STEP_INSTRUCTION",
-    "DURABLE_WORKFLOW",
-    "RUN_DURABLE_TASK",
-    "RUN_DURABLE_TASK_TOOL",
+    "DURABLE_TASK",
+    "START_WORKFLOW",
     "DurableTasks",
+    "HostedWorkflow",
     "durable_task_workflow",
+    "hosted_workflows",
     "start_durable_tasks",
+    "start_workflow_tool",
     "with_durable_tasks",
 ]
