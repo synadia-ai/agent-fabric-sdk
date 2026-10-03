@@ -8,7 +8,7 @@ dependencies = [
   "synadia-ai-agent-service",
   # The fabric package: tracing, on the two SDK packages' hooks.
   "synadia-ai-agent-fabric",
-  # The durable-execution library: the workflow behind ``run_durable_task``
+  # The durable-execution library: the workflows behind ``start_workflow``
   # (``AGENT_DURABLE=1``).
   "synadia-durable",
   "nats-py>=2.7",
