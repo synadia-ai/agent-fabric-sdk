@@ -18,6 +18,7 @@
 import { NatsAgentError } from "@synadia-ai/agents";
 import {
   activeTrace,
+  bindActiveTrace,
   isThreadId,
   ROOT_ID_HEADER,
   THREAD_ID_HEADER,
@@ -88,12 +89,54 @@ export function durableTrace(): DurableTrace | undefined {
  * makes its model calls without the headers.
  */
 export function durableHeaders(trace: DurableTrace | null | undefined): Record<string, string> {
-  if (typeof trace !== "object" || trace === null) return {};
+  const ids = checked(trace);
+  if (ids === undefined) return {};
+  return { [THREAD_ID_HEADER]: ids.thread_id, [ROOT_ID_HEADER]: ids.root_id };
+}
+
+/**
+ * Run `fn` inside the trace a run's input carries, as the prompt's handler
+ * ran inside it: a prompt sent to another agent from `fn` writes its edge
+ * under the thread that started the run, in the same tree, and
+ * `traceHeaders()` inside `fn` gives the same two headers as
+ * {@link durableHeaders}. For a step of a durable run, which a worker runs
+ * outside the prompt's async scope.
+ *
+ * `turnCount` is how many model calls the run has made so far; it becomes
+ * the turn count hint of any edge `fn` writes. A `traceHeaders()` call
+ * inside `fn` counts one more, as it does in a handler.
+ *
+ * A trace that is missing or not shaped like thread ids binds nothing: `fn`
+ * runs as it would outside a traced handler. Throws {@link NatsAgentError}
+ * when `turnCount` is not a whole number, 0 or more.
+ */
+export function withDurableTrace<T>(
+  trace: DurableTrace | null | undefined,
+  turnCount: number,
+  fn: () => T,
+): T {
+  if (!Number.isSafeInteger(turnCount) || turnCount < 0) {
+    throw new NatsAgentError(
+      `withDurableTrace: turn count ${String(turnCount)} is not a whole number, 0 or more`,
+    );
+  }
+  const ids = checked(trace);
+  if (ids === undefined) return fn();
+  return bindActiveTrace(
+    { threadId: ids.thread_id, rootId: ids.root_id, turnCountHint: turnCount },
+    fn,
+  );
+}
+
+// The trace a run's input carries is read back from its journal: untrusted.
+// Both ids must be shaped like thread ids, or there is no trace.
+function checked(trace: DurableTrace | null | undefined): DurableTrace | undefined {
+  if (typeof trace !== "object" || trace === null) return undefined;
   const { thread_id: threadId, root_id: rootId } = trace as {
     thread_id?: unknown;
     root_id?: unknown;
   };
-  if (typeof threadId !== "string" || typeof rootId !== "string") return {};
-  if (!isThreadId(threadId) || !isThreadId(rootId)) return {};
-  return { [THREAD_ID_HEADER]: threadId, [ROOT_ID_HEADER]: rootId };
+  if (typeof threadId !== "string" || typeof rootId !== "string") return undefined;
+  if (!isThreadId(threadId) || !isThreadId(rootId)) return undefined;
+  return { thread_id: threadId, root_id: rootId };
 }

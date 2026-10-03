@@ -1,6 +1,7 @@
 import { NatsAgentError } from "@synadia-ai/agents";
 import { describe, expect, it } from "vitest";
 import {
+  activeTrace,
   bindActiveTrace,
   durableHeaders,
   durableRunId,
@@ -8,6 +9,8 @@ import {
   ROOT_ID_HEADER,
   THREAD_ID_HEADER,
   TOOL_CALL_ID_MAX,
+  traceHeaders,
+  withDurableTrace,
   type DurableTrace,
   type TraceScope,
 } from "../../src/index.js";
@@ -91,5 +94,44 @@ describe("durableHeaders", () => {
       { thread_id: `${THREAD}\r\nX-Evil: 1`, root_id: ROOT },
     ];
     for (const trace of bad) expect(durableHeaders(trace as never)).toEqual({});
+  });
+});
+
+describe("withDurableTrace", () => {
+  const trace = { thread_id: THREAD, root_id: ROOT };
+
+  it("binds the trace with the turn count, as the handler's scope", () => {
+    const seen = withDurableTrace(trace, 3, () => activeTrace());
+    expect(seen).toEqual({ threadId: THREAD, rootId: ROOT, turnCountHint: 3 });
+    expect(activeTrace()).toBeUndefined();
+  });
+
+  it("gives traceHeaders the run's thread, counting one more turn", () => {
+    const [headers, after] = withDurableTrace(trace, 2, () => [
+      traceHeaders(),
+      activeTrace()?.turnCountHint,
+    ]);
+    expect(headers).toEqual(durableHeaders(trace));
+    expect(after).toBe(3);
+  });
+
+  it("follows awaits inside", async () => {
+    const seen = await withDurableTrace(trace, 1, async () => {
+      await new Promise((r) => setTimeout(r, 1));
+      return activeTrace()?.threadId;
+    });
+    expect(seen).toBe(THREAD);
+  });
+
+  it("binds nothing for no trace, or one not shaped like thread ids", () => {
+    for (const bad of [undefined, null, { thread_id: THREAD }, { thread_id: "x", root_id: ROOT }]) {
+      expect(withDurableTrace(bad as never, 0, () => activeTrace())).toBeUndefined();
+    }
+  });
+
+  it("refuses a turn count that is not a whole number, 0 or more", () => {
+    for (const bad of [-1, 1.5, Number.NaN]) {
+      expect(() => withDurableTrace(trace, bad, () => 0)).toThrow(NatsAgentError);
+    }
   });
 });

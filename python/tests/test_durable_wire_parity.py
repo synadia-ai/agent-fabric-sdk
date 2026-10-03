@@ -1,4 +1,4 @@
-"""Cross-language agreement on a durable run's id, its input's trace and the headers.
+"""Cross-language agreement on a durable run's id, trace, headers and step scope.
 
 A run id is how a run names the task that started it, so a character
 replaced in one language and kept in the other would join a TypeScript
@@ -19,10 +19,13 @@ import pytest
 
 from synadia_ai.agent_fabric import (
     TraceScope,
+    active_trace,
     bind_active_trace,
     durable_headers,
     durable_run_id,
     durable_trace,
+    trace_headers,
+    with_durable_trace,
 )
 from tests.interop import TS_DIR, interop_prereqs_missing
 
@@ -56,23 +59,57 @@ TRACES: list[Any] = [
 ]
 
 
+# What a step sees inside the trace a run's input carries, after `turns`
+# model calls: the scope, the headers a model call there stamps, and the
+# turn count after it.
+SCOPES: list[tuple[Any, int]] = [(t, n) for t in TRACES for n in (0, 3)]
+
+
+def _inside(trace: Any, turns: int) -> Any:
+    with with_durable_trace(trace, turns):
+        scope = active_trace()
+        if scope is None:
+            return None
+        before = [scope.thread_id, scope.root_id, scope.turn_count_hint[0]]
+        return [*before, trace_headers(), scope.turn_count_hint[0]]
+
+
 def _python() -> list[str]:
     with bind_active_trace(TraceScope(thread_id=THREAD, root_id=ROOT)):
         ids = [durable_run_id(t) for t in TOOL_CALL_IDS]
         trace = durable_trace()
-    lines: list[Any] = [*ids, trace, *(durable_headers(t) for t in TRACES)]
+    lines: list[Any] = [
+        *ids,
+        trace,
+        *(durable_headers(t) for t in TRACES),
+        *(_inside(t, n) for t, n in SCOPES),
+    ]
     return [json.dumps(x, separators=(",", ":"), ensure_ascii=False) for x in lines]
 
 
 def _typescript() -> list[str]:
     script = f"""
-import {{ bindActiveTrace, durableHeaders, durableRunId, durableTrace }} from "./src/index.ts";
+import {{
+  activeTrace, bindActiveTrace, durableHeaders, durableRunId, durableTrace,
+  traceHeaders, withDurableTrace,
+}} from "./src/index.ts";
 const scope = {{ threadId: {json.dumps(THREAD)}, rootId: {json.dumps(ROOT)}, turnCountHint: 0 }};
 const [ids, trace] = bindActiveTrace(scope, () => [
   {json.dumps(TOOL_CALL_IDS)}.map((t) => durableRunId(t)),
   durableTrace(),
 ]);
-const lines = [...ids, trace, ...{json.dumps(TRACES)}.map((t) => durableHeaders(t))];
+const inside = (t, n) => withDurableTrace(t, n, () => {{
+  const s = activeTrace();
+  if (s === undefined) return null;
+  const before = [s.threadId, s.rootId, s.turnCountHint];
+  return [...before, traceHeaders(), s.turnCountHint];
+}});
+const lines = [
+  ...ids,
+  trace,
+  ...{json.dumps(TRACES)}.map((t) => durableHeaders(t)),
+  ...{json.dumps(SCOPES)}.map(([t, n]) => inside(t, n)),
+];
 for (const line of lines) console.log(JSON.stringify(JSON.stringify(line)));
 """
     out = subprocess.run(

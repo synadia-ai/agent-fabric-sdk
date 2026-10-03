@@ -12,7 +12,8 @@
     "echo": "node --env-file=.env --import tsx src/echo.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prompt": "node --env-file=.env --import tsx src/prompt.ts"
+    "prompt": "node --env-file=.env --import tsx src/prompt.ts",
+    "start:durable": "node --env-file=.env --import tsx src/durable-main.ts"
   },
   "dependencies": {
     "@nats-io/nats-core": "^3.4.0",

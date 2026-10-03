@@ -25,6 +25,7 @@ PUBLIC = {
     "durable_trace",
     "durable_headers",
     "DurableTrace",
+    "with_durable_trace",
     # The edge record and the record counts.
     "build_edge_record",
     "trace_record_counts",

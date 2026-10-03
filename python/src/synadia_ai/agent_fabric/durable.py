@@ -18,9 +18,19 @@ dicts an agent hands to whichever one it uses.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, TypedDict
 
-from .trace import ROOT_ID_HEADER, THREAD_ID_HEADER, active_trace, is_thread_id, valid_tool_call_id
+from .trace import (
+    ROOT_ID_HEADER,
+    THREAD_ID_HEADER,
+    TraceScope,
+    active_trace,
+    bind_active_trace,
+    is_thread_id,
+    valid_tool_call_id,
+)
 
 
 class DurableTrace(TypedDict):
@@ -89,12 +99,55 @@ def durable_headers(trace: DurableTrace | dict[str, Any] | None) -> dict[str, st
     for ``None`` as well, so a run started outside a traced handler makes
     its model calls without the headers.
     """
-    if not isinstance(trace, dict):
+    ids = _checked(trace)
+    if ids is None:
         return {}
+    return {THREAD_ID_HEADER: ids[0], ROOT_ID_HEADER: ids[1]}
+
+
+@contextmanager
+def with_durable_trace(
+    trace: DurableTrace | dict[str, Any] | None, turn_count: int
+) -> Iterator[None]:
+    """Run the block inside the trace a run's input carries.
+
+    As the prompt's handler ran inside it: a prompt sent to another agent
+    from the block writes its edge under the thread that started the run, in
+    the same tree, and ``trace_headers()`` inside it gives the same two
+    headers as :func:`durable_headers`. For a step of a durable run, which a
+    worker runs outside the prompt's context.
+
+    ``turn_count`` is how many model calls the run has made so far; it
+    becomes the turn count hint of any edge the block writes. A
+    ``trace_headers()`` call inside counts one more, as it does in a handler.
+
+    A trace that is missing or not shaped like thread ids binds nothing: the
+    block runs as it would outside a traced handler. Raises
+    :class:`ValueError` when ``turn_count`` is not a whole number, 0 or more.
+    The TypeScript package's ``withDurableTrace(trace, turnCount, fn)``.
+    """
+    if isinstance(turn_count, bool) or not isinstance(turn_count, int) or turn_count < 0:
+        raise ValueError(
+            f"with_durable_trace: turn count {turn_count!r} is not a whole number, 0 or more"
+        )
+    ids = _checked(trace)
+    if ids is None:
+        yield
+        return
+    scope = TraceScope(thread_id=ids[0], root_id=ids[1], turn_count_hint=[turn_count])
+    with bind_active_trace(scope):
+        yield
+
+
+def _checked(trace: Any) -> tuple[str, str] | None:
+    # The trace a run's input carries is read back from its journal:
+    # untrusted. Both ids must be shaped like thread ids, or there is none.
+    if not isinstance(trace, dict):
+        return None
     thread_id = trace.get("thread_id")
     root_id = trace.get("root_id")
     if not isinstance(thread_id, str) or not isinstance(root_id, str):
-        return {}
+        return None
     if not is_thread_id(thread_id) or not is_thread_id(root_id):
-        return {}
-    return {THREAD_ID_HEADER: thread_id, ROOT_ID_HEADER: root_id}
+        return None
+    return thread_id, root_id

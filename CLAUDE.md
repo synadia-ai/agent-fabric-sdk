@@ -23,7 +23,7 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   src/trace.ts       the vocabulary: options, scope, traceHeaders, edge record, counts
   src/tracing.ts     fabricTracing(): the SDK's three hooks built from it
   src/served.ts      the served record's vocabulary and its publisher, for the harness add-ons
-  src/durable.ts     durableRunId, durableTrace, durableHeaders: a durable run joined to its task (docs/durable.md)
+  src/durable.ts     durableRunId, durableTrace, durableHeaders, withDurableTrace: a durable run joined to its task (docs/durable.md)
   src/scratchpad.ts  references' vocabulary, and the ScratchPad port the extension runs on
   src/grant-request.ts            requestGrant, grantRequestEndpoint, the creator's rule
   src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
@@ -69,6 +69,7 @@ bundles/             self-contained harness plugins, built from the public plugi
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
   typescript/        the TypeScript agent: src/agent.ts (the five behaviours), its caller, its echo; vitest
                      src/durable.ts, the durable workflow behind AGENT_DURABLE=1, on the library's checkout
+                     src/durable-agent.ts, src/durable-main.ts: the durable agent, the model loop as the workflow (npm run start:durable)
   python/            the Python agent: fabric_agent/agent.py, the same, and fabric_agent/durable.py; pytest, with the interop of the two
   docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
   Makefile, scripts/setup.sh   `make setup` (the SDK checked and built, this package built, both agents installed), `make test`

@@ -1,6 +1,6 @@
 # Durable runs on the fabric
 
-**Version:** 0.1.0-alpha · **Date:** 2026-10-03 · **Status:** the helper in both packages; the reference agents run a durable workflow with `AGENT_DURABLE=1`
+**Version:** 0.1.0-alpha · **Date:** 2026-10-03 · **Status:** the helper in both packages; the reference agents run a durable workflow with `AGENT_DURABLE=1`; a durable reference agent in TypeScript
 
 An agent on the fabric can hand work to a durable-execution library: a workflow
 whose steps are journaled on NATS, so the work survives a restart of the agent
@@ -19,6 +19,7 @@ with the same bytes:
 | `durableRunId(toolCallId)` | `durable_run_id(tool_call_id)` | the run id, `<thread_id>-<tool call id>`, from the active trace |
 | `durableTrace()` | `durable_trace()` | the active trace, `{ "thread_id", "root_id" }`, for the run's input |
 | `durableHeaders(trace)` | `durable_headers(trace)` | the proxy's two headers from that trace, for a model call inside a step |
+| `withDurableTrace(trace, turnCount, fn)` | `with with_durable_trace(trace, turn_count):` | the trace bound around code inside a step, as a prompt's handler is bound |
 
 None of them depends on a durable-execution library. They take and return
 strings and plain objects, and the library is used unchanged: an agent passes
@@ -103,6 +104,35 @@ checked as untrusted input: both ids must have the shape of a thread id, or
 the result is `{}`. `{}` too for no trace, so a run started outside a traced
 handler makes its model calls without the headers.
 
+## The trace scope inside a step
+
+A model call inside a step needs only the headers. A step that prompts
+another agent needs more: the fabric's prompt interceptor writes an edge for
+the prompt, naming the thread that sends it as the parent, and it reads that
+thread from the active trace, which a worker does not have.
+`withDurableTrace(trace, turnCount, fn)` binds the trace from the run's input
+around `fn`, as the fabric's tracing binds a prompt's handler:
+
+```ts
+const result = await ctx.run("tool-0-0", () =>
+  withDurableTrace(input.trace, turnsSoFar, () => tools.execute(name, args, { toolCallId })),
+);
+```
+
+```python
+async def tool() -> str:
+    with with_durable_trace(input.get("trace"), turns_so_far):
+        return json.dumps(await tools.execute(name, args, tool_call_id=tool_call_id))
+
+result = await ctx.run("tool-0-0", tool)
+```
+
+`turnCount` is how many model calls the run has made so far. It becomes the
+`turn_count_hint` of any edge written inside, so the edge records where in the
+thread the prompt went out, as it does for a handler; a `traceHeaders()` call
+inside counts one more. A trace that is missing or not shaped like thread ids
+binds nothing. An author never builds the scope by hand.
+
 ## The library's resources are the tenant's
 
 A durable-execution library keeps its runs in JetStream resources of its own;
@@ -144,3 +174,88 @@ id `<served thread>-<tool call id>` and the trace in its input, that the
 step's model call reached the stub proxy with the two headers equal to that
 trace, and that the account's JetStream API advisories show no stream create
 or update from the worker's start or the run.
+
+## A durable agent
+
+The workflow above is one tool of an agent whose model loop lives in memory.
+A crash of that agent loses the conversation, and the prompt it was serving
+is gone with every model turn and tool call it had made. A **durable agent**
+makes the model loop itself the workflow: every model turn and every tool
+call is a journaled step, so after a crash the loop replays from its journal,
+a recorded turn returns what it returned, a recorded tool call returns its
+result, and execution resumes at the first step not yet journaled. With the
+fabric's helpers, its model calls before and after a crash land on one thread
+under one agent.
+
+The TypeScript reference package has one: `reference-agents/typescript/src/durable-agent.ts`,
+started with `npm run start:durable` and configured by the same `.env` as
+the reference agent.
+
+**The front door** is the fabric's: `AgentService` with `fabricTracing()`'s
+interceptors and the signed identity. It is a thin relay and not durable
+itself. For each prompt it starts a run of the workflow `agent-loop` and
+sends the run's answer:
+
+```ts
+service.onPrompt(async (envelope, response) => {
+  const runId = durableRunId("prompt");            // "<thread_id>-prompt"
+  const handle = await runs.start(agentLoop, { prompt: envelope.prompt, trace: durableTrace(), caller }, { runId });
+  const result = await handle.result(timeoutMs);
+  await response.send(result.answer);
+});
+```
+
+**The run id of a prompt-level run** is `durableRunId("prompt")`,
+`<thread_id>-prompt`: it names the served thread, and since `prompt` is no
+tool call's id, the run belongs to the thread itself. The run id is the
+start's idempotency key, so the same prompt again on the same thread finds
+the run it started.
+
+**The loop** is the workflow, in the shape of any tool-calling loop:
+
+| Step | What |
+| --- | --- |
+| `llm-N` | a model turn through the proxy, with `durableHeaders(input.trace)` |
+| `tool-N-i` | a tool call, in the run's tool scope and inside `withDurableTrace(input.trace, N + 1, …)` |
+| `ask-request-N-i`, then the signal `ask-N-i` | a question the prompted agent asked: the run parks on `ctx.await`; the front door asks the caller and signals the answer |
+| `answer-N-i` | the caller's answer, carried back to the prompted agent with `answer_agent` |
+
+The tools are the fabric's agent tools, with the ScratchPad extension when
+ScratchPad is configured. A worker serves no prompt, so the tools need a scope
+of their own: `AgentTools.runInPromptScope(fn, { caller })` opens one, with
+the verified caller for the loop guard. A call that asked a question has to
+stay open while the run waits for the answer, across steps, so the agent holds
+one scope per run open until the run ends, and each tool step enters it.
+That scope lives in memory.
+
+**After a crash** a worker of the same agent, in a restarted process or
+another instance, takes the run up once its work item is delivered again:
+after the library's acknowledgement wait, 30 seconds by default, and once the
+dead worker's lease on the run has lapsed.
+
+**What is exactly-once, and what is at-least-once.**
+
+- A model turn whose step ended is never made again: it is journaled before
+  the next step begins. A model turn in flight when the process died is made
+  again.
+- A tool call in flight when the process died runs again. `prompt_agent`
+  carries no idempotency key, so the prompted agent may be prompted twice,
+  and a second edge is written for it.
+- A question parked on `ctx.await` survives a crash in the journal. The call
+  that asked it does not: it lived on the dead process's connection. An answer
+  signalled later reaches `answer_agent` as a call it does not know, and the
+  model reads that in words.
+- **The reply to the prompt that was being served when the process died is
+  not delivered.** The run completes in the journal, but the caller's prompt
+  stream ended with the process. Delivering that reply needs a durable prompt,
+  which the protocol does not have yet. The agent does not work around it.
+
+Its tests: `test/durable-agent.test.ts` runs the agent as a child process
+against a stub model and a tenant-shaped server. The stub holds the second
+model turn. The test kills the agent after the run's first step has ended and
+starts it again. The run completes, with one `step-end` per step. The stub saw
+the first model turn exactly once, every model call of both processes carried
+the same two headers, and the caller's prompt ended without the reply.
+`test/durable-agent-question.test.ts` relays a prompted agent's question to
+the caller through `ask-0-0`, and checks the edge `prompt_agent` wrote from the
+worker: under the served thread, under the model's call.

@@ -7,6 +7,7 @@ step, where no scope is bound.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -17,10 +18,13 @@ from synadia_ai.agent_fabric import (
     THREAD_ID_HEADER,
     TOOL_CALL_ID_MAX,
     TraceScope,
+    active_trace,
     bind_active_trace,
     durable_headers,
     durable_run_id,
     durable_trace,
+    trace_headers,
+    with_durable_trace,
 )
 
 THREAD, ROOT = "a" * 32, "b" * 32
@@ -97,3 +101,38 @@ def test_the_trace_round_trips_through_a_run_input() -> None:
 )
 def test_no_headers_for_no_trace_or_one_not_shaped_like_thread_ids(trace: Any) -> None:
     assert durable_headers(trace) == {}
+
+
+def test_with_durable_trace_binds_the_trace_with_the_turn_count() -> None:
+    trace = {"thread_id": THREAD, "root_id": ROOT}
+    with with_durable_trace(trace, 3):
+        scope = active_trace()
+        assert scope is not None
+        assert (scope.thread_id, scope.root_id, scope.turn_count_hint[0]) == (THREAD, ROOT, 3)
+        assert trace_headers() == durable_headers(trace)
+        assert scope.turn_count_hint[0] == 4
+    assert active_trace() is None
+
+
+async def test_with_durable_trace_follows_awaits() -> None:
+    with with_durable_trace({"thread_id": THREAD, "root_id": ROOT}, 1):
+        await asyncio.sleep(0)
+        scope = active_trace()
+    assert scope is not None and scope.thread_id == THREAD
+
+
+@pytest.mark.parametrize(
+    "trace", [None, {"thread_id": THREAD}, {"thread_id": "x", "root_id": ROOT}]
+)
+def test_with_durable_trace_binds_nothing_for_no_trace_or_a_bad_one(trace: Any) -> None:
+    with with_durable_trace(trace, 0):
+        assert active_trace() is None
+
+
+@pytest.mark.parametrize("bad", [-1, 1.5, True])
+def test_with_durable_trace_refuses_a_bad_turn_count(bad: Any) -> None:
+    with (
+        pytest.raises(ValueError, match="with_durable_trace"),
+        with_durable_trace({"thread_id": THREAD, "root_id": ROOT}, bad),
+    ):
+        pass

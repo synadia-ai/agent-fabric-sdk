@@ -7,7 +7,8 @@ hooks of the Synadia Agent Protocol SDK (`@synadia-ai/agents`,
 
 - **Tracing:** `fabricTracing()` and `traceHeaders()`.
 - **Durable runs** joined to the task that started them:
-  `durableRunId(toolCallId)`, `durableTrace()` and `durableHeaders(trace)`,
+  `durableRunId(toolCallId)`, `durableTrace()`, `durableHeaders(trace)` and
+  `withDurableTrace(trace, turnCount, fn)`,
   with no dependency on a durable-execution library
   ([`docs/durable.md`](../docs/durable.md)).
 - **The `served` record**, for a harness plugin's add-on: the plugin's
