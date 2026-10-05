@@ -54,6 +54,12 @@ export interface AgentConfig {
     /** How long one prompt to another agent may run before it is given up (the tools' `maxWaitMs`). */
     readonly replyTimeoutMs: number;
   };
+  /**
+   * `AGENT_DURABLE=1`: the agent hosts durable workflows, the demo
+   * `durable-task`, and offers the model `start_workflow` (`durable.ts`).
+   * Off when absent.
+   */
+  readonly durable?: boolean;
 }
 
 const DEFAULTS = {
@@ -135,6 +141,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
   if (minSenderTrust !== "any" && minSenderTrust !== "signed") {
     throw new Error(`AGENT_MIN_SENDER_TRUST must be "any" or "signed", got "${minSenderTrust}"`);
   }
+  const durable = optional("AGENT_DURABLE") ?? "0";
+  if (durable !== "0" && durable !== "1") {
+    throw new Error(`AGENT_DURABLE must be "0" or "1", got "${durable}"`);
+  }
   const toolsSetting = optional("AGENT_TOOLS") ?? DEFAULTS.tools;
   if (toolsSetting !== "blocking" && toolsSetting !== "all" && toolsSetting !== "none") {
     throw new Error(`AGENT_TOOLS must be "blocking", "all" or "none", got "${toolsSetting}"`);
@@ -178,5 +188,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
     tools: {
       replyTimeoutMs: number("AGENT_REPLY_TIMEOUT_MS", DEFAULTS.replyTimeoutMs),
     },
+    durable: durable === "1",
   };
 }

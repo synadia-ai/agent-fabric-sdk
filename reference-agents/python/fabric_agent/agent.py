@@ -18,7 +18,11 @@ happens, so the file can be read as the list:
         asks the creator to grant; and it answers such requests about its
         own content, in code, by a fixed rule. All of it is the fabric
         package's, the rules and the ScratchPad they run on; this agent writes
-        no ScratchPad code, it is configured (``SCRATCHPAD_VOLUME``).
+        no ScratchPad code, it is configured (``SCRATCHPAD_VOLUME``);
+    (5) optionally, it delegates durable work: the model starts a workflow
+        this process hosts, by name with an input (``start_workflow``); the
+        run's id names the served thread and the tool call, and its model
+        calls land on that thread (``durable.py``, ``AGENT_DURABLE=1``).
 
 The same agent as ``typescript/src/agent.ts``, in Python: the same tool
 definitions, the same words to the model, the same reference token, and the
@@ -60,6 +64,7 @@ from synadia_ai.agents import (
 )
 
 from .config import AgentConfig
+from .durable import DurableTasks, start_durable_tasks, with_durable_tasks
 from .history import Histories, with_tool_note
 from .model import ChatMessage, EmptyReplyError, ModelClient, converse
 from .reply import delivered_reply
@@ -219,9 +224,21 @@ async def start_agent(
     # A history per verified caller, bounded; none with ``AGENT_MAX_HISTORY=0``.
     histories = Histories(cfg.agent.max_history_exchanges)
 
+    # (5) Durable work, with ``AGENT_DURABLE=1``: a worker of the durable SDK on
+    # this connection runs the workflows this process hosts (``durable.py``), and
+    # the model is offered ``start_workflow``, which starts one under the tool
+    # call, joined to the prompt being served. The engine holds the journal; the
+    # agent creates nothing.
+    durable: DurableTasks | None = (
+        await start_durable_tasks(nc, model, result_timeout_s=cfg.reply_timeout_s, log=log)
+        if cfg.durable
+        else None
+    )
+
     # What the model is offered. A role that must answer itself is offered no
-    # tools at all (see ``config.py``).
-    offered = NO_TOOLS if cfg.agent.tools == "none" else tool_runner(tools)
+    # tools at all (see ``config.py``), but for the durable one when it is on.
+    agent_tools = NO_TOOLS if cfg.agent.tools == "none" else tool_runner(tools)
+    offered = with_durable_tasks(agent_tools, durable) if durable is not None else agent_tools
 
     async def on_prompt(envelope: Envelope, stream: PromptStream) -> None:
         # The served thread's ids, for log lines and ScratchPad. Read here, not
@@ -319,6 +336,8 @@ async def start_agent(
         await tools.aclose()
         await client.close()
         await service.stop()
+        if durable is not None:
+            await durable.stop()
         if native_scratchpad is not None:
             await native_scratchpad.close()
         await nc.close()

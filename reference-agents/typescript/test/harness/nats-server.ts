@@ -67,21 +67,41 @@ function tcpOpen(port: number): Promise<boolean> {
 
 export class TestNatsServer {
   readonly url: string;
+  /** The server as the account's `engine` user, its password in the URL. */
+  readonly engineUrl: string;
   readonly #proc: ChildProcess;
   readonly #dir: string;
 
   private constructor(url: string, proc: ChildProcess, dir: string) {
     this.url = url;
+    this.engineUrl = url.replace("nats://", "nats://engine:engine@");
     this.#proc = proc;
     this.#dir = dir;
   }
 
-  /** Start a server that accepts exactly `users`, all in the server's default account. */
-  static async start(binary: string, users: readonly TestUser[]): Promise<TestNatsServer> {
+  /**
+   * Start a server that accepts exactly `users`, all in the server's default
+   * account. With `tenant`, they are in one account `TENANT` with JetStream
+   * instead, under the limits a tenant's tier sets: file storage only,
+   * `max_bytes` required on every stream, and `maxStreams` streams; and a
+   * user `engine` in that account, for the durable engine (`engineUrl`).
+   */
+  static async start(
+    binary: string,
+    users: readonly TestUser[],
+    tenant?: { readonly maxStreams: number },
+  ): Promise<TestNatsServer> {
     const dir = await mkdtemp(join(tmpdir(), "fabric-examples-nats-"));
     const config = join(dir, "server.conf");
     const entries = users.map((u) => `{ nkey: "${u.publicKey}" }`).join(", ");
-    await writeFile(config, `authorization { users: [ ${entries} ] }\n`);
+    await writeFile(
+      config,
+      tenant === undefined
+        ? `authorization { users: [ ${entries} ] }\n`
+        : `jetstream { store_dir: "${join(dir, "js")}" }\n` +
+            `accounts { TENANT { users: [ ${entries}, { user: "engine", password: "engine" } ], jetstream { max_streams: ${tenant.maxStreams}, ` +
+            `max_mem: 0, max_file: 4GB, max_bytes_required: true } } }\n`,
+    );
     const port = await freePort();
     const proc = spawn(binary, ["-a", "127.0.0.1", "-p", String(port), "-c", config], {
       stdio: ["ignore", "ignore", "pipe"],

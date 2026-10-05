@@ -9,3 +9,7 @@ __pycache__/
 
 # Plugin bundles built by bundles/*/build.sh
 bundles/out/
+# The durable engine the reference agents' durable tests build from its pin
+.engine-bin/
+# Session notes and handoffs, never committed
+local/

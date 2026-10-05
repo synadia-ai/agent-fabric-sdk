@@ -14,6 +14,11 @@
 //   - {@link traceHeaders}  — `X-Synadia-Thread-ID` / `X-Synadia-Root-ID`
 //                             for the model calls a handler makes.
 //   - {@link activeTrace}, {@link bindActiveTrace} — the ambient scope.
+//   - {@link durableRunId}, {@link durableTrace}, {@link durableHeaders},
+//     {@link withDurableTrace} — a durable run joined to the task that
+//                             started it: its run id, the trace for its
+//                             input, the proxy's headers and the trace scope
+//                             inside a step.
 //   - {@link buildEdgeRecord}, {@link traceRecordCounts} and the rest of the
 //                             vocabulary.
 //   - {@link servedPublisher}, {@link buildServedRecord} — the `served`
@@ -74,6 +79,14 @@ export {
   type TraceRecordCounts,
   type TraceScope,
 } from "./trace.js";
+
+export {
+  durableHeaders,
+  durableRunId,
+  durableTrace,
+  withDurableTrace,
+  type DurableTrace,
+} from "./durable.js";
 
 export {
   HARNESS_THREAD_ID_MAX,

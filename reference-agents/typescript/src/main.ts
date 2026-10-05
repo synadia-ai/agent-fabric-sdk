@@ -13,6 +13,7 @@ console.log(`${cfg.agent.kind} agent listening on ${agent.address}`);
 console.log(`identity: ${agent.identity ?? "none"}`);
 console.log(`model: ${cfg.model.model} through ${cfg.model.proxyUrl}`);
 console.log(`scratchpad: ${process.env["SCRATCHPAD_VOLUME"] || "off"}`);
+console.log(`durable: ${cfg.durable === true ? "on (start_workflow: durable-task)" : "off"}`);
 console.log("press Ctrl+C to stop (the conversation lives in memory and is gone on restart)");
 
 let stopping = false;

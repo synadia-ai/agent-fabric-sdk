@@ -19,7 +19,11 @@
 //       requests about its own content, in code, by a fixed rule. All of
 //       it is the fabric package's, the rules and the ScratchPad they run
 //       on; this agent writes no ScratchPad code, it is configured
-//       (`SCRATCHPAD_VOLUME`).
+//       (`SCRATCHPAD_VOLUME`);
+//   (5) optionally, it delegates durable work: the model starts a workflow
+//       this process hosts, by name with an input (`start_workflow`); the
+//       run's id names the served thread and the tool call, and its model
+//       calls land on that thread (`durable.ts`, `AGENT_DURABLE=1`).
 //
 // Ported from the labs' `06-chat-agent`: the persona and the accumulating
 // history stay, one history per verified caller (`history.ts`).
@@ -49,6 +53,7 @@ import {
 import type { AgentConfig } from "./config.js";
 import { Histories, withToolNote } from "./history.js";
 import { converse, createModelClient, EmptyReplyError, type ChatMessage } from "./model.js";
+import { startDurableTasks, withDurableTasks, type DurableTasks } from "./durable.js";
 import { deliveredReply } from "./reply.js";
 import { NO_TOOLS, offeredTools, toolRunner } from "./tools.js";
 
@@ -183,9 +188,19 @@ export async function startAgent(
   // A history per verified caller, bounded; none with `AGENT_MAX_HISTORY=0`.
   const histories = new Histories(cfg.agent.maxHistoryExchanges);
 
+  // (5) Durable work, with `AGENT_DURABLE=1`: a worker of the durable SDK on
+  // this connection runs the workflows this process hosts (`durable.ts`), and
+  // the model is offered `start_workflow`, which starts one under the tool
+  // call, joined to the prompt being served. The engine holds the journal;
+  // the agent creates nothing.
+  const durable: DurableTasks | undefined = cfg.durable === true
+    ? await startDurableTasks(nc, model, { resultTimeoutMs: cfg.tools.replyTimeoutMs, log: (line) => log(line) })
+    : undefined;
+
   // What the model is offered. A role that must answer itself is offered no
-  // tools at all (see `config.ts`).
-  const offered = cfg.agent.tools === "none" ? NO_TOOLS : toolRunner(tools);
+  // tools at all (see `config.ts`), but for the durable one when it is on.
+  const agentTools = cfg.agent.tools === "none" ? NO_TOOLS : toolRunner(tools);
+  const offered = durable !== undefined ? withDurableTasks(agentTools, durable) : agentTools;
 
   service.onPrompt(async (envelope, response) => {
     // The served thread's ids, for log lines and ScratchPad. Read here, not
@@ -304,6 +319,7 @@ export async function startAgent(
       await tools.close();
       await client.close();
       await service.stop();
+      await durable?.stop();
       await nativeScratchpad?.close();
       await nc.close();
       bundle.wipe();

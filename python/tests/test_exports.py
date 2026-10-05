@@ -20,6 +20,12 @@ PUBLIC = {
     "bind_active_trace",
     "trace_headers",
     "TraceScope",
+    # A durable run joined to the task that started it.
+    "durable_run_id",
+    "durable_trace",
+    "durable_headers",
+    "DurableTrace",
+    "with_durable_trace",
     # The edge record and the record counts.
     "build_edge_record",
     "trace_record_counts",

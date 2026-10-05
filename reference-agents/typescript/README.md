@@ -1,14 +1,16 @@
 # The TypeScript reference agent
 
-**Date:** 2026-09-27 · **Status:** the agent with its four behaviours, on the SDK's agent tools with the fabric package's ScratchPad extension; its ScratchPad is the fabric package's too, built from the environment, so the agent holds no ScratchPad code. It offers its model three of the tools by default (`AGENT_TOOLS`, below). Tested on a throwaway `nats-server` with a fake model and a ScratchPad in memory; run against a fabric through the model proxy with Sonnet 5.
+**Date:** 2026-09-27 · **Status:** the agent with its four behaviours and an optional fifth, durable work (`AGENT_DURABLE`), on the SDK's agent tools with the fabric package's ScratchPad extension; its ScratchPad is the fabric package's too, built from the environment, so the agent holds no ScratchPad code. It offers its model three of the tools by default (`AGENT_TOOLS`, below). Tested on a throwaway `nats-server` with a fake model and a ScratchPad in memory; run against a fabric through the model proxy with Sonnet 5.
 
 ## What is here
 
 | Path | What |
 | --- | --- |
-| `src/agent.ts` | the agent: the four behaviours, each marked where it happens |
+| `src/agent.ts` | the agent: the five behaviours, each marked where it happens |
 | `src/main.ts` | starts one agent from the environment; `npm start` |
 | `src/echo.ts` | the smallest agent, behaviour (1) alone: a signed identity, tracing on through the fabric package, every prompt answered with the prompt; `npm run echo`. Step 1 of `../docs/getting-started/typescript.md` |
+| `src/durable.ts` | behaviour (5), with `AGENT_DURABLE=1`: durable work delegated. The workflows this process hosts, in a small registry (the demo `durable-task`: a model call with the trace headers from the run's input, then the answer written into the result), their worker and client on the agent's connection, the engine behind them, and the tool `start_workflow(name, input)`, which starts one under `durableRunId` of the model's tool-call id |
+| `src/durable-agent.ts`, `src/durable-main.ts` | the durable agent, `npm run start:durable`: the front door relays each prompt to a run of the workflow `agent-loop`, whose model turns and tool calls are journaled steps (`../README.md`, "The durable agent") |
 | `src/config.ts` | every variable the agent reads, with its default |
 | `src/history.ts` | the history the model is shown: one per verified caller, the 32 served last, none with `AGENT_MAX_HISTORY=0`, and one line in front of a reply naming the tools the exchange used |
 | `src/model.ts` | one chat-completions client pointed at the proxy, and the loop that runs the model's tool calls |
@@ -19,6 +21,9 @@
 | `test/history.test.ts` | the tools line (names and addresses, never arguments or results), the histories kept apart per verified caller, none for an unverified one, both bounds, and `AGENT_MAX_HISTORY=0` |
 | `test/agent.test.ts` | the whole agent against a fake model: the key and the two trace headers on every call, the three blocking tools offered by default, a tool call carried out as a child thread, a question from the prompted agent answered by the model with `answer_agent`, the reply, the history; the reply committed and granted to the verified caller; a reference of its own handed on with a grant under the model's call; a grant request answered in code |
 | `test/grant-request.test.ts` | the fabric package's grant request between signed agents, on a real server, over a ScratchPad in memory: the creator grants a third agent at the request of one it granted; no signature, a replay, a requester never granted, a requester granted only on request, a request for oneself and another volume's reference are refused |
+| `test/start-workflow.test.ts` | behaviour (5) on a server with JetStream and one account, the durable engine spawned on it (`test/harness/engine.ts`): the run id is the served thread and the sanitised tool-call id, the journal's start entry carries the trace, the step's model call carried the two headers, the agent's connection sent no JetStream API request at all; `AGENT_DURABLE` off by default |
+| `test/durable-agent.test.ts` | the durable agent as a child process, killed after the run's first step and started again: the run completes, the first model turn made once, every model call of both processes on the served thread, the killed prompt's stream ended without the reply |
+| `test/durable-agent-question.test.ts` | the durable agent in process: a prompted agent's question parked on `ask-0-0` and relayed to the caller, the answer carried back, the edge `prompt_agent` wrote from the worker under the served thread and the model's call |
 | `env.example` | the one file per agent; copy to `.env` |
 
 ScratchPad comes from the fabric package: `nativeScratchPadFromEnv` in `src/agent.ts` borrows the agent's authenticated NATS connection.
@@ -37,6 +42,7 @@ New here? `../docs/getting-started/typescript.md` walks through this agent in si
 - `nats-server` on PATH for the tests (`brew install nats-server`). The bounded-reply gate fails when it is absent; older fabric tests skip.
 - Until the packages are published: `make setup` in `reference-agents/`. It checks the SDK checkout `../../../synadia-agents` is there and on its branch (the `Makefile` names it), builds the SDK's two TypeScript packages and then this repository's fabric package, `../../typescript`, and installs this agent. It builds only what changed, so it is safe to run again.
 - For ScratchPad, which is optional: a service import in the agent's NATS account, an allocated volume, and a private persistent workspace.
+- For durable work, which is optional: on the fabric, the tenant's import of the durable engine's API (`de.api.>`), which the console's onboarding makes, and an agent user with no durable rights of its own; the agent creates nothing. `AGENT_DURABLE=1` turns on the tool `start_workflow` in `npm start`, and `npm run start:durable` runs the durable agent with the same `.env`.
 
 ## Install and test
 
@@ -71,4 +77,4 @@ Every definition is input tokens on every model call. On an agent that delegates
 
 ## How it reads
 
-`agent.ts` is the file to read; it is the list of the four behaviours with the code under each. The model loop in `model.ts` is one request per model call, no streaming, so a tool round is one request and one JSON reply. `tools.ts` is what a customer copies to show their own model loop the SDK's agent tools; `../README.md`, "The agent tools", says how an agent wires them, and states the rules for references once.
+`agent.ts` is the file to read; it is the list of the five behaviours with the code under each. The model loop in `model.ts` is one request per model call, no streaming, so a tool round is one request and one JSON reply. `tools.ts` is what a customer copies to show their own model loop the SDK's agent tools; `../README.md`, "The agent tools", says how an agent wires them, and states the rules for references once.
