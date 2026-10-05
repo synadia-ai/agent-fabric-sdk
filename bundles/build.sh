@@ -59,7 +59,8 @@ step "building the fabric package"
 # skill <add-on dir> <skill dir> [allowed-tools]: ScratchPad's skill in the
 # add-on, from its release (anonymously, else through gh).
 skill() {
-  [ -x "$2/bin/sp-linux-amd64" ] && return 0
+  # Verify the selected release and regenerate the skill on every build.
+  # Existing executables can belong to a previous release.
   # The installer runs from the add-on's package folder.
   if [ -n "${3:-}" ]; then
     (cd "$1" && { sh "$fabric/plugins/scratchpad-skill/install.sh" --dest "$2" --allowed-tools "$3" ||
@@ -221,9 +222,9 @@ for harness in $harnesses; do
   esac
   file=$out/$name-$version-$agents_rev-$fabric_rev.tar.gz
   if [ -n "$market" ]; then
-    tar -C "$market" -czf "$file" .claude-plugin "$name"
+    COPYFILE_DISABLE=1 tar -C "$market" -czf "$file" .claude-plugin "$name"
   else
-    tar -C "$out" -czf "$file" "$name"
+    COPYFILE_DISABLE=1 tar -C "$out" -czf "$file" "$name"
   fi
   ls -lh "$file"
 done

@@ -6,7 +6,7 @@ can install an executable. TypeScript and Python agents can use the
 
 The binary release channel is
 [agent-fabric-sdk releases](https://github.com/synadia-ai/agent-fabric-sdk/releases),
-with explicit tags such as `sp-v0.1.3`. The binaries and included skills
+with explicit tags such as `sp-v0.1.5`. The binaries and included skills
 use Apache-2.0. Each archive includes the full `LICENSE` and
 `THIRD_PARTY_NOTICES`. Installation and harness packaging need no Go compiler
 or service source checkout.
@@ -19,13 +19,23 @@ image creation. It needs a POSIX shell, `curl`, `tar`, and `sha256sum` or
 authentication, add `--download gh` and authenticate the GitHub CLI.
 
 ```sh
-sh plugins/scratchpad-skill/get-sp.sh --version sp-v0.1.3 --dest "$HOME/.local/share/scratchpad/sp-v0.1.3"
+: "${VERSION:?Set the operator-selected sp release}"
+sh plugins/scratchpad-skill/get-sp.sh --version "$VERSION" --dest "$HOME/.local/share/scratchpad/$VERSION"
 ```
 
 The installer selects the host's Linux or macOS target. Use
 `--target linux/amd64`, `linux/arm64`, `darwin/amd64`, or `darwin/arm64`
 to select another target for an image. The destination must be a new
 absolute directory. Existing destinations remain intact.
+
+Publishing a release does not replace an agent's installed executable or skill.
+Harness builds select one release through the shared manifest and install its
+verified binaries and matching skill together. `sp info` discovers the current
+principal, owned scope allowances, and request limits without opening a writer
+workspace. Existing publication, grant, read, and recovery commands remain
+compatible. If an explicit `SCRATCHPAD_BIN` selects an older executable that
+reports `info` as unknown, continue with its existing commands and obtain the
+allowances from the operator.
 
 Without a checkout, download `get-sp.sh` and `SHA256SUMS` from the selected
 release. Verify the script against its single checksum entry before running

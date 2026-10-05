@@ -171,6 +171,33 @@ describe("the platform", () => {
 });
 
 describe("the flags from the environment", () => {
+  it("passes discovery through with connection, workspace and trace, without a volume flag", () => {
+    const r = run(["info"], {
+      ...CONNECTION,
+      SP_THREAD_ID: "a".repeat(32),
+      SP_ROOT_ID: "b".repeat(32),
+    });
+    expect(r.status).toBe(0);
+    expect(r.args).toEqual([
+      "--thread-id",
+      "a".repeat(32),
+      "--root-id",
+      "b".repeat(32),
+      "--dir",
+      CONNECTION.SCRATCHPAD_DIR,
+      "--url",
+      CONNECTION.SP_NATS_URL,
+      "--creds",
+      CONNECTION.SP_NATS_CREDS,
+      "info",
+    ]);
+    expect(flag(r.args, "--volume")).toBeUndefined();
+    const refused = run(["info", "--dir", "/another-workspace"]);
+    expect(refused.status).toBe(2);
+    expect(refused.binary).toBeUndefined();
+    expect(refused.error?.message).toContain("--dir is set by the agent");
+  });
+
   it("adds the connection and the workspace, and no volume, to a read", () => {
     const r = run(["read", "--ref", "sp-ref:abc"]);
     expect(r.status).toBe(0);

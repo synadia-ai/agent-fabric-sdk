@@ -3,6 +3,12 @@
 Each harness add-on packages this shared skill and the same published `sp`
 executables. No service source checkout or Go compiler is required.
 
+The skill uses `scripts/sp info` for authenticated discovery and configured
+allowances. The wrapper supplies the same connection and trace context as for
+other commands; discovery preserves the writer workspace. An explicit older
+`SCRATCHPAD_BIN` can report this command as unknown. The skill explains that
+fallback instead of requiring a new identity or workspace.
+
 - `SKILL.md` teaches the model to use this skill's `scripts/sp` wrapper.
 - `scripts/sp` selects the packaged executable and adds the connection,
   persistent workspace, volume, trace, creator, and verified caller context
@@ -37,6 +43,11 @@ from the repository root. The add-ons' `prepack` hook installs the skill and
 It verifies real release archives, both standalone download modes, refusal
 controls, and all three actual npm archives. It compares complete generated
 skills and checks shared recovery instructions against the standalone skill.
+
+Self-contained harness bundles also run the installer on every build. An
+existing executable is not evidence that its release matches the selected
+manifest. Verified download caches can be reused; the selected skill and
+binary installation are regenerated together.
 
 The [binary guide](../../docs/scratchpad-binaries.md) describes installation,
 cache behavior, licensing, and the indexed verification commands.
