@@ -222,9 +222,9 @@ for harness in $harnesses; do
   esac
   file=$out/$name-$version-$agents_rev-$fabric_rev.tar.gz
   if [ -n "$market" ]; then
-    tar -C "$market" -czf "$file" .claude-plugin "$name"
+    COPYFILE_DISABLE=1 tar -C "$market" -czf "$file" .claude-plugin "$name"
   else
-    tar -C "$out" -czf "$file" "$name"
+    COPYFILE_DISABLE=1 tar -C "$out" -czf "$file" "$name"
   fi
   ls -lh "$file"
 done
