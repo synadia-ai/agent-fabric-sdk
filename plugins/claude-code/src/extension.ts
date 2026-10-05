@@ -24,7 +24,12 @@
 // `Stop` hook reports the turn's end (`turnStopped`) at a time after the
 // reply, and `end` carries that time; with no `Stop` within the bound
 // (`stopWaitMs`, 120 s by default) it carries the reply's. A failed or
-// expired request ends at once.
+// expired request ends at once. So does a request the plugin answered
+// with the turn's final text (reason `final_text`): the model wrote no
+// reply, and the plugin sends that text at the turn's `Stop`, which has
+// already come. The plugin's reason for an end the model did not make
+// itself goes on `end` as the record's `reason`; the add-on's own end of
+// an open request at `stopping` carries `shutdown`.
 //
 // The served request's scope is kept by the plugin's request id from
 // `promptAccepted` to `promptEnded` and bound around every agent-tool
@@ -55,6 +60,7 @@ import {
   servedPublisher,
   type AgentExtension,
   type AgentExtensionContext,
+  type EndReason,
   type Outcome,
   type ServedPublisher,
   type ServedRequest,
@@ -285,7 +291,7 @@ export function createFabricExtension(
       }
       for (const [id, entry] of served) {
         served.delete(id);
-        entry.turn?.settle("error");
+        entry.turn?.settle("error", undefined, "shutdown");
       }
       // No served prompt any more, and no server to serve one.
       spEnv?.remove();
@@ -322,7 +328,7 @@ export function createFabricExtension(
         served.set(request.id, { request, scope, sessionId, turn });
       },
 
-      promptEnded(request, outcome: Outcome, atMs) {
+      promptEnded(request, outcome: Outcome, atMs, reason?: EndReason) {
         const entry = served.get(request.id);
         served.delete(request.id);
         if (promptEnv !== undefined) {
@@ -336,8 +342,11 @@ export function createFabricExtension(
         if (entry === undefined) return;
         const { turn, sessionId } = entry;
         if (turn === undefined || sessionId === undefined) return;
-        if (outcome !== "ok") {
-          turn.settle(outcome, atMs);
+        // A failure ends at once, and so does an answer the plugin sent from
+        // the turn's final text: it comes at the turn's `Stop`, so the turn
+        // is already over.
+        if (outcome !== "ok" || reason === "final_text") {
+          turn.settle(outcome, atMs, reason);
           return;
         }
         // Answered, but Claude Code is still writing its closing text.

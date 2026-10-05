@@ -188,6 +188,37 @@ describe.skipIf(!bin)("the served publisher", () => {
     expect(end).toMatchObject({ harness: "claude", status: "error", ts: 1_700_000_500 });
   });
 
+  it("settles with a reason: end carries it as version 2, signed and valid; start stays version 1", async () => {
+    const { p, warnings } = publisher();
+    const answered = p.beginTurn(scope("1".repeat(32)), "claude");
+    answered.bind(SESSION);
+    answered.settle("ok", 1_700_000_600_000, "final_text");
+    const failed = p.beginTurn(scope("2".repeat(32)), "claude");
+    failed.bind(SESSION);
+    failed.settle("error", undefined, "no_reply");
+    const plain = p.beginTurn(scope("3".repeat(32)), "claude");
+    plain.bind(SESSION);
+    plain.settle("ok");
+    const records = await settled(p);
+    const ends = records.filter((r) => r["phase"] === "end");
+    expect(ends.map((r) => [r["version"], r["status"], r["reason"]])).toEqual([
+      [2, "ok", "final_text"],
+      [2, "error", "no_reply"],
+      [1, "ok", undefined],
+    ]);
+    expect(ends[0]!["ts"]).toBe(1_700_000_600);
+    for (const record of records.filter((r) => r["phase"] === "start")) {
+      expect(record["version"]).toBe(1);
+      expect("reason" in record).toBe(false);
+    }
+    for (const record of records) expect(servedSchemaErrors(record)).toEqual([]);
+    for (const msg of wire.msgs) {
+      const sender = await verifySender(msg, "stored");
+      expect(sender?.trust).toBe("verified");
+    }
+    expect(warnings).toEqual([]);
+  });
+
   it("keeps the records in the order they were due, across interleaved turns", async () => {
     const { p } = publisher();
     const a = p.beginTurn(scope("1".repeat(32)), "openclaw");

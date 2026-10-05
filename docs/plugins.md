@@ -596,9 +596,14 @@ the first two every 250 ms (`src/session-events.ts`) and reports a
 `SessionStart` already on disk once at start, never an old `Stop`. The
 events: `sessionStarted(sessionId, source)`; `promptAccepted(request)` in
 the handler, `request.sessionId` set when the session is known;
-`promptEnded(request, outcome, atMs)`, `atMs` the arrival of `reply` with
-`done` for `ok`, `error` on a handler failure or at shutdown, `timeout` at
-the request TTL; `aroundToolCall` for every agent-tool call;
+`promptEnded(request, outcome, atMs, reason?)`, `atMs` the arrival of
+`reply` with `done` for `ok`, `error` on a handler failure or at shutdown,
+`timeout` at the request TTL; since plugin 0.6.0 a `reason` when the model
+did not end the prompt with its own reply — `final_text` (`ok`: the turn
+stopped without a reply after the `Stop` hook's one refusal, and the
+plugin sent the turn's final text as the reply, at that `Stop`),
+`no_reply`, `shutdown`, `delivery` (`error`), `expired` (`timeout`);
+`aroundToolCall` for every agent-tool call;
 `turnStopped(sessionId | undefined, atMs)`, the current session when the
 record names none. `stopping()` is called before the plugin fails the
 requests still open.
@@ -617,8 +622,10 @@ the factory and the events; its README says the same in operator terms.
    session is bound at arrival, so a `/clear` during a turn does not move
    the binding. With no session known, no pair and one log line; the scope
    is still kept for the tool calls.
-3. `promptEnded(request, outcome, atMs)`: `error` and `timeout` settle at
-   once. For `ok` the turn is not over: after `reply` completes the
+3. `promptEnded(request, outcome, atMs, reason?)`: `error` and `timeout`
+   settle at once, and so does `ok` with `final_text`, which arrives at the
+   turn's `Stop`; `reason` goes on `end` (record version 2,
+   `docs/schemas/served.json`). For any other `ok` the turn is not over: after `reply` completes the
    request, Claude Code makes at least one more model call to write its
    closing text (`fbd16ab` `src/turn-stop.ts`). So the turn stays pending
    until a `turnStopped` of its session with a time after `atMs`, and `end`
@@ -631,7 +638,8 @@ the factory and the events; its README says the same in operator terms.
    prompt answered after this stop waits for the next.
 5. `aroundToolCall(request, …, run)`: bind the request's trace scope.
 6. `stopping()`: every pending turn ends at its reply's time, every turn
-   still open ends now with `error`; then `flush()`.
+   still open ends now with `error` and the reason `shutdown`; then
+   `flush()`.
 
 **The tool-call ID** comes to the plugin from `PreToolUse` (§2.6) and to the
 edge through the helper's prompt context; the add-on has no part in it.

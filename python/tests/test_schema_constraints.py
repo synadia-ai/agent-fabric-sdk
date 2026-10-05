@@ -22,7 +22,7 @@ NAMED_MAPS = {"properties", "patternProperties", "$defs", "definitions", "depend
 
 CONSTRAINTS_SHA256 = {
     "edge.json": "be35efc3036d07529375c1284c79b47abe60317bd9af480cdb30bd7ac9a617e6",
-    "served.json": "7912268857448be1af22aa54cecb5f4e350720992f508443bf934c05e30b0eee",
+    "served.json": "8292743bc850b9fb3dceb0c335c22a2e8d2eb751ca28929fa741f6d9f612e6a2",
     "sp-grant-request.json": "340ed503c22eb9f7da9af88cdceca82ff8765c24e6677f9482c91dc0a85e29c1",
     "sp-grant-reply.json": "417a1b1cc3683daad122c6f6ce9478bef86d4a4538f72fb14460b3bb2c44ba49",
 }

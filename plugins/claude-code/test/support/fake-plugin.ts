@@ -32,6 +32,7 @@ import {
 import type {
   AgentExtension,
   AgentExtensionContext,
+  EndReason,
   Outcome,
   ServedRequest,
 } from "@synadia-ai/agent-fabric";
@@ -225,9 +226,11 @@ export interface ServedPrompt {
   /**
    * End the request as the plugin would: `ok` when `reply` completed it
    * with `done`, `error` on a handler failure, `timeout` at the request
-   * TTL; `promptEnded` with that outcome at `atMs`, now by default.
+   * TTL; `promptEnded` with that outcome at `atMs`, now by default, and
+   * `reason` when the model did not end it with its own reply (passed only
+   * when given, as the plugin does).
    */
-  end(outcome?: Outcome, atMs?: number): Promise<void>;
+  end(outcome?: Outcome, atMs?: number, reason?: EndReason): Promise<void>;
 }
 
 let requestCounter = 0;
@@ -250,7 +253,11 @@ export function serve(
     ...(sessionId === undefined ? {} : { sessionId }),
   });
   const accepted = deferred();
-  const completion = deferred<{ outcome: Outcome; atMs: number | undefined }>();
+  const completion = deferred<{
+    outcome: Outcome;
+    atMs: number | undefined;
+    reason: EndReason | undefined;
+  }>();
   let enter: (<T>(fn: () => T) => T) | undefined;
 
   const done = throughInterceptors(
@@ -260,8 +267,9 @@ export function serve(
       enter = AsyncLocalStorage.snapshot();
       ext.events?.promptAccepted?.(request);
       accepted.resolve();
-      const { outcome, atMs } = await completion.promise;
-      ext.events?.promptEnded?.(request, outcome, atMs ?? Date.now());
+      const { outcome, atMs, reason } = await completion.promise;
+      if (reason === undefined) ext.events?.promptEnded?.(request, outcome, atMs ?? Date.now());
+      else ext.events?.promptEnded?.(request, outcome, atMs ?? Date.now(), reason);
       if (outcome !== "ok") throw new Error(`the request ended: ${outcome}`);
     },
   );
@@ -280,8 +288,8 @@ export function serve(
         events?.aroundToolCall ? events.aroundToolCall(request, toolName, fn) : fn(),
       );
     },
-    async end(outcome = "ok", atMs) {
-      completion.resolve({ outcome, atMs });
+    async end(outcome = "ok", atMs, reason) {
+      completion.resolve({ outcome, atMs, reason });
       await done.catch((e: unknown) => {
         if (outcome === "ok") throw e;
       });

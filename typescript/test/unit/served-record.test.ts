@@ -3,6 +3,7 @@ import { newAgentId, type Agents, type Logger } from "@synadia-ai/agents";
 import {
   buildServedRecord,
   HARNESS_THREAD_ID_MAX,
+  SERVED_RECORD_REASON_VERSION,
   SERVED_RECORD_VERSION,
   servedPublisher,
   traceRecordCounts,
@@ -131,6 +132,58 @@ describe("buildServedRecord", () => {
     },
   );
 
+  it.each([
+    ["final_text", "ok"],
+    ["no_reply", "error"],
+    ["shutdown", "error"],
+    ["delivery", "error"],
+    ["expired", "timeout"],
+  ] as const)("writes the reason %s after the status, as version 2", (reason, status) => {
+    const { payload } = buildServedRecord(
+      AGENT,
+      THREAD,
+      ROOT,
+      "claude",
+      SESSION,
+      "end",
+      status,
+      1_700_000_000,
+      reason,
+    );
+    const record = decode(payload);
+    expect(record).toMatchObject({ version: 2, phase: "end", status, reason });
+    expect(Object.keys(record).slice(-2)).toEqual(["status", "reason"]);
+    expect(SERVED_RECORD_REASON_VERSION).toBe(2);
+    expect(servedSchemaErrors(record)).toEqual([]);
+  });
+
+  it("keeps a record without a reason version 1, byte for byte what it was", () => {
+    const record = decode(
+      buildServedRecord(AGENT, THREAD, ROOT, "claude", SESSION, "end", "ok", 1_700_000_000).payload,
+    );
+    expect(record["version"]).toBe(1);
+    expect("reason" in record).toBe(false);
+  });
+
+  it("refuses a reason on start, like a status, and a reason it does not know", () => {
+    expect(() =>
+      buildServedRecord(AGENT, THREAD, ROOT, "claude", SESSION, "start", undefined, 1, "shutdown"),
+    ).toThrow(/start record carries no reason/);
+    expect(() =>
+      buildServedRecord(
+        AGENT,
+        THREAD,
+        ROOT,
+        "claude",
+        SESSION,
+        "end",
+        "error",
+        1,
+        "crashed" as "no_reply",
+      ),
+    ).toThrow(/reason/);
+  });
+
   it("writes a non-ASCII harness thread id raw, as Python does", () => {
     const { payload } = buildServedRecord(
       AGENT,
@@ -205,6 +258,8 @@ describe("buildServedRecord", () => {
     expect(servedSchemaErrors({ ...start, extra: 1 })).not.toEqual([]);
     const { status: _status, ...endWithout } = end;
     expect(servedSchemaErrors(endWithout)).not.toEqual([]);
+    expect(servedSchemaErrors({ ...start, version: 2, reason: "shutdown" })).not.toEqual([]);
+    expect(servedSchemaErrors({ ...end, version: 2, reason: "cancelled" })).not.toEqual([]);
   });
 });
 

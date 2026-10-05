@@ -67,6 +67,17 @@
         "error",
         "timeout"
       ]
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "final_text",
+        "no_reply",
+        "shutdown",
+        "delivery",
+        "expired"
+      ],
+      "description": "on end only, from version 2: how the prompt ended when the model did not reply itself. final_text: the plugin sent the turn's final text as the reply (status ok); no_reply: the turn ended with no reply and no final text; shutdown: the plugin stopped with the prompt open; delivery: the prompt could not be handed to the harness; expired: the prompt outlived the plugin's limit (status timeout). Absent when the model replied itself, and on every version 1 record."
     }
   },
   "required": [
@@ -82,16 +93,36 @@
     "phase"
   ],
   "$comment": "harness is claude or openclaw, the harnesses whose plugins write this record. harness_thread_id is bare, and the thread record carries the same pair, so a reader joins the two by equality.",
-  "if": {
-    "properties": {
-      "phase": {
-        "const": "end"
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "phase": {
+            "const": "end"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "status"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "phase": {
+            "const": "start"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "reason"
+          ]
+        }
       }
     }
-  },
-  "then": {
-    "required": [
-      "status"
-    ]
-  }
+  ]
 }

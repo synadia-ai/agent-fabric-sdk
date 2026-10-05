@@ -43,6 +43,13 @@ import {
 export const SERVED_RECORD_VERSION = 1;
 
 /**
+ * The version of a record that carries a `reason`: the schema's version 2
+ * added the field. A record without one stays version 1, byte for byte what
+ * it was.
+ */
+export const SERVED_RECORD_REASON_VERSION = 2;
+
+/**
  * The harnesses whose plugins write `served` records: the ones that cannot
  * put the fabric's headers on their own model calls. PI can, and writes
  * none. The value is what the proxy files the harness's calls under
@@ -61,6 +68,25 @@ const PHASES: ReadonlySet<string> = new Set<ServedPhase>(["start", "end"]);
 export type ServedStatus = "ok" | "error" | "timeout";
 
 const STATUSES: ReadonlySet<string> = new Set<ServedStatus>(["ok", "error", "timeout"]);
+
+/**
+ * How a prompt ended when the model did not end it with its own reply, on
+ * `end` only; absent when the model replied. `final_text`: the plugin sent
+ * the turn's final text as the reply (status `ok`); `no_reply`: the turn
+ * ended with no reply and no final text; `shutdown`: the plugin stopped
+ * with the prompt open; `delivery`: the prompt could not be handed to the
+ * harness; `expired`: the prompt outlived the plugin's limit (status
+ * `timeout`).
+ */
+export type ServedReason = "final_text" | "no_reply" | "shutdown" | "delivery" | "expired";
+
+const REASONS: ReadonlySet<string> = new Set<ServedReason>([
+  "final_text",
+  "no_reply",
+  "shutdown",
+  "delivery",
+  "expired",
+]);
 
 /** Longest accepted harness thread id, in Unicode code points. */
 export const HARNESS_THREAD_ID_MAX = 256;
@@ -108,6 +134,9 @@ export interface BuiltServedRecord {
  * must pass {@link validHarnessThreadId}. `status` is required on `end`
  * and must be absent on `start`. `ts` is unix seconds: when the prompt
  * arrived for `start`, when the turn ended for `end`; now by default.
+ * `reason` ({@link ServedReason}) says how an `end` came about when the
+ * model did not reply itself; it is refused on `start`, like `status`, and
+ * a record that carries it is version {@link SERVED_RECORD_REASON_VERSION}.
  *
  * Throws `Error` for a record the contract would refuse, so a plugin's
  * mistake is its own and never a malformed record on the wire.
@@ -121,6 +150,7 @@ export function buildServedRecord(
   phase: ServedPhase,
   status?: ServedStatus,
   ts: number = unixSeconds(),
+  reason?: ServedReason,
 ): BuiltServedRecord {
   if (!HARNESSES.has(harness)) {
     throw new Error(`buildServedRecord: harness must be "claude" or "openclaw", got ${harness}`);
@@ -137,6 +167,15 @@ export function buildServedRecord(
   if (status !== undefined && !STATUSES.has(status)) {
     throw new Error(`buildServedRecord: status must be "ok", "error" or "timeout", got ${status}`);
   }
+  if (phase === "start" && reason !== undefined) {
+    throw new Error("buildServedRecord: a start record carries no reason");
+  }
+  if (reason !== undefined && !REASONS.has(reason)) {
+    throw new Error(
+      'buildServedRecord: reason must be "final_text", "no_reply", "shutdown", "delivery" ' +
+        `or "expired", got ${reason}`,
+    );
+  }
   if (!validHarnessThreadId(harnessThreadId)) {
     throw new Error("buildServedRecord: harnessThreadId is not a usable harness thread id");
   }
@@ -145,7 +184,7 @@ export function buildServedRecord(
   }
   const recordId = randomThreadId();
   const record = {
-    version: SERVED_RECORD_VERSION,
+    version: reason !== undefined ? SERVED_RECORD_REASON_VERSION : SERVED_RECORD_VERSION,
     kind: "served",
     record_id: recordId,
     ts,
@@ -156,6 +195,7 @@ export function buildServedRecord(
     harness_thread_id: harnessThreadId,
     phase,
     ...(status !== undefined ? { status } : {}),
+    ...(reason !== undefined ? { reason } : {}),
   };
   return { recordId, payload: new TextEncoder().encode(JSON.stringify(record)) };
 }
@@ -196,10 +236,11 @@ export interface ServedTurn {
   bind(harnessThreadId: string): void;
   /**
    * End the turn. `atMs` is the turn's end in milliseconds since the epoch,
-   * as the plugin's events report it; now by default. A second call does
-   * nothing.
+   * as the plugin's events report it; now by default. `reason` is how the
+   * prompt ended when the model did not reply itself ({@link ServedReason}),
+   * carried on `end`. A second call does nothing.
    */
-  settle(status: ServedStatus, atMs?: number): void;
+  settle(status: ServedStatus, atMs?: number, reason?: ServedReason): void;
 }
 
 const defaultLogger = (): Logger => ({
@@ -267,12 +308,12 @@ export class ServedPublisher {
         harnessThreadId = id;
         void this.publish(scope, harness, id, "start", undefined, arrivedAt);
       },
-      settle: (status: ServedStatus, atMs?: number): void => {
+      settle: (status: ServedStatus, atMs?: number, reason?: ServedReason): void => {
         if (settled) return;
         settled = true;
         if (harnessThreadId === undefined) return;
         const ts = atMs === undefined ? unixSeconds() : Math.floor(atMs / 1000);
-        void this.publish(scope, harness, harnessThreadId, "end", status, ts);
+        void this.publish(scope, harness, harnessThreadId, "end", status, ts, reason);
       },
     };
   }
@@ -292,9 +333,10 @@ export class ServedPublisher {
     phase: ServedPhase,
     status: ServedStatus | undefined,
     ts: number,
+    reason?: ServedReason,
   ): Promise<void> {
     const next = this.#chain.then(() =>
-      this.#send(scope, harness, harnessThreadId, phase, status, ts),
+      this.#send(scope, harness, harnessThreadId, phase, status, ts, reason),
     );
     this.#chain = next;
     return next;
@@ -315,6 +357,7 @@ export class ServedPublisher {
     phase: ServedPhase,
     status: ServedStatus | undefined,
     ts: number,
+    reason: ServedReason | undefined,
   ): Promise<void> {
     try {
       const agent = await this.#agents.selfId();
@@ -327,6 +370,7 @@ export class ServedPublisher {
         phase,
         status,
         ts,
+        reason,
       );
       await this.#agents.publishSigned(this.#subject, record.payload, { nonce: record.recordId });
       countTraceRecordPublished();
