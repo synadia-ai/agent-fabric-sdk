@@ -46,7 +46,6 @@ test-fixtures/       shared by both suites — see its README for every file's s
                      and the grant request's two shapes, sp-grant-{request,reply}.json
   identity/          throwaway keys and server configs, vendored from synadia-agents
   interop/           the TS and Python hosts and agents the cross-language tests spawn
-  durable/           the seven JetStream resources of the durable-execution library, as the fabric's onboarding creates them
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
   scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, load-sp.mjs, install.sh
   pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
@@ -68,8 +67,9 @@ bundles/             self-contained harness plugins, built from the public plugi
   bundle.ts          one Bun build of plugin and add-on with shared chunks: one copy of the SDK
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
   typescript/        the TypeScript agent: src/agent.ts (the five behaviours), its caller, its echo; vitest
-                     src/durable.ts, start_workflow and the workflows it hosts behind AGENT_DURABLE=1, on the library's checkout
+                     src/durable.ts, start_workflow and the workflows it hosts behind AGENT_DURABLE=1, on the thin durable SDK
                      src/durable-agent.ts, src/durable-main.ts: the durable agent, the model loop as the workflow (npm run start:durable)
+                     test/harness/engine.ts: the durable engine its durable tests spawn (tests/harness/engine.py in python/)
   python/            the Python agent: fabric_agent/agent.py, the same, and fabric_agent/durable.py; pytest, with the interop of the two
                      fabric_agent/durable_agent.py, durable_main.py: the durable agent (python -m fabric_agent.durable_main)
   docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
@@ -154,11 +154,16 @@ the checkout of `synadia-agents` on `main` (everything of the rollout merged the
 - The reference agents, `reference-agents/typescript` and
   `reference-agents/python`: this package by relative path
   (`file:../../typescript`, `path = "../../python"`), the SDK by the same
-  sibling links (`file:../../../synadia-agents/…`), and the durable-execution
-  library, for the durable workflow, from its checkout next to this repo,
-  `../synadia-durable-execution` (`file:` to the built package, an editable
-  uv path source to its `python/`). That checkout is read, built and
-  imported, never edited; the package itself depends on no such library. Like the packages they
+  sibling links (`file:../../../synadia-agents/…`), and the thin durable
+  SDK, for the durable workflows, from its checkout next to this repo,
+  `../durable-sdk` (`file:` to the built package, an editable uv path source
+  to its `python/`). Its durable tests spawn the engine, `durable-engine
+  serve`, standalone on the test's nats-server: `DE_ENGINE` (a `-dev` build)
+  and `DE_LICENCE` when given, else built with Go from `../durable-engine` at
+  the commit the SDK's `engine.pin` names, into `reference-agents/.engine-bin/`,
+  with a test licence it mints; without either they skip. Those checkouts
+  are read, built and imported, never edited; the package itself depends on
+  nothing durable. Like the packages they
   commit their lockfiles, `package-lock.json` and `uv.lock`, as they did in
   the examples repository. `make setup` in `reference-agents/` does the
   builds above and installs both.

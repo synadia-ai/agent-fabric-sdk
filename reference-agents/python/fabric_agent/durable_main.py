@@ -3,8 +3,9 @@
     uv run python -m fabric_agent.durable_main            # reads .env next to pyproject.toml when present
     uv run python -m fabric_agent.durable_main path.env   # or a named file
 
-The same variables as ``python -m fabric_agent`` (``env.example``). The account
-must hold the durable-execution library's resources; the agent creates none.
+The same variables as ``python -m fabric_agent`` (``env.example``). The
+connection must reach a durable engine on ``de.api.v1.*`` (on the fabric, the
+tenant's import); the agent creates nothing.
 """
 
 from __future__ import annotations

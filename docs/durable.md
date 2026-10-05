@@ -1,10 +1,10 @@
 # Durable runs on the fabric
 
-**Version:** 0.1.0-alpha · **Date:** 2026-10-03 · **Status:** the helper in both packages; the reference agents delegate durable work with `AGENT_DURABLE=1`; a durable reference agent in each language
+**Version:** 0.2.0-alpha · **Date:** 2026-10-05 · **Status:** the helper in both packages; the reference agents delegate durable work with `AGENT_DURABLE=1`; a durable reference agent in each language; all on the thin durable SDK and the durable engine
 
-An agent on the fabric can hand work to a durable-execution library: a workflow
-whose steps are journaled on NATS, so the work survives a restart of the agent
-and a finished step is not run again. Such a run is started from inside a
+An agent on the fabric can hand work to durable execution: a workflow whose
+steps are journaled by the durable engine, so the work survives a restart of
+the agent and a finished step is not run again. Such a run is started from inside a
 prompt, usually by a tool call of the agent's model, and it belongs to that
 prompt's task. This page is how the run says so.
 
@@ -29,10 +29,10 @@ with the same bytes:
 | `durableHeaders(trace)` | `durable_headers(trace)` | the proxy's two headers from that trace, for a model call inside a step |
 | `withDurableTrace(trace, turnCount, fn)` | `with with_durable_trace(trace, turn_count):` | the trace bound around code inside a step, as a prompt's handler is bound |
 
-None of them depends on a durable-execution library. They take and return
-strings and plain objects, and the library is used unchanged: an agent passes
-the run id where the library takes one and the trace in the input it already
-journals. The examples below use `@synadia-ai/durable` and `synadia-durable`,
+None of them depends on a durable SDK. They take and return strings and plain
+objects, and the SDK is used unchanged: an agent passes the run id where the
+SDK takes one and the trace in the input it already journals. The examples
+below use the thin durable SDK, `@synadia-ai/durable` and `synadia-durable`,
 which the reference agents run.
 
 ## The run id
@@ -57,15 +57,15 @@ A run id is `<thread_id>-<rest>`:
   from the trace the fabric's tracing binds around every prompt handler
   (`fabricTracing()`, `activeTrace()`).
 - `<rest>` is the model's tool-call id with every character outside
-  `[A-Za-z0-9_-]` replaced by `_`, one `_` per Unicode code point. A
-  durable-execution library uses the run id as a NATS subject token and as a
-  key-value key, so it is held to that set; `call.1 *` becomes `call_1__`.
+  `[A-Za-z0-9_-]` replaced by `_`, one `_` per Unicode code point. The
+  durable engine uses the run id as a NATS subject token and as a key-value
+  key, so it is held to that set; `call.1 *` becomes `call_1__`.
 
 Whoever reads the runs can then name the task of each: a run id of that form
 names the thread, and the rest names the tool call within it. A run id of any
-other form joins no task. A library that derives the ids of a run's children
-and generations from its own (`<run id>_<n>`, `<run id>_g<n>` in the library
-above) keeps the prefix, so they join the same task.
+other form joins no task. The SDK derives the ids of a run's children and
+generations from its own (`<run id>_<n>`, `<run id>_g<n>`), keeping the
+prefix, so they join the same task.
 
 The tool-call id must be what the model gave the call, the same id the agent
 passes to the SDK's agent tools. An empty id, one longer than 256 code points
@@ -79,8 +79,8 @@ is no served thread to name; pick a run id of your own. That run joins no task.
 
 ## The trace in the input, the headers inside a step
 
-A step runs on the library's worker, which takes the run from a queue: it runs
-outside the prompt's async context, where `traceHeaders()` has nothing to
+A step runs on the SDK's worker, which takes the run from the engine by a poll:
+it runs outside the prompt's async context, where `traceHeaders()` has nothing to
 give. So the trace travels in the run's input, under a key of your choosing,
 and comes back as headers inside the step:
 
@@ -141,23 +141,40 @@ thread the prompt went out, as it does for a handler; a `traceHeaders()` call
 inside counts one more. A trace that is missing or not shaped like thread ids
 binds nothing. An author never builds the scope by hand.
 
-## The library's resources are the tenant's
+## The engine owns everything
 
-A durable-execution library keeps its runs in JetStream resources of its own;
-the library above uses seven: three streams, three key-value buckets and an
-object store. On the fabric they live in each tenant's own account, created by
-the fabric's onboarding and sized to the tenant's tier. A library's defaults do
-not fit a tier: a prefix reserves its `max_bytes` on every resource, and a
-tier caps both the streams and the bytes an account may reserve.
+The durable SDK in the agent's process is thin: it keeps the workflow API and
+the replay core, and every call it makes is one request,
+`de.api.v1.<op>`, on the agent's own connection. Behind it is **the durable
+engine**, which owns the journal, the work queues, the timers, the leases and
+the blob store, provisions them at its start, binds a worker's durables at its
+first poll, and answers.
 
-So an agent's worker and client are given **no sizing and no replicas**. They
-find the resources that are there, read them back, bind the worker's
-consumers, and create and change nothing. In the library above, a worker or
-client given no `streamMaxBytes` / `stream_max_bytes` and no `replicas`
-reconciles only the settings the library owns and never sends a stream create
-or update for existing resources. An account without the resources refuses
-the worker at its first create that does not fit; ask your deployment for
-them.
+On the fabric there is one engine, in an account of its own (the DE account),
+for every tenant:
+
+- **What an agent needs** is the tenant's service import of the engine's API,
+  `de.api.>`, which the console's onboarding makes for the tenant's account.
+  The agent needs no rights of its own beyond publishing on it: it creates
+  nothing, provisions nothing, sizes nothing. A worker's first poll binds its
+  workflow names on the engine; there is nothing to wait for in the agent.
+- **Nothing lives in the tenant's account.** A run's journal is in the DE
+  account, under the tenant's key (`de.<tenant>.journal.<run id>`), and the
+  engine stamps the caller's user on what it journals for the caller: `by` on
+  a run's `start`, on a `signal` and on a `cancel-requested`. So the console
+  shows a run in its Runs section and in the task that started it, and who
+  started it.
+- **A tenant has limits**, set by the fabric: bytes journaled, runs in
+  flight, workflow names, polls waiting, requests per second. A request over
+  one is refused `tenant_limit`, naming the limit, and the SDK surfaces it as
+  a `LimitError` to the caller of `start` (or of `worker.start()`, for a
+  refused first poll): **a refusal, never retried**. The reference agents
+  hand it on as it is, to the model as the tool's error text or to the
+  caller as the prompt's error.
+
+The run id, the trace in the input and the headers inside a step do not
+change with any of this: the join is the agent's, the engine journals what it
+is given.
 
 ## The reference agents: durable work, delegated
 
@@ -194,15 +211,18 @@ input, awaits the result, and returns `{ "run_id", "result" }` as the tool's
 text. The console shows the run under the tool call that started it.
 
 Their tests (`test/start-workflow.test.ts`, `tests/test_start_workflow.py`) run
-on a throwaway `nats-server` with JetStream and one account shaped like a
-tenant's: file storage only, `max_bytes` required on every stream, room for
-seven streams. The seven are created first from the configurations the
-onboarding applies (`test-fixtures/durable/`, at one replica). A prompt's tool
-call starts the run, and the tests check that the journal's start entry has
-the run id `<served thread>-<tool call id>` and the trace in its input, that
-the step's model call reached the stub proxy with the two headers equal to that
-trace, and that the account's JetStream API advisories show no stream create
-or update from the worker's start or the run. `tests/test_durable_parity.py`
+on a throwaway `nats-server` with JetStream and one account (file storage only,
+`max_bytes` required on every stream) and the durable engine spawned on it,
+standalone, on the prefix `de`: built from `../durable-engine` at the commit
+the thin SDK's `engine.pin` names, with a test licence the tests mint, or
+`DE_ENGINE` and `DE_LICENCE` (`test/harness/engine.ts`,
+`tests/harness/engine.py`). The engine provisions its resources at start. A
+prompt's tool call starts the run, and the tests check that the journal's
+start entry has the run id `<served thread>-<tool call id>` and the trace in
+its input, that the step's model call reached the stub proxy with the two
+headers equal to that trace, and that the account's JetStream API advisories
+show no request at all from the agent's connection, at its start or in the
+run, while they show the engine's. `tests/test_durable_parity.py`
 compares the tool's definition and the workflows' names and words between the
 two agents, byte for byte.
 
@@ -267,9 +287,10 @@ one scope per run open until the run ends, and each tool step enters it.
 That scope lives in memory.
 
 **After a crash** a worker of the same agent, in a restarted process or
-another instance, takes the run up once its work item is delivered again:
-after the library's acknowledgement wait, 30 seconds by default, and once the
-dead worker's lease on the run has lapsed.
+another instance, takes the run up once the engine hands its work item to a
+poll again: the dead worker stopped extending its lease, so the item goes back
+after the engine's acknowledgement wait (`serve --ack-wait`, 30 seconds by
+default).
 
 **What is exactly-once, and what is at-least-once.**
 
@@ -290,7 +311,8 @@ dead worker's lease on the run has lapsed.
 
 Its tests, the same in both languages: `test/durable-agent.test.ts` and
 `tests/test_durable_agent.py` run the agent as a child process
-against a stub model and a tenant-shaped server. The stub holds the second
+against a stub model, a server and the engine on it, its acknowledgement wait
+3 seconds. The stub holds the second
 model turn. The test kills the agent after the run's first step has ended and
 starts it again. The run completes, with one `step-end` per step. The stub saw
 the first model turn exactly once, every model call of both processes carried

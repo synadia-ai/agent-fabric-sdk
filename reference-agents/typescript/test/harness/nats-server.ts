@@ -67,11 +67,14 @@ function tcpOpen(port: number): Promise<boolean> {
 
 export class TestNatsServer {
   readonly url: string;
+  /** The server as the account's `engine` user, its password in the URL. */
+  readonly engineUrl: string;
   readonly #proc: ChildProcess;
   readonly #dir: string;
 
   private constructor(url: string, proc: ChildProcess, dir: string) {
     this.url = url;
+    this.engineUrl = url.replace("nats://", "nats://engine:engine@");
     this.#proc = proc;
     this.#dir = dir;
   }
@@ -80,7 +83,8 @@ export class TestNatsServer {
    * Start a server that accepts exactly `users`, all in the server's default
    * account. With `tenant`, they are in one account `TENANT` with JetStream
    * instead, under the limits a tenant's tier sets: file storage only,
-   * `max_bytes` required on every stream, and `maxStreams` streams.
+   * `max_bytes` required on every stream, and `maxStreams` streams; and a
+   * user `engine` in that account, for the durable engine (`engineUrl`).
    */
   static async start(
     binary: string,
@@ -95,7 +99,7 @@ export class TestNatsServer {
       tenant === undefined
         ? `authorization { users: [ ${entries} ] }\n`
         : `jetstream { store_dir: "${join(dir, "js")}" }\n` +
-            `accounts { TENANT { users: [ ${entries} ], jetstream { max_streams: ${tenant.maxStreams}, ` +
+            `accounts { TENANT { users: [ ${entries}, { user: "engine", password: "engine" } ], jetstream { max_streams: ${tenant.maxStreams}, ` +
             `max_mem: 0, max_file: 4GB, max_bytes_required: true } } }\n`,
     );
     const port = await freePort();

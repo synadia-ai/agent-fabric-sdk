@@ -4,7 +4,7 @@
 // `agent.ts` keeps its model loop in memory: a crash of the process loses
 // the conversation, and the prompt it was serving is gone with every model
 // turn and tool call it had made. Here the loop runs as a workflow of the
-// durable-execution library, `agent-loop`:
+// durable SDK, `agent-loop`, journaled by the durable engine:
 //
 //   llm-N          each model turn, one journaled step through the proxy,
 //                  with the two trace headers from the run's input
@@ -87,7 +87,7 @@ import { deliveredReply } from "./reply.js";
 import { chatTools, offeredTools, type ChatTool } from "./tools.js";
 import type { RunningAgent } from "./agent.js";
 
-/** The workflow's name: a subject token and a consumer name to the library. */
+/** The workflow's name: a subject token and a consumer name to the engine. */
 export const AGENT_LOOP = "agent-loop";
 
 /** The run's input: the prompt, the trace of the prompt being served, and the verified caller. */
@@ -389,8 +389,8 @@ export async function startDurableAgent(
   const questions = new EventEmitter();
   questions.setMaxListeners(0);
 
-  // (5) The loop, on a worker on this connection. The library's resources
-  // are the tenant's: no sizing, no replicas, nothing created.
+  // (5) The loop, on a worker on this connection; the engine holds the
+  // journal, and the agent creates nothing.
   const agentLoop = agentLoopWorkflow({
     model,
     tools,

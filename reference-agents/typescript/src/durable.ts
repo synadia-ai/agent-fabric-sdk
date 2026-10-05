@@ -1,8 +1,9 @@
 // durable.ts — durable work delegated by the model: the workflows this
 // process hosts, and the tool that starts one.
 //
-// `@synadia-ai/durable` runs workflows on NATS: each step is journaled, and
-// a run survives a restart of the agent by replaying what its journal holds.
+// `@synadia-ai/durable` runs workflows in this process against the durable
+// engine: each step is journaled, and a run survives a restart of the agent by
+// replaying what its journal holds.
 // An agent whose own model loop is not durable can still hand a job to a
 // workflow: the model calls `start_workflow` with a workflow's name and its
 // input, and gets back the run id and the result. The workflows are the ones
@@ -23,10 +24,11 @@
 // the trace travels in the run's input (`durableTrace()`) and comes back as
 // headers inside the step (`durableHeaders()`).
 //
-// The library's seven JetStream resources are the tenant's: the fabric's
-// onboarding creates them in the account, sized to its tier. The worker and
-// the client are given no sizing and no replicas, so starting them creates
-// nothing and changes nothing; they find what is there.
+// The worker and the client are the thin SDK's: every call is one request
+// to `de.api.v1.<op>` on the agent's own connection, and the engine owns the
+// journal and everything else. On the fabric the tenant's import carries the
+// requests to the engine; the agent creates nothing and needs no rights of
+// its own. The worker's first poll binds its workflow names on the engine.
 //
 // An agent whose model loop is itself durable needs no such tool: its loop is
 // the workflow (`durable-agent.ts`).
@@ -40,7 +42,7 @@ import type { ChatMessage, ModelClient, ToolDefinitionLike, ToolRunner } from ".
 /** The tool the model sees. */
 export const START_WORKFLOW = "start_workflow";
 
-/** The demo workflow's name: a subject token and a consumer name to the library. */
+/** The demo workflow's name: a subject token and a consumer name to the engine. */
 export const DURABLE_TASK = "durable-task";
 
 /** What the demo workflow's step tells the model. */
@@ -144,8 +146,8 @@ export interface DurableTasks {
 
 /**
  * The worker and the client, on the agent's own connection, and the tool
- * that starts a run. The worker is started here: it binds two durable
- * consumers per workflow and nothing else.
+ * that starts a run. The worker is started here: its first poll binds its
+ * workflows on the engine.
  */
 export async function startDurableTasks(
   nc: NatsConnection,
@@ -154,7 +156,7 @@ export async function startDurableTasks(
 ): Promise<DurableTasks> {
   const hosted = hostedWorkflows(model);
   const byName = new Map(hosted.map((w) => [w.name, w] as const));
-  const worker = createWorker({ nc, workflows: hosted.map((w) => w.workflow), logger: libraryLogger(options.log) });
+  const worker = createWorker({ nc, workflows: hosted.map((w) => w.workflow), logger: sdkLogger(options.log) });
   await worker.start();
   const client = createClient({ nc });
   const error = (message: string): string => JSON.stringify({ error: `${START_WORKFLOW}: ${message}` });
@@ -206,7 +208,7 @@ export function withDurableTasks(runner: ToolRunner, durable: DurableTasks): Too
   };
 }
 
-function libraryLogger(log: (line: string) => void): Logger {
+function sdkLogger(log: (line: string) => void): Logger {
   const line = (msg: string, fields?: Record<string, unknown>): void =>
     log(`[durable] ${msg}${fields !== undefined && Object.keys(fields).length > 0 ? ` ${JSON.stringify(fields)}` : ""}`);
   return { debug: () => {}, info: line, warn: line, error: line };

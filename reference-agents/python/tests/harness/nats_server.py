@@ -60,6 +60,8 @@ def _tcp_open(port: int) -> bool:
 class LocalNatsServer:
     def __init__(self, url: str, proc: subprocess.Popen[bytes], directory: Path) -> None:
         self.url = url
+        #: The server as the ``TENANT`` account's ``engine`` user, its password in the URL.
+        self.engine_url = url.replace("nats://", "nats://engine:engine@")
         self._proc = proc
         self._dir = directory
 
@@ -76,13 +78,15 @@ class LocalNatsServer:
     def start_tenant(cls, binary: str, users: list[NatsUser], *, max_streams: int) -> LocalNatsServer:
         """Start a server with JetStream whose ``users`` are in one account
         ``TENANT``, under the limits a tenant's tier sets: file storage only,
-        ``max_bytes`` required on every stream, and ``max_streams`` streams."""
+        ``max_bytes`` required on every stream, and ``max_streams`` streams; and a
+        user ``engine`` in that account, for the durable engine (``engine_url``)."""
         directory = Path(tempfile.mkdtemp(prefix="fabric-examples-nats-"))
         config = directory / "server.conf"
         entries = ", ".join(f'{{ nkey: "{u.public_key}" }}' for u in users)
         config.write_text(
             f'jetstream {{ store_dir: "{directory / "js"}" }}\n'
-            f"accounts {{ TENANT {{ users: [ {entries} ], jetstream {{ max_streams: {max_streams}, "
+            f'accounts {{ TENANT {{ users: [ {entries}, {{ user: "engine", password: "engine" }} ], jetstream'
+            f" {{ max_streams: {max_streams}, "
             "max_mem: 0, max_file: 4GB, max_bytes_required: true } } }\n",
             encoding="utf-8",
         )

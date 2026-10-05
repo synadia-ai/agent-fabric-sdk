@@ -2,7 +2,8 @@
 the run's tool scope and the prompt's trace, and a question from the prompted
 agent parked on a durable signal and relayed to the caller.
 
-    server  — JetStream, one tenant-shaped account, the seven created first
+    server  — JetStream, one account
+    engine  — ``durable-engine serve`` on that account (``harness/engine.py``)
     agent   — ``python -m fabric_agent.durable_main`` as a subprocess
     asker   — an agent that asks its caller a question before it answers
     fake    — the model: a prompt "delegate to <address>" asks for
@@ -38,13 +39,12 @@ from synadia_ai.agent_fabric import fabric_tracing
 from synadia_ai.agent_service import AgentService, PromptStream, ServiceIdentity
 from synadia_ai.agents import Agents, DiscoverFilter, Envelope, Identity, Query, ResponseChunk, signer_from_seed
 
+from tests.harness.engine import ENGINE_UNAVAILABLE, LocalEngine
 from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_user
 
 binary = nats_server_on_path()
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
-FIXTURES = Path(__file__).resolve().parents[3] / "test-fixtures" / "durable"
-SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"]
 _DELEGATE = re.compile(r"delegate to (\S+)")
 
 
@@ -96,11 +96,13 @@ class _Fake:
 
 
 @pytest.mark.skipif(binary is None, reason="nats-server not on PATH")
+@pytest.mark.skipif(ENGINE_UNAVAILABLE is not None, reason=f"no durable engine: {ENGINE_UNAVAILABLE}")
 async def test_a_prompted_agents_question_is_relayed_to_the_caller_and_answered(tmp_path: Path) -> None:
     users = {name: new_user() for name in ("caller", "agent", "asker", "tenant")}
     server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=7)  # type: ignore[arg-type]
     fake = _Fake()
     proxy_url = fake.start()
+    engine: LocalEngine | None = None
     child: subprocess.Popen[bytes] | None = None
     logs = tmp_path / "agent.log"
     tracing = fabric_tracing()
@@ -108,11 +110,7 @@ async def test_a_prompted_agents_question_is_relayed_to_the_caller_and_answered(
         nc_tenant = await nats.connect(server.url, nkeys_seed_str=users["tenant"].seed)
         nc_caller = await nats.connect(server.url, nkeys_seed_str=users["caller"].seed)
         nc_asker = await nats.connect(server.url, nkeys_seed_str=users["asker"].seed)
-        for name in SEVEN:
-            config = json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
-            await nc_tenant.request(
-                f"$JS.API.STREAM.CREATE.{name}", json.dumps({**config, "num_replicas": 1}).encode(), timeout=5
-            )
+        engine = await LocalEngine.start(server.engine_url)
         edges: list[dict[str, Any]] = []
 
         async def collect(msg: Any) -> None:
@@ -236,5 +234,7 @@ async def test_a_prompted_agents_question_is_relayed_to_the_caller_and_answered(
         if child is not None and child.poll() is None:
             child.terminate()
             child.wait(timeout=10)
+        if engine is not None:
+            await engine.stop()
         fake.stop()
         server.stop()

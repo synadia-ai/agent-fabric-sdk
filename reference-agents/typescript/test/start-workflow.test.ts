@@ -1,14 +1,13 @@
 // Durable work delegated (5): a workflow started by the model's
-// `start_workflow` call joins the tool call that started it, and starting the
-// worker creates nothing.
+// `start_workflow` call joins the tool call that started it, and the agent
+// creates nothing: the engine owns every resource.
 //
-//   server  — a nats-server with JetStream and one account shaped like a
-//             tenant's: file storage only, `max_bytes` required, room for
-//             the seven streams of the durable-execution library
-//   tenant  — a user of that account. It creates the seven first, from the
-//             configurations the fabric's onboarding applies
-//             (`test-fixtures/durable/`, at R1), watches the account's
-//             JetStream API advisories, and reads the run's journal back
+//   server  — a nats-server with JetStream and one account, file storage
+//             only, `max_bytes` required, room for the engine's seven
+//   engine  — `durable-engine serve` on that account, standalone, prefix
+//             `de` (`harness/engine.ts`): it provisions the seven at start
+//   tenant  — a user of that account. It watches the account's JetStream API
+//             advisories and reads the run's journal back
 //   agent   — `startAgent()` with `durable: true`, pointed at the fake
 //   fake    — the model behind a fake proxy: a prompt "durable: <task>"
 //             asks for `start_workflow` of `durable-task` under a tool-call id with a dot
@@ -18,12 +17,13 @@
 // Asserted: the run id is `<served thread>-<tool call id sanitised>`; the
 // journal's start entry carries that id's workflow and the served trace in
 // its input; the step's model call reached the proxy with the two headers
-// equal to that trace; the worker's start, and the run, sent no
-// STREAM.CREATE and no STREAM.UPDATE, and the account still holds the seven
-// and the worker's two consumers alone.
+// equal to that trace; the agent's connection sent no JetStream API request
+// at all, at its start or in the run (the worker's first poll bound its
+// workflow on the engine, whose requests the advisories show); the account
+// holds the engine's seven alone.
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NatsConnection } from "@nats-io/nats-core";
@@ -35,11 +35,11 @@ import { startAgent, type RunningAgent } from "../src/agent.js";
 import { loadConfig, type AgentConfig } from "../src/config.js";
 import { DURABLE_STEP_INSTRUCTION, START_WORKFLOW } from "../src/durable.js";
 import type { ChatMessage } from "../src/model.js";
+import { engineUnavailable, TestEngine } from "./harness/engine.js";
 import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server.js";
 
 const binary = await natsServerOnPath();
 
-const FIXTURES = join(import.meta.dirname, "..", "..", "..", "test-fixtures", "durable");
 const SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"];
 // A dot and a space, which a run id may not hold.
 const TOOL_CALL_ID = "call.durable 1";
@@ -59,8 +59,9 @@ describe("AGENT_DURABLE", () => {
   });
 });
 
-describe.skipIf(binary === undefined)("start_workflow: a durable run joined to the tool call that started it", () => {
+describe.skipIf(binary === undefined || engineUnavailable !== undefined)("start_workflow: a durable run joined to the tool call that started it", () => {
   let server: TestNatsServer;
+  let engine: TestEngine;
   let fake: Server;
   let dir: string;
   let ncTenant: NatsConnection;
@@ -68,8 +69,10 @@ describe.skipIf(binary === undefined)("start_workflow: a durable run joined to t
   let caller: Agents;
   let agent: RunningAgent;
   const requests: ModelRequest[] = [];
+  /** The JetStream API requests of every connection but the tenant's and the engine's. */
   const advisories: string[] = [];
-  let startAdvisories: string[] = [];
+  /** The engine's own, to show the watch sees what is sent. */
+  const engineAdvisories: string[] = [];
   const callerUser = newUser();
   const tracing = fabricTracing();
 
@@ -94,19 +97,15 @@ describe.skipIf(binary === undefined)("start_workflow: a durable run joined to t
     const open = (seed: string, name: string): Promise<NatsConnection> =>
       connect({ servers: server.url, authenticator: nkeyAuthenticator(enc.encode(seed)), name });
     [ncTenant, ncCaller] = await Promise.all([open(tenantUser.seed, "tenant"), open(callerUser.seed, "caller")]);
-
-    // The seven, as the fabric's onboarding creates them, at R1 on one node.
-    for (const name of SEVEN) {
-      const config = JSON.parse(await readFile(join(FIXTURES, `${name}.json`), "utf8")) as Record<string, unknown>;
-      await api(`$JS.API.STREAM.CREATE.${name}`, { ...config, num_replicas: 1 });
-    }
+    engine = await TestEngine.start(server.engineUrl);
 
     // Every JetStream API request the account audits from here on.
     const sub = ncTenant.subscribe("$JS.EVENT.ADVISORY.API");
     void (async () => {
       for await (const m of sub) {
-        const a = m.json<{ subject: string; client?: { name?: string } }>();
-        if (a.client?.name !== "tenant") advisories.push(a.subject);
+        const a = m.json<{ subject: string; client?: { name?: string; user?: string } }>();
+        if (a.client?.user === "engine") engineAdvisories.push(a.subject);
+        else if (a.client?.name !== "tenant") advisories.push(a.subject);
       }
     })();
     await ncTenant.flush();
@@ -168,9 +167,6 @@ describe.skipIf(binary === undefined)("start_workflow: a durable run joined to t
       durable: true,
     };
     agent = await startAgent(cfg, () => {}, { scratchpad: undefined, env: {} });
-    // The advisories are asynchronous.
-    await new Promise((r) => setTimeout(r, 1_000));
-    startAdvisories = [...advisories];
 
     caller = new Agents({
       nc: ncCaller,
@@ -184,11 +180,12 @@ describe.skipIf(binary === undefined)("start_workflow: a durable run joined to t
     await agent?.stop();
     await Promise.all([ncCaller?.close(), ncTenant?.close()]);
     await new Promise<void>((r) => fake?.close(() => r()));
+    await engine?.stop();
     await server?.stop();
     if (dir !== undefined) await rm(dir, { recursive: true, force: true });
   });
 
-  it("names the served thread and the tool call, carries the trace, and creates nothing", async () => {
+  it("names the served thread and the tool call, carries the trace, and sends no JetStream request", async () => {
     const [found] = await caller.discover({ filter: { agent: "assistant" }, timeoutMs: 1_000 });
     expect(found).toBeDefined();
     let reply = "";
@@ -232,17 +229,13 @@ describe.skipIf(binary === undefined)("start_workflow: a durable run joined to t
     expect(step!.headers["x-synadia-thread-id"]).toBe(thread);
     expect(step!.headers["x-synadia-root-id"]).toBe(root);
 
-    // Nothing created, nothing changed: not at the worker's start, not by the run.
+    // The agent sent no JetStream API request, at its start or in the run;
+    // the engine did (the advisories are asynchronous).
     await new Promise((r) => setTimeout(r, 500));
-    const touched = kinds(advisories).filter((k) => k === "STREAM.CREATE" || k === "STREAM.UPDATE");
-    expect(startAdvisories.length).toBeGreaterThan(0);
-    expect(touched).toEqual([]);
+    expect(engineAdvisories.length).toBeGreaterThan(0);
+    expect(advisories).toEqual([]);
     const names = await api<{ streams: string[] }>("$JS.API.STREAM.NAMES");
     expect([...names.streams].sort()).toEqual([...SEVEN].sort());
-    const work = await api<{ consumers: string[] }>("$JS.API.CONSUMER.NAMES.DE_WORK");
-    const timers = await api<{ consumers: string[] }>("$JS.API.CONSUMER.NAMES.DE_TIMERS");
-    expect(work.consumers).toEqual(["de-worker-durable-task"]);
-    expect(timers.consumers).toEqual(["de-timer-durable-task"]);
 
     // The evidence, for whoever reads the run's output.
     console.log(
@@ -250,9 +243,8 @@ describe.skipIf(binary === undefined)("start_workflow: a durable run joined to t
         run_id: runId,
         start_input: start.input,
         step_headers: { thread: step!.headers["x-synadia-thread-id"], root: step!.headers["x-synadia-root-id"] },
-        worker_start_advisories: startAdvisories.length,
-        worker_start_kinds: count(kinds(startAdvisories)),
-        stream_creates_or_updates: touched.length,
+        agent_js_api_requests: advisories.length,
+        engine_js_api_requests: count(kinds(engineAdvisories)),
       }),
     );
   }, 30_000);

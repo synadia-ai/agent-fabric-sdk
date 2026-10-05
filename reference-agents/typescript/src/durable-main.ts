@@ -3,8 +3,9 @@
 //
 //   node --env-file=.env --import tsx src/durable-main.ts   (or: npm run start:durable)
 //
-// The same variables as `main.ts` (`env.example`). The account must hold the
-// durable-execution library's resources; the agent creates none.
+// The same variables as `main.ts` (`env.example`). The connection must reach a
+// durable engine on `de.api.v1.*` (on the fabric, the tenant's import); the
+// agent creates nothing.
 
 import { startDurableAgent } from "./durable-agent.js";
 import { loadConfig } from "./config.js";

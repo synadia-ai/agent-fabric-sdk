@@ -1,14 +1,13 @@
 """Durable work delegated (5): a workflow started by the model's
-``start_workflow`` call joins the tool call that started it, and starting the
-worker creates nothing.
+``start_workflow`` call joins the tool call that started it, and the agent
+creates nothing: the engine owns every resource.
 
-    server  — a nats-server with JetStream and one account shaped like a
-              tenant's: file storage only, ``max_bytes`` required, room for
-              the seven streams of the durable-execution library
-    tenant  — a user of that account. It creates the seven first, from the
-              configurations the fabric's onboarding applies
-              (``test-fixtures/durable/``, at R1), watches the account's
-              JetStream API advisories, and reads the run's journal back
+    server  — a nats-server with JetStream and one account, file storage
+              only, ``max_bytes`` required, room for the engine's seven
+    engine  — ``durable-engine serve`` on that account, standalone, prefix
+              ``de`` (``harness/engine.py``): it provisions the seven at start
+    tenant  — a user of that account. It watches the account's JetStream API
+              advisories and reads the run's journal back
     agent   — ``start_agent()`` with ``durable=True``, pointed at the fake
     fake    — the model behind a fake proxy: a prompt "durable: <task>" asks
               for ``start_workflow`` of ``durable-task`` under a tool-call id with a dot and a
@@ -18,10 +17,11 @@ worker creates nothing.
 Asserted: the run id is ``<served thread>-<tool call id sanitised>``; the
 journal's start entry carries the workflow and the served trace in its input;
 the step's model call reached the proxy with the two headers equal to that
-trace; the worker's start, and the run, sent no STREAM.CREATE and no
-STREAM.UPDATE, and the account still holds the seven and the worker's two
-consumers alone. The same test as the TypeScript agent's
-``test/durable.test.ts``.
+trace; the agent's connection sent no JetStream API request at all, at its
+start or in the run (the worker's first poll bound its workflow on the
+engine, whose requests the advisories show); the account holds the engine's
+seven alone. The same test as the TypeScript agent's
+``test/start-workflow.test.ts``.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
 
 import nats
@@ -44,11 +43,11 @@ from synadia_ai.agents import Agents, DiscoverFilter, Identity, ResponseChunk, s
 from fabric_agent.agent import start_agent
 from fabric_agent.config import AgentConfig, AgentIdentityConfig, ModelConfig, NatsConfig, load_config
 from fabric_agent.durable import DURABLE_STEP_INSTRUCTION, START_WORKFLOW
+from tests.harness.engine import ENGINE_UNAVAILABLE, LocalEngine
 from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_user
 
 binary = nats_server_on_path()
 
-FIXTURES = Path(__file__).resolve().parents[3] / "test-fixtures" / "durable"
 SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"]
 # A dot and a space, which a run id may not hold.
 TOOL_CALL_ID = "call.durable 1"
@@ -122,12 +121,17 @@ def _kinds(subjects: list[str]) -> list[str]:
 
 
 @pytest.mark.skipif(binary is None, reason="nats-server not on PATH")
-async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creates_nothing() -> None:
+@pytest.mark.skipif(ENGINE_UNAVAILABLE is not None, reason=f"no durable engine: {ENGINE_UNAVAILABLE}")
+async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_sends_no_jetstream_request() -> None:
     users = {name: new_user() for name in ("caller", "agent", "tenant")}
     server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=7)  # type: ignore[arg-type]
     fake = _Fake()
     proxy_url = fake.start()
+    #: The JetStream API requests of every connection but the tenant's and the engine's.
     advisories: list[str] = []
+    #: The engine's own, to show the watch sees what is sent.
+    engine_advisories: list[str] = []
+    engine: LocalEngine | None = None
     try:
         nc_tenant = await nats.connect(server.url, nkeys_seed_str=users["tenant"].seed, name="tenant")
         nc_caller = await nats.connect(server.url, nkeys_seed_str=users["caller"].seed, name="caller")
@@ -139,15 +143,15 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
                 raise AssertionError(f"{subject}: {reply['error']}")
             return reply
 
-        # The seven, as the fabric's onboarding creates them, at R1 on one node.
-        for name in SEVEN:
-            config = json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
-            await api(f"$JS.API.STREAM.CREATE.{name}", {**config, "num_replicas": 1})
+        engine = await LocalEngine.start(server.engine_url)
 
         # Every JetStream API request the account audits from here on.
         async def audit(msg: Any) -> None:
             a = json.loads(msg.data)
-            if (a.get("client") or {}).get("name") != "tenant":
+            client = a.get("client") or {}
+            if client.get("user") == "engine":
+                engine_advisories.append(a["subject"])
+            elif client.get("name") != "tenant":
                 advisories.append(a["subject"])
 
         await nc_tenant.subscribe("$JS.EVENT.ADVISORY.API", cb=audit)
@@ -165,9 +169,6 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
             durable=True,
         )
         agent = await start_agent(cfg, log=lambda _line: None, env={})
-        # The advisories are asynchronous.
-        await asyncio.sleep(1.0)
-        start_advisories = list(advisories)
         tracing = fabric_tracing()
         caller = Agents(
             nc=nc_caller,
@@ -212,14 +213,12 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
             assert step["x-synadia-thread-id"] == thread
             assert step["x-synadia-root-id"] == root
 
-            # Nothing created, nothing changed: not at the worker's start, not by the run.
+            # The agent sent no JetStream API request, at its start or in the
+            # run; the engine did (the advisories are asynchronous).
             await asyncio.sleep(0.5)
-            touched = [k for k in _kinds(advisories) if k in ("STREAM.CREATE", "STREAM.UPDATE")]
-            assert start_advisories
-            assert touched == []
+            assert engine_advisories
+            assert advisories == []
             assert sorted((await api("$JS.API.STREAM.NAMES"))["streams"]) == sorted(SEVEN)
-            assert (await api("$JS.API.CONSUMER.NAMES.DE_WORK"))["consumers"] == ["de-worker-durable-task"]
-            assert (await api("$JS.API.CONSUMER.NAMES.DE_TIMERS"))["consumers"] == ["de-timer-durable-task"]
 
             # The evidence, for whoever reads the run's output (pytest -s).
             print(
@@ -228,9 +227,8 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
                         "run_id": run_id,
                         "start_input": start["input"],
                         "step_headers": {"thread": step["x-synadia-thread-id"], "root": step["x-synadia-root-id"]},
-                        "worker_start_advisories": len(start_advisories),
-                        "worker_start_kinds": dict(Counter(_kinds(start_advisories))),
-                        "stream_creates_or_updates": len(touched),
+                        "agent_js_api_requests": len(advisories),
+                        "engine_js_api_requests": dict(Counter(_kinds(engine_advisories))),
                     }
                 )
             )
@@ -240,5 +238,7 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_creat
             await nc_caller.close()
             await nc_tenant.close()
     finally:
+        if engine is not None:
+            await engine.stop()
         fake.stop()
         server.stop()

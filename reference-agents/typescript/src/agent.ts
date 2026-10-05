@@ -188,11 +188,11 @@ export async function startAgent(
   // A history per verified caller, bounded; none with `AGENT_MAX_HISTORY=0`.
   const histories = new Histories(cfg.agent.maxHistoryExchanges);
 
-  // (5) Durable work, with `AGENT_DURABLE=1`: a worker of the durable-execution
-  // library on this connection runs the workflows this process hosts
-  // (`durable.ts`), and the model is offered `start_workflow`, which starts
-  // one under the tool call, joined to the prompt being served. The library's resources are the tenant's already;
-  // the worker is given no sizing and creates nothing.
+  // (5) Durable work, with `AGENT_DURABLE=1`: a worker of the durable SDK on
+  // this connection runs the workflows this process hosts (`durable.ts`), and
+  // the model is offered `start_workflow`, which starts one under the tool
+  // call, joined to the prompt being served. The engine holds the journal;
+  // the agent creates nothing.
   const durable: DurableTasks | undefined = cfg.durable === true
     ? await startDurableTasks(nc, model, { resultTimeoutMs: cfg.tools.replyTimeoutMs, log: (line) => log(line) })
     : undefined;

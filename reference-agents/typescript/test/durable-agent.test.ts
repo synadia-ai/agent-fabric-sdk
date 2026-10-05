@@ -2,9 +2,10 @@
 // run is taken up again after the process is killed and completes without
 // repeating a model turn it had journaled.
 //
-//   server  — a nats-server with JetStream and one account shaped like a
-//             tenant's, the durable-execution library's seven created first
-//             from `test-fixtures/durable/` (as `durable.test.ts` does)
+//   server  — a nats-server with JetStream and one account
+//   engine  — `durable-engine serve` on that account (`harness/engine.ts`),
+//             with a 3 s ack wait: the item the killed process held goes
+//             back to a worker 3 s after its last extend
 //   agent   — `src/durable-main.ts` as a child process, twice: the first is
 //             killed, the second takes the run up
 //   fake    — the model behind a fake proxy. The first turn asks for
@@ -21,7 +22,7 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,14 +32,13 @@ import { fabricTracing } from "@synadia-ai/agent-fabric";
 import { Agents, signerFromSeed } from "@synadia-ai/agents";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChatMessage } from "../src/model.js";
+import { engineUnavailable, TestEngine } from "./harness/engine.js";
 import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server.js";
 
 const binary = await natsServerOnPath();
 
 const HERE = import.meta.dirname;
 const AGENT_DIR = join(HERE, "..");
-const FIXTURES = join(HERE, "..", "..", "..", "test-fixtures", "durable");
-const SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"];
 const ANSWER = "the fabric has agents, and this one survived a crash";
 
 interface Seen {
@@ -55,8 +55,9 @@ interface Entry {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-describe.skipIf(binary === undefined)("the durable agent across a crash", () => {
+describe.skipIf(binary === undefined || engineUnavailable !== undefined)("the durable agent across a crash", () => {
   let server: TestNatsServer;
+  let engine: TestEngine;
   let fake: Server;
   let dir: string;
   let ncTenant: NatsConnection;
@@ -114,13 +115,7 @@ describe.skipIf(binary === undefined)("the durable agent across a crash", () => 
     const open = (seed: string, name: string): Promise<NatsConnection> =>
       connect({ servers: server.url, authenticator: nkeyAuthenticator(enc.encode(seed)), name });
     [ncTenant, ncCaller] = await Promise.all([open(tenantUser.seed, "tenant"), open(callerUser.seed, "caller")]);
-    for (const name of SEVEN) {
-      const config = JSON.parse(await readFile(join(FIXTURES, `${name}.json`), "utf8")) as Record<string, unknown>;
-      const reply = (
-        await ncTenant.request(`$JS.API.STREAM.CREATE.${name}`, JSON.stringify({ ...config, num_replicas: 1 }))
-      ).json<{ error?: unknown }>();
-      if (reply.error !== undefined) throw new Error(`${name}: ${JSON.stringify(reply.error)}`);
-    }
+    engine = await TestEngine.start(server.engineUrl, { ackWaitMs: 3_000 });
 
     // The fake model. The second turn waits for the marker; a process killed
     // while it waits never reads the answer.
@@ -175,6 +170,7 @@ describe.skipIf(binary === undefined)("the durable agent across a crash", () => 
     await caller?.close();
     await Promise.all([ncCaller?.close(), ncTenant?.close()]);
     await new Promise<void>((r) => fake?.close(() => r()));
+    await engine?.stop();
     await server?.stop();
     if (dir !== undefined) await rm(dir, { recursive: true, force: true });
   });

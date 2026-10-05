@@ -30,7 +30,7 @@ requires-dist = [
     { name = "synadia-ai-agent-fabric", editable = "../../python" },
     { name = "synadia-ai-agent-service", editable = "../../../synadia-agents/agent-sdk/python" },
     { name = "synadia-ai-agents", editable = "../../../synadia-agents/client-sdk/python" },
-    { name = "synadia-durable", editable = "../../../synadia-durable-execution/python" },
+    { name = "synadia-durable", editable = "../../../durable-sdk/python" },
 ]
 
 [package.metadata.requires-dev]
@@ -662,8 +662,8 @@ dev = [
 
 [[package]]
 name = "synadia-durable"
-version = "0.1.0"
-source = { editable = "../../../synadia-durable-execution/python" }
+version = "0.7.0a0"
+source = { editable = "../../../durable-sdk/python" }
 dependencies = [
     { name = "nats-py" },
 ]
@@ -679,11 +679,11 @@ provides-extras = ["crypto"]
 dev = [
     { name = "cryptography", specifier = ">=42" },
     { name = "mypy", specifier = ">=1.13" },
+    { name = "nkeys", specifier = ">=0.2" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-cov", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.8" },
-    { name = "synadia-ai-agent-service", specifier = ">=0.4.1" },
 ]
 
 [[package]]

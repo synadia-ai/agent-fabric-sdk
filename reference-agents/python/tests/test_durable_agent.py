@@ -2,9 +2,10 @@
 run is taken up again after the process is killed and completes without
 repeating a model turn it had journaled.
 
-    server  — a nats-server with JetStream and one account shaped like a
-              tenant's, the durable-execution library's seven created first
-              from ``test-fixtures/durable/`` (as ``test_start_workflow.py`` does)
+    server  — a nats-server with JetStream and one account
+    engine  — ``durable-engine serve`` on that account (``harness/engine.py``),
+              with a 3 s ack wait: the item the killed process held goes back
+              to a worker 3 s after its last extend
     agent   — ``python -m fabric_agent.durable_main`` as a subprocess, twice:
               the first is killed, the second takes the run up
     fake    — the model behind a fake proxy. The first turn asks for
@@ -41,13 +42,12 @@ import pytest
 from synadia_ai.agent_fabric import fabric_tracing
 from synadia_ai.agents import Agents, DiscoverFilter, Identity, ResponseChunk, signer_from_seed
 
+from tests.harness.engine import ENGINE_UNAVAILABLE, LocalEngine
 from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_user
 
 binary = nats_server_on_path()
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
-FIXTURES = Path(__file__).resolve().parents[3] / "test-fixtures" / "durable"
-SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"]
 ANSWER = "the fabric has agents, and this one survived a crash"
 
 
@@ -107,22 +107,19 @@ def _label(e: dict[str, Any]) -> str:
 
 
 @pytest.mark.skipif(binary is None, reason="nats-server not on PATH")
+@pytest.mark.skipif(ENGINE_UNAVAILABLE is not None, reason=f"no durable engine: {ENGINE_UNAVAILABLE}")
 async def test_the_run_completes_after_a_kill_without_repeating_a_journaled_model_turn(tmp_path: Path) -> None:
     users = {name: new_user() for name in ("caller", "agent", "tenant")}
     server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=7)  # type: ignore[arg-type]
     fake = _Fake(marker=tmp_path / "release-the-second-turn")
     proxy_url = fake.start()
+    engine: LocalEngine | None = None
     children: list[subprocess.Popen[bytes]] = []
     logs = tmp_path / "agent.log"
     try:
         nc_tenant = await nats.connect(server.url, nkeys_seed_str=users["tenant"].seed, name="tenant")
         nc_caller = await nats.connect(server.url, nkeys_seed_str=users["caller"].seed, name="caller")
-        for name in SEVEN:
-            config = json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
-            msg = await nc_tenant.request(
-                f"$JS.API.STREAM.CREATE.{name}", json.dumps({**config, "num_replicas": 1}).encode(), timeout=5
-            )
-            assert "error" not in json.loads(msg.data), msg.data
+        engine = await LocalEngine.start(server.engine_url, ack_wait_ms=3_000)
 
         async def journal(run_id: str) -> list[dict[str, Any]]:
             entries: list[dict[str, Any]] = []
@@ -265,5 +262,7 @@ async def test_the_run_completes_after_a_kill_without_repeating_a_journaled_mode
                 child.kill()
                 child.wait()
         fake.marker.write_text("")
+        if engine is not None:
+            await engine.stop()
         fake.stop()
         server.stop()

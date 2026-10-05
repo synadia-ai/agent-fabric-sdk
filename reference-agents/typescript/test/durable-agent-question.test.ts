@@ -2,7 +2,8 @@
 // run's tool scope and the prompt's trace, and a question from the prompted
 // agent parked on a durable signal and relayed to the caller.
 //
-//   server  — JetStream, one tenant-shaped account, the seven created first
+//   server  — JetStream, one account
+//   engine  — `durable-engine serve` on that account (`harness/engine.ts`)
 //   agent   — `startDurableAgent()`, pointed at the fake
 //   asker   — an agent that asks its caller a question before it answers
 //   fake    — the model: a prompt "delegate to <address>" asks for
@@ -16,7 +17,7 @@
 // parent and the model's tool call as its call, and the asker's thread is
 // in the same tree.
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,11 +31,10 @@ import type { RunningAgent } from "../src/agent.js";
 import type { AgentConfig } from "../src/config.js";
 import { startDurableAgent } from "../src/durable-agent.js";
 import type { ChatMessage } from "../src/model.js";
+import { engineUnavailable, TestEngine } from "./harness/engine.js";
 import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server.js";
 
 const binary = await natsServerOnPath();
-const FIXTURES = join(import.meta.dirname, "..", "..", "..", "test-fixtures", "durable");
-const SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"];
 const DELEGATE = /delegate to (\S+)/;
 
 interface EdgeRecord {
@@ -45,8 +45,9 @@ interface EdgeRecord {
   readonly turn_count_hint: number;
 }
 
-describe.skipIf(binary === undefined)("the durable agent's tools and questions", () => {
+describe.skipIf(binary === undefined || engineUnavailable !== undefined)("the durable agent's tools and questions", () => {
   let server: TestNatsServer;
+  let engine: TestEngine;
   let fake: Server;
   let dir: string;
   let ncTenant: NatsConnection;
@@ -70,10 +71,7 @@ describe.skipIf(binary === undefined)("the durable agent's tools and questions",
     const open = (seed: string): Promise<NatsConnection> =>
       connect({ servers: server.url, authenticator: nkeyAuthenticator(enc.encode(seed)) });
     [ncTenant, ncCaller, ncAsker] = await Promise.all([open(tenantUser.seed), open(callerUser.seed), open(askerUser.seed)]);
-    for (const name of SEVEN) {
-      const config = JSON.parse(await readFile(join(FIXTURES, `${name}.json`), "utf8")) as Record<string, unknown>;
-      await ncTenant.request(`$JS.API.STREAM.CREATE.${name}`, JSON.stringify({ ...config, num_replicas: 1 }));
-    }
+    engine = await TestEngine.start(server.engineUrl);
     const sub = ncTenant.subscribe("TRACE.edges");
     void (async () => {
       for await (const m of sub) edges.push(m.json<EdgeRecord>());
@@ -160,6 +158,7 @@ describe.skipIf(binary === undefined)("the durable agent's tools and questions",
     await asker?.stop();
     await Promise.all([ncCaller?.close(), ncAsker?.close(), ncTenant?.close()]);
     await new Promise<void>((r) => fake?.close(() => r()));
+    await engine?.stop();
     await server?.stop();
     if (dir !== undefined) await rm(dir, { recursive: true, force: true });
   });

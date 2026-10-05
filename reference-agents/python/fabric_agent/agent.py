@@ -224,11 +224,11 @@ async def start_agent(
     # A history per verified caller, bounded; none with ``AGENT_MAX_HISTORY=0``.
     histories = Histories(cfg.agent.max_history_exchanges)
 
-    # (5) Durable work, with ``AGENT_DURABLE=1``: a worker of the durable-execution
-    # library on this connection runs the workflows this process hosts
-    # (``durable.py``), and the model is offered ``start_workflow``, which starts
-    # one under the tool call, joined to the prompt being served. The library's resources are the tenant's already;
-    # the worker is given no sizing and creates nothing.
+    # (5) Durable work, with ``AGENT_DURABLE=1``: a worker of the durable SDK on
+    # this connection runs the workflows this process hosts (``durable.py``), and
+    # the model is offered ``start_workflow``, which starts one under the tool
+    # call, joined to the prompt being served. The engine holds the journal; the
+    # agent creates nothing.
     durable: DurableTasks | None = (
         await start_durable_tasks(nc, model, result_timeout_s=cfg.reply_timeout_s, log=log)
         if cfg.durable

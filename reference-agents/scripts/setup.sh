@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Installs the two agents' packages. Until the protocol SDK, the fabric
-# package and the durable-execution library are published, the agents link
+# package and the thin durable SDK are published, the agents link
 # them by relative path (`file:` in typescript/package.json, uv path sources
-# in python/pyproject.toml): the SDK and the library from checkouts next to
+# in python/pyproject.toml): the two SDKs from checkouts next to
 # this repository, the fabric package from this repository itself. Their
 # TypeScript halves are built in place first.
 #
 # Called by `make setup`, which names the SDK's checkout and its branch. Safe
 # to run twice: a package is built only when its sources are newer than its
-# build. In the SDK's and the library's checkouts it writes build output and
+# build. In the two SDKs' checkouts it writes build output and
 # nothing else.
 set -euo pipefail
 
@@ -32,9 +32,9 @@ if [ "$on" != "${SDK_BRANCH:?}" ] && [ -z "${ANY_BRANCH:-}" ]; then
   exit 1
 fi
 
-# The durable-execution library's checkout, for the durable workflow.
+# The thin durable SDK's checkout, for the durable workflows.
 if [ ! -f "$de/package.json" ] || [ ! -f "$de/python/pyproject.toml" ]; then
-  echo "setup: no durable-execution library at $de" >&2
+  echo "setup: no durable SDK at $de" >&2
   echo "  clone it next to this repository, as $(basename "$de")" >&2
   exit 1
 fi
@@ -61,8 +61,9 @@ for pkg in client-sdk agent-sdk; do
     built=1
   fi
 done
-# The durable-execution library: built in place, like the SDK; in its
-# checkout it writes build output and nothing else.
+# The thin durable SDK: built in place, like the protocol SDK; in its
+# checkout it writes build output and nothing else. The engine behind it is
+# built by the durable tests themselves (test/harness/engine.ts, tests/harness/engine.py).
 if stale "$de"; then
   echo "setup: building $de"
   (cd "$de" && { [ -d node_modules ] || bun install --frozen-lockfile; } && bun run build)

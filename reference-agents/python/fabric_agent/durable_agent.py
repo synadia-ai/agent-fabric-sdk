@@ -2,8 +2,8 @@
 
 ``agent.py`` keeps its model loop in memory: a crash of the process loses the
 conversation, and the prompt it was serving is gone with every model turn and
-tool call it had made. Here the loop runs as a workflow of the
-durable-execution library, ``agent-loop``:
+tool call it had made. Here the loop runs as a workflow of the durable SDK,
+``agent-loop``, journaled by the durable engine:
 
     llm-N          each model turn, one journaled step through the proxy,
                    with the two trace headers from the run's input
@@ -87,12 +87,12 @@ from synadia_durable import Ctx, DurableTimeoutError, StartOptions, Workflow, cr
 
 from .agent import MAX_CONCURRENT_PROMPTS, RunningAgent, _line_logger
 from .config import AgentConfig
-from .durable import _LibraryLogger
+from .durable import _SdkLogger
 from .model import ChatMessage, ModelClient
 from .reply import delivered_reply
 from .tools import chat_tools, offered_tools
 
-#: The workflow's name: a subject token and a consumer name to the library.
+#: The workflow's name: a subject token and a consumer name to the engine.
 AGENT_LOOP = "agent-loop"
 
 #: What the model is told in place of an empty answer.
@@ -190,7 +190,7 @@ def agent_loop_workflow(
 
     async def run(ctx: Ctx, input: dict[str, Any]) -> dict[str, Any]:
         # The run's tool scope is released when the loop returns or fails. A run
-        # that parks on a question does neither: the library cancels its task,
+        # that parks on a question does neither: the SDK cancels its task,
         # which is not a failure, so the scope, and the call that asked, stay
         # open for the answer.
         try:
@@ -378,8 +378,8 @@ async def start_durable_agent(
     scopes = _RunScopes(tools)
     questions = _Questions()
 
-    # (5) The loop, on a worker on this connection. The library's resources
-    # are the tenant's: no sizing, no replicas, nothing created.
+    # (5) The loop, on a worker on this connection; the engine holds the
+    # journal, and the agent creates nothing.
     agent_loop = agent_loop_workflow(
         model=model,
         tools=tools,
@@ -390,7 +390,7 @@ async def start_durable_agent(
         system_prompt=cfg.agent.system_prompt,
         question_timeout_s=cfg.reply_timeout_s,
     )
-    worker = create_worker(nc, [agent_loop], logger=_LibraryLogger(log))
+    worker = create_worker(nc, [agent_loop], logger=_SdkLogger(log))
     await worker.start()
     runs = create_client(nc)
 

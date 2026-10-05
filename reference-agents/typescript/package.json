@@ -21,7 +21,7 @@
     "@synadia-ai/agent-fabric": "file:../../typescript",
     "@synadia-ai/agent-service": "file:../../../synadia-agents/agent-sdk/typescript",
     "@synadia-ai/agents": "file:../../../synadia-agents/client-sdk/typescript",
-    "@synadia-ai/durable": "file:../../../synadia-durable-execution"
+    "@synadia-ai/durable": "file:../../../durable-sdk"
   },
   "devDependencies": {
     "@nats-io/nkeys": "^2.0.3",

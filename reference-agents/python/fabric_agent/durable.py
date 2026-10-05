@@ -22,10 +22,11 @@ call. A step runs on the worker, outside the prompt's trace context, so the
 trace travels in the run's input (``durable_trace()``) and comes back as
 headers inside the step (``durable_headers()``).
 
-The library's seven JetStream resources are the tenant's: the fabric's
-onboarding creates them in the account, sized to its tier. The worker and the
-client are given no sizing and no replicas, so starting them creates nothing
-and changes nothing; they find what is there.
+The worker and the client are the thin SDK's: every call is one request to
+``de.api.v1.<op>`` on the agent's own connection, and the engine owns the
+journal and everything else. On the fabric the tenant's import carries the
+requests to the engine; the agent creates nothing and needs no rights of its
+own. The worker's first poll binds its workflow names on the engine.
 
 An agent whose model loop is itself durable needs no such tool: its loop is
 the workflow (``durable_agent.py``).
@@ -51,7 +52,7 @@ from .model import ChatMessage, ModelClient, ToolRunner
 #: The tool the model sees.
 START_WORKFLOW = "start_workflow"
 
-#: The demo workflow's name: a subject token and a consumer name to the library.
+#: The demo workflow's name: a subject token and a consumer name to the engine.
 DURABLE_TASK = "durable-task"
 
 #: What the demo workflow's step tells the model.
@@ -171,7 +172,7 @@ async def start_durable_tasks(
     """Start the worker, which binds two durable consumers per workflow and nothing else."""
     hosted = hosted_workflows(model)
     by_name = {w.name: w for w in hosted}
-    worker = create_worker(nc, [w.workflow for w in hosted], logger=_LibraryLogger(log))
+    worker = create_worker(nc, [w.workflow for w in hosted], logger=_SdkLogger(log))
     await worker.start()
     client = create_client(nc)
 
@@ -228,8 +229,8 @@ def with_durable_tasks(runner: ToolRunner, durable: DurableTasks) -> ToolRunner:
     return _WithDurableTasks(runner, durable)
 
 
-class _LibraryLogger:
-    """The library's log lines, to the agent's ``log``; debug is left out."""
+class _SdkLogger:
+    """The SDK's log lines, to the agent's ``log``; debug is left out."""
 
     def __init__(self, log: Callable[[str], None]) -> None:
         self._log = log
