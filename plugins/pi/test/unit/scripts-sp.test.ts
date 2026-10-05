@@ -179,9 +179,17 @@ describe("the flags from the environment", () => {
     });
     expect(r.status).toBe(0);
     expect(r.args).toEqual([
-      "--thread-id", "a".repeat(32), "--root-id", "b".repeat(32),
-      "--dir", CONNECTION.SCRATCHPAD_DIR,
-      "--url", CONNECTION.SP_NATS_URL, "--creds", CONNECTION.SP_NATS_CREDS, "info",
+      "--thread-id",
+      "a".repeat(32),
+      "--root-id",
+      "b".repeat(32),
+      "--dir",
+      CONNECTION.SCRATCHPAD_DIR,
+      "--url",
+      CONNECTION.SP_NATS_URL,
+      "--creds",
+      CONNECTION.SP_NATS_CREDS,
+      "info",
     ]);
     expect(flag(r.args, "--volume")).toBeUndefined();
     const refused = run(["info", "--dir", "/another-workspace"]);
