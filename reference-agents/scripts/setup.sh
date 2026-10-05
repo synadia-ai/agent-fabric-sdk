@@ -20,8 +20,9 @@ de="$(cd "$repo/.." && pwd)/${DE_DIR:?}"
 # The SDK's checkout must be there, and on the branch these agents are written
 # against: another branch builds, and then the agents fail in ways that point
 # nowhere near the cause.
-if [ ! -d "$sdk/.git" ]; then
-  echo "setup: no checkout at $sdk" >&2
+# A checkout or a worktree: a worktree's .git is a file, not a directory.
+if [ ! -e "$sdk/.git" ]; then
+  echo "setup: no checkout or worktree at $sdk" >&2
   echo "  clone it next to this repository: git clone -b ${SDK_BRANCH:?} git@github.com:synadia-ai/synadia-agents.git $sdk" >&2
   exit 1
 fi
@@ -34,8 +35,8 @@ fi
 
 # The thin durable SDK's checkout, for the durable workflows.
 if [ ! -f "$de/package.json" ] || [ ! -f "$de/python/pyproject.toml" ]; then
-  echo "setup: no durable SDK at $de" >&2
-  echo "  clone it next to this repository, as $(basename "$de")" >&2
+  echo "setup: no durable SDK (a checkout or a worktree) at $de" >&2
+  echo "  clone it, or add a worktree of it, next to this repository, as $(basename "$de")" >&2
   exit 1
 fi
 

@@ -42,6 +42,7 @@ New here? `../docs/getting-started/typescript.md` walks through this agent in si
 - `nats-server` on PATH for the tests (`brew install nats-server`). The bounded-reply gate fails when it is absent; older fabric tests skip.
 - Until the packages are published: `make setup` in `reference-agents/`. It checks the SDK checkout `../../../synadia-agents` is there and on its branch (the `Makefile` names it), builds the SDK's two TypeScript packages and then this repository's fabric package, `../../typescript`, and installs this agent. It builds only what changed, so it is safe to run again.
 - For ScratchPad, which is optional: a service import in the agent's NATS account, an allocated volume, and a private persistent workspace.
+- For durable work, which is optional: on the fabric, the tenant's import of the durable engine's API (`de.api.>`), which the console's onboarding makes, and an agent user with no durable rights of its own; the agent creates nothing. `AGENT_DURABLE=1` turns on the tool `start_workflow` in `npm start`, and `npm run start:durable` runs the durable agent with the same `.env`.
 
 ## Install and test
 
