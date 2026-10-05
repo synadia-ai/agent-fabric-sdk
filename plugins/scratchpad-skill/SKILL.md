@@ -56,7 +56,7 @@ scripts/sp hydrate --ref "$REFERENCE" --destination "$DESTINATION"
 ```
 
 Read returns verified bytes as `data_base64` and their count as `bytes`; decode `data_base64` to get the content.
-Read accepts files up to 16 MiB; use hydration for larger files and directory trees.
+Use `limits.read_bytes` from `info` for the read allowance; use hydration for larger files and directory trees.
 Hydrate requires a destination that does not exist.
 It verifies content identities before completing files, and reports the files, directories, symbolic links and bytes it installed.
 Failure can leave a partial destination; preserve that path for inspection.
@@ -65,9 +65,17 @@ An expired reference or refused grant does not authorize another identity or pat
 ## Initialize and inspect
 
 ```sh
+scripts/sp info
 scripts/sp init --operation-id "$CREATE_ID"
 scripts/sp describe
 ```
+
+`info` returns this agent's authenticated principal, owned scope allowances, and request limits.
+It needs no initialized workspace and changes no recovery state.
+The scope byte and object figures are configured allowances; `describe` shows current usage.
+An empty scope list needs an operator admission check before this agent can publish.
+Volumes readable through another owner's grant are not listed; their granted references can still be read.
+If `info` reports an unknown command, an older binary was selected; continue with the existing commands and ask the operator for the allowances.
 
 `init` creates this agent's volume once; publishing needs it.
 Rerun the saved creation action after an unknown outcome.
@@ -192,7 +200,7 @@ Capacity refusal requires maintenance or an explicit operator decision; it never
 ## Capacity
 
 Deployment scopes select explicit encoded-byte and object quotas.
-The small development profile permits 8 MiB and 64 objects per volume.
+Read this agent's configured allowances with `scripts/sp info`; example sizes are not deployment defaults.
 Objects include chunks, file metadata, and directories.
 Retained results and unfinished uploads consume the same allowance.
 Replacing unique content needs room for both versions until old retention is released and collection completes.
