@@ -56,7 +56,8 @@ scripts/sp hydrate --ref "$REFERENCE" --destination "$DESTINATION"
 ```
 
 Read returns verified bytes as `data_base64` and their count as `bytes`; decode `data_base64` to get the content.
-Use `limits.read_bytes` from `info` for the read allowance; use hydration for larger files and directory trees.
+Read accepts files up to 16 MiB; use hydration for larger files and directory trees.
+`limits.read_bytes` from `info` bounds one service range request; the CLI combines ranges for this buffered read.
 Hydrate requires a destination that does not exist.
 It verifies content identities before completing files, and reports the files, directories, symbolic links and bytes it installed.
 Failure can leave a partial destination; preserve that path for inspection.
