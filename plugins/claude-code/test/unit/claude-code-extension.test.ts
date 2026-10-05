@@ -183,10 +183,13 @@ describe("the served pair", () => {
       ["end", "ok"],
     ]);
     expect(published[1]!.record).toMatchObject({
+      version: 1,
       harness: "claude",
       harness_thread_id: SESSION,
       ts: Math.floor(stoppedAt / 1000),
     });
+    // The model replied itself: no reason.
+    expect("reason" in published[1]!.record).toBe(false);
     expect(servedSchemaErrors(published[1]!.record)).toEqual([]);
   });
 
@@ -244,6 +247,50 @@ describe("the served pair", () => {
       ["end", "timeout"],
     ]);
     expect(published[1]!.record["ts"]).toBe(Math.floor(failedAt / 1000));
+  });
+
+  it("ends a prompt answered with the turn's final text at once, with reason final_text, version 2", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT });
+    await prompt.accepted;
+    // The plugin sends the final text at the turn's Stop: no Stop follows.
+    const answeredAt = Date.now() - 2_000;
+    await prompt.end("ok", answeredAt, "final_text");
+    await settled();
+    expect(phases(published)).toEqual([
+      ["start", undefined],
+      ["end", "ok"],
+    ]);
+    expect(published[1]!.record).toMatchObject({
+      version: 2,
+      status: "ok",
+      reason: "final_text",
+      ts: Math.floor(answeredAt / 1000),
+    });
+    expect(published[0]!.record["version"]).toBe(1);
+    expect(servedSchemaErrors(published[1]!.record)).toEqual([]);
+    // A Stop after it changes nothing.
+    ext.events!.turnStopped!(SESSION, Date.now());
+    await settled();
+    expect(published).toHaveLength(2);
+  });
+
+  it("passes the plugin's reason on with a failure: no_reply, expired", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const unanswered = serve(ext, { thread_id: THREAD, root_id: ROOT });
+    await unanswered.end("error", undefined, "no_reply");
+    await expect(unanswered.done).rejects.toThrow("the request ended: error");
+    const expired = serve(ext, { thread_id: "c".repeat(32), root_id: ROOT });
+    await expired.end("timeout", undefined, "expired");
+    await settled();
+    const ends = published.filter((p) => p.record["phase"] === "end").map((p) => p.record);
+    expect(ends.map((r) => [r["version"], r["status"], r["reason"]])).toEqual([
+      [2, "error", "no_reply"],
+      [2, "timeout", "expired"],
+    ]);
+    for (const record of ends) expect(servedSchemaErrors(record)).toEqual([]);
   });
 
   it("gives a prompt before any session no pair, one log line, and still serves it", async () => {
@@ -331,10 +378,11 @@ describe("the served pair", () => {
     await open.accepted;
     await ext.stopping!();
     const ends = published.filter((p) => p.record["phase"] === "end").map((p) => p.record);
-    expect(ends.map((r) => [r["thread_id"], r["status"]])).toEqual([
-      [THREAD, "ok"],
-      ["c".repeat(32), "error"],
+    expect(ends.map((r) => [r["thread_id"], r["status"], r["reason"]])).toEqual([
+      [THREAD, "ok", undefined],
+      ["c".repeat(32), "error", "shutdown"],
     ]);
+    expect(ends.map((r) => r["version"])).toEqual([1, 2]);
     expect(ends[0]!["ts"]).toBe(Math.floor(repliedAt / 1000));
     // The plugin's own promptEnded after stopping finds nothing to settle.
     await open.end("error");

@@ -90,6 +90,7 @@ export {
 
 export {
   HARNESS_THREAD_ID_MAX,
+  SERVED_RECORD_REASON_VERSION,
   SERVED_RECORD_VERSION,
   ServedPublisher,
   buildServedRecord,
@@ -100,6 +101,7 @@ export {
   type Harness,
   type ServedPhase,
   type ServedPublisherOptions,
+  type ServedReason,
   type ServedStatus,
   type ServedTurn,
 } from "./served.js";
@@ -202,6 +204,7 @@ export type {
   AgentExtensionFactory,
   AgentExtensionHandles,
   AgentExtensionSettings,
+  EndReason,
   HarnessEvents,
   Outcome,
   PluginHarness,

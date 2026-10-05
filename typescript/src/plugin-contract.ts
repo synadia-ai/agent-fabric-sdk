@@ -63,6 +63,18 @@ export interface ServedRequest {
 export type Outcome = "ok" | "error" | "timeout";
 
 /**
+ * Claude Code: how a prompt ended when the model did not end it with its
+ * own reply, `promptEnded`'s fourth argument; absent when it did.
+ * `final_text`: the turn ended without a reply and the plugin sent the
+ * turn's final text as the reply (outcome `ok`); `no_reply`: no reply and
+ * no final text; `shutdown`: the plugin stopped with the prompt open;
+ * `delivery`: the prompt could not be handed to the harness (all three
+ * `error`); `expired`: the prompt outlived the plugin's limit (`timeout`).
+ * The same values as the served record's `reason`.
+ */
+export type EndReason = "final_text" | "no_reply" | "shutdown" | "delivery" | "expired";
+
+/**
  * The harness's events. A notification is called and forgotten; a wrapper
  * is called by the plugin around one of its own steps and must call `run`
  * once, synchronously, and return its value, a promise included. A wrapper
@@ -75,8 +87,11 @@ export type Outcome = "ok" | "error" | "timeout";
 export interface HarnessEvents {
   /** Inside the prompt handler, after every interceptor ran. */
   promptAccepted?(request: ServedRequest): void;
-  /** When the plugin settles the request. */
-  promptEnded?(request: ServedRequest, outcome: Outcome, atMs: number): void;
+  /**
+   * When the plugin settles the request. Claude Code passes `reason` when
+   * the model did not end the prompt with its own reply.
+   */
+  promptEnded?(request: ServedRequest, outcome: Outcome, atMs: number, reason?: EndReason): void;
   /** Around every agent-tool call, with the request the model works in. */
   aroundToolCall?<T>(request: ServedRequest | undefined, toolName: string, run: () => T): T;
   /** PI: around the hand-over of the prompt to PI's loop (`pi.sendUserMessage()`). */
