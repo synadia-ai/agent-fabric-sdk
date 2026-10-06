@@ -52,10 +52,18 @@ import {
 } from "@synadia-ai/agents";
 import type { AgentConfig } from "./config.js";
 import { Histories, withToolNote } from "./history.js";
-import { converse, createModelClient, EmptyReplyError, type ChatMessage } from "./model.js";
+import { converse, createModelClient, EmptyReplyError, type ChatMessage, type ToolRunner } from "./model.js";
 import { startDurableTasks, withDurableTasks, type DurableTasks } from "./durable.js";
 import { deliveredReply } from "./reply.js";
-import { checkOwnTools, NO_TOOLS, offeredTools, toolRunner, withOwnTools, type OwnTool } from "./tools.js";
+import {
+  checkOwnTools,
+  NO_TOOLS,
+  offeredTools,
+  toolRunner,
+  withOwnTools,
+  type OwnTool,
+  type OwnToolContext,
+} from "./tools.js";
 
 export interface RunningAgent {
   /** The prompt address other agents see in discovery. */
@@ -209,9 +217,14 @@ export async function startAgent(
 
   // What the model is offered. A role that must answer itself is offered no
   // agent tools (see `config.ts`), but its own tools and the durable one
-  // when it is on.
-  const agentTools = withOwnTools(cfg.agent.tools === "none" ? NO_TOOLS : toolRunner(tools), ownTools);
-  const offered = durable !== undefined ? withDurableTasks(agentTools, durable) : agentTools;
+  // when it is on. The own tools are bound per prompt, in `serve`: a
+  // question one of them asks goes to the caller of the prompt whose model
+  // made the call.
+  const agentTools = cfg.agent.tools === "none" ? NO_TOOLS : toolRunner(tools);
+  const offeredFor = (ctx: OwnToolContext): ToolRunner => {
+    const runner = withOwnTools(agentTools, ownTools, ctx);
+    return durable !== undefined ? withDurableTasks(runner, durable) : runner;
+  };
 
   service.onPrompt(async (envelope, response) => {
     // The served thread's ids, for log lines and ScratchPad. Read here, not
@@ -272,6 +285,19 @@ export async function startAgent(
       { role: "user", content: userContent },
     ];
     const turnStart = messages.length;
+    // An own tool's question goes to this prompt's caller, with the time a
+    // prompt to another agent may take. A caller that does not answer is a
+    // throw, which the model reads as `{"error": ...}`.
+    const offered = offeredFor({
+      ask: async (question) => {
+        log(`${tag} asks the caller: ${question.slice(0, 80)}`);
+        try {
+          return (await response.ask(question, { timeoutMs: cfg.tools.replyTimeoutMs })).prompt;
+        } catch (err) {
+          throw new Error(`the caller did not answer: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      },
+    });
     let result: Awaited<ReturnType<typeof converse>>;
     try {
       result = await converse({

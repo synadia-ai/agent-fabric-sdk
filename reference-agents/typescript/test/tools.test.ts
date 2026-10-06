@@ -230,6 +230,34 @@ describe("own tools", () => {
     expect(JSON.parse(await runner.call("read_lines", "[1]", "c3"))).toEqual({ error: "the arguments must be a JSON object" });
   });
 
+  it("run with the context they are given, and ask its caller", async () => {
+    const asked: string[] = [];
+    const ask = async (question: string): Promise<string> => {
+      asked.push(question);
+      return "yes";
+    };
+    const guarded: OwnTool = {
+      ...stopLine,
+      run: async (args, ctx) => ((await ctx.ask(`Stop line ${String(args["line"])}? yes/no`)) === "yes" ? { stopped: true } : { stopped: false }),
+    };
+    const runner = withOwnTools(NO_TOOLS, [guarded], { ask });
+    expect(JSON.parse(await runner.call("stop_line", '{"line":2}', "c1"))).toEqual({ stopped: true });
+    expect(asked).toEqual(["Stop line 2? yes/no"]);
+  });
+
+  it("return a failed ask in words, and with no prompt being served say so", async () => {
+    const asking: OwnTool = { ...stopLine, run: async (_args, ctx) => ({ answer: await ctx.ask("go?") }) };
+    const failing = withOwnTools(NO_TOOLS, [asking], {
+      ask: async () => {
+        throw new Error("the caller did not answer: timed out");
+      },
+    });
+    expect(JSON.parse(await failing.call("stop_line", "{}", "c1"))).toEqual({ error: "the caller did not answer: timed out" });
+    expect(JSON.parse(await withOwnTools(NO_TOOLS, [asking]).call("stop_line", "{}", "c2"))).toEqual({
+      error: "no prompt is being served, so there is no caller to ask",
+    });
+  });
+
   it("leave a call to an agent tool to the agent tools", async () => {
     const runner = withOwnTools(toolRunner(agentTools), [readLines]);
     expect(JSON.parse(await runner.call("open_pod_bay_doors", "{}", "c1"))).toEqual({ error: 'unknown tool "open_pod_bay_doors"' });

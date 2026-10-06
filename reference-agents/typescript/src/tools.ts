@@ -110,15 +110,37 @@ export const NO_TOOLS: ToolRunner = {
 /**
  * A tool the agent defines itself, next to the agent tools: a plant
  * agent's `read_lines`, say. The model reads `name`, `description` and
- * `parameters` (a JSON schema object). `run` gets the parsed arguments;
- * what it returns goes back to the model as JSON text.
+ * `parameters` (a JSON schema object). `run` gets the parsed arguments
+ * and the context of the prompt being served; what it returns goes back
+ * to the model as JSON text. A tool that needs no context may take the
+ * arguments alone.
  */
 export interface OwnTool {
   readonly name: string;
   readonly description: string;
   readonly parameters: Readonly<Record<string, unknown>>;
-  run(args: Record<string, unknown>): Promise<unknown>;
+  run(args: Record<string, unknown>, ctx: OwnToolContext): Promise<unknown>;
 }
+
+/**
+ * What an own tool can do in the prompt being served, the one whose model
+ * made the call.
+ */
+export interface OwnToolContext {
+  /**
+   * Asks that prompt's caller a question and resolves with the answer's
+   * text. Throws when the caller does not answer in time, or when no
+   * prompt is being served.
+   */
+  ask(question: string): Promise<string>;
+}
+
+/** The context outside a served prompt: there is no caller to ask. */
+export const NOT_SERVING: OwnToolContext = {
+  ask: async () => {
+    throw new Error("no prompt is being served, so there is no caller to ask");
+  },
+};
 
 /**
  * The names an own tool may not take: the SDK's six agent tools, offered
@@ -144,11 +166,16 @@ export function checkOwnTools(own: ReadonlyArray<OwnTool>): void {
 
 /**
  * The runner with the own tools after the tools it already has. A call to
- * an own tool runs it; any other goes to `runner`. Arguments that are not
- * a JSON object, or a tool that throws, come back as `{"error": ...}`,
- * never as a throw, as for the agent tools.
+ * an own tool runs it with `ctx`; any other goes to `runner`. Arguments
+ * that are not a JSON object, or a tool that throws, come back as
+ * `{"error": ...}`, never as a throw, as for the agent tools. The agent
+ * builds one runner per served prompt, so `ctx` is that prompt's.
  */
-export function withOwnTools(runner: ToolRunner, own: ReadonlyArray<OwnTool>): ToolRunner {
+export function withOwnTools(
+  runner: ToolRunner,
+  own: ReadonlyArray<OwnTool>,
+  ctx: OwnToolContext = NOT_SERVING,
+): ToolRunner {
   checkOwnTools(own);
   if (own.length === 0) return runner;
   const byName = new Map(own.map((tool) => [tool.name, tool]));
@@ -164,7 +191,7 @@ export function withOwnTools(runner: ToolRunner, own: ReadonlyArray<OwnTool>): T
       const tool = byName.get(name);
       if (tool === undefined) return runner.call(name, args, toolCallId);
       try {
-        return JSON.stringify((await tool.run(parseArgs(args))) ?? null);
+        return JSON.stringify((await tool.run(parseArgs(args), ctx)) ?? null);
       } catch (err) {
         return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
       }

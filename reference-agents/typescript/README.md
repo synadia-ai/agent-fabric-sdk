@@ -94,6 +94,18 @@ await startAgent(cfg, console.log, { ownTools: [readLines] });
 
 The model sees the agent tools first, then yours. With `AGENT_TOOLS=none` it sees only yours. `run` gets the parsed arguments, and what it returns goes back to the model as JSON. A throw comes back as `{"error": "..."}`. A name that an agent tool already has, or two tools with one name, stop the agent at start.
 
+`run` also gets a context, `run(args, ctx)`. `ctx.ask(question)` asks the caller of the prompt being served, and resolves with the answer's text. So a tool can ask before it acts:
+
+```ts
+run: async (args, ctx) => {
+  const answer = await ctx.ask(`Stop ${String(args["line"])}? yes/no`);
+  if (answer.trim().toLowerCase() !== "yes") return { stopped: false, answer };
+  return { stopped: true };
+},
+```
+
+The question goes to the caller of the prompt whose model made the call, also when the agent serves several prompts at once. The caller has `AGENT_REPLY_TIMEOUT_MS` to answer. A timeout, or a call with no prompt being served, is a throw, which the model reads as `{"error": "..."}`. A tool that needs no context may take the arguments alone.
+
 TypeScript only for now; the Python agent has no such option.
 
 ## How it reads
