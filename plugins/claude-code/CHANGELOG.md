@@ -4,7 +4,7 @@ All notable changes to `@synadia-ai/agent-fabric-claude-code` are recorded here.
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-10-06
 
 ### Added
 
