@@ -4,15 +4,17 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
-## ScratchPad 0.1.5 refresh
+## ScratchPad 0.1.6 refresh
 
 [bundles-v0.1.1.json](bundles-v0.1.1.json) describes the prepared `bundles-v0.1.1` assets.
 The protocol source matches the existing `bundles-v0.1.0` release.
-The Fabric source includes the shared skill and verified binary selection for `sp-v0.1.5`.
+The Fabric source includes the shared skill and verified binary selection for `sp-v0.1.6`.
 All three bundles carry the same four selected executables and matching skill.
 The manifest's Fabric commit is the build source; the later candidate-documentation commit changes no compiled code.
 
-The new `sp info` command reports the authenticated principal, owned scope allowances, and request limits before workspace initialization.
+The `sp info` command reports the authenticated principal, owned scope allowances, and request limits before workspace initialization.
+Version 0.1.6 includes `info` in the command list and adds local JSON usage for `sp info --help`.
+The command list remains a usage refusal on stderr with exit status 2; the local `info` help succeeds on stdout.
 Existing publication, grant, read, hydration, and recovery commands keep their contracts.
 No volume format or identity changes are part of this refresh.
 
@@ -24,7 +26,7 @@ Name the isolated protocol checkout's branch `main`, as the existing build scrip
 This branch name does not select a newer commit; verify the full recorded commit before building.
 Use the matching protocol checkout next to the SDK checkout, as the development instructions describe.
 Build with `sh bundles/build.sh all /absolute/candidate-directory`.
-The shared release manifest selects and verifies `sp-v0.1.5`.
+The shared release manifest selects and verifies `sp-v0.1.6`.
 For authenticated downloads, use `SP_RELEASE_DOWNLOAD=gh`; offline builds can use `SP_RELEASE_SOURCE_DIR`.
 
 Archive names record both source revisions.
