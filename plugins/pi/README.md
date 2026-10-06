@@ -11,7 +11,7 @@ front of PI's handler. It also ships ScratchPad's skill with the sp command
 line, so PI's model reads, publishes and shares ScratchPad content through
 its bash tool. Without it the plugin is the plain plugin. The contract it
 fills is the plugin's `agents/EXTENSIONS.md`; the spec is
-[`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1, §3.2 and §9.
+[`docs/plugins.md`](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/plugins.md) §2, §3.1, §3.2 and §9.
 
 ## What it does
 
@@ -249,7 +249,7 @@ the edges on the wire validated against `test-fixtures/schemas/edge.json`.
 `../scratchpad-skill/release.json` and verifies their archive and executable
 hashes with Node 20+. `npm pack` runs it too (`prepack`). `skill/` is
 gitignored. No Go compiler or service checkout is required. The
-[binary guide](../../docs/scratchpad-binaries.md) covers authenticated
+[binary guide](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-binaries.md) covers authenticated
 downloads, offline archives, cache checks, and the included licenses.
 `test/unit/scripts-sp.test.ts` drives the shared `scripts/sp` with fake
 binaries and a fake `uname`, and runs the real binary for this machine
@@ -266,7 +266,7 @@ npm run build
 
 ## License
 
-Apache-2.0, like the fabric package. See [LICENSE](LICENSE).
+Apache-2.0, like the fabric package. See [LICENSE](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/plugins/pi/LICENSE).
 
 Short artifact references
 -------------------------
@@ -278,4 +278,4 @@ Short-token reads and resolution require a compatible `sp` binary selected throu
 does not advance that pin.
 Copy the returned token unchanged into prompts and replies.
 The token survives client restarts; each content read still requires current authorization.
-See the [native client contract](../../docs/scratchpad-native.md) for recovery and capability fallback.
+See the [native client contract](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-native.md) for recovery and capability fallback.

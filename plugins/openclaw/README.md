@@ -12,7 +12,7 @@ guard in front of the gateway's handler. It also ships ScratchPad's skill
 with the sp command line, so OpenClaw's model reads, publishes and shares
 ScratchPad content through its exec tool. Without it the plugin is the
 plain plugin. The contract it fills is the plugin's `agents/EXTENSIONS.md`;
-the spec is [`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1, §3.3
+the spec is [`docs/plugins.md`](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/plugins.md) §2, §3.1, §3.3
 and §9.
 
 ## What it does
@@ -266,7 +266,7 @@ ways.
 `../scratchpad-skill/release.json` and verifies their archive and executable
 hashes with Node 20+. `npm pack` runs it too. `skill/` is gitignored.
 No Go compiler or service checkout is required. The
-[binary guide](../../docs/scratchpad-binaries.md) covers authenticated
+[binary guide](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-binaries.md) covers authenticated
 downloads, offline archives, cache checks, and the included licenses.
 
 ```sh
@@ -280,7 +280,7 @@ npm run build
 
 ## License
 
-Apache-2.0, like the fabric package. See [LICENSE](LICENSE).
+Apache-2.0, like the fabric package. See [LICENSE](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/plugins/openclaw/LICENSE).
 
 Short artifact references
 -------------------------
@@ -292,4 +292,4 @@ Short-token reads and resolution require a compatible `sp` binary selected throu
 does not advance that pin.
 Copy the returned token unchanged into prompts and replies.
 The token survives client restarts; each content read still requires current authorization.
-See the [native client contract](../../docs/scratchpad-native.md) for recovery and capability fallback.
+See the [native client contract](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-native.md) for recovery and capability fallback.
