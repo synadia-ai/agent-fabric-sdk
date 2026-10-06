@@ -14,7 +14,7 @@ Claude Code's model ScratchPad, through a skill this package carries as a
 Claude Code plugin of its own (see "ScratchPad"). Without it the plugin is
 the plain plugin. The contract it fills is the plugin's
 `agents/EXTENSIONS.md`; the spec is
-[`../../docs/plugins.md`](../../docs/plugins.md) §2, §3.1, §3.4 and §9.13.
+[`docs/plugins.md`](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/plugins.md) §2, §3.1, §3.4 and §9.13.
 
 ## What it does
 
@@ -135,27 +135,35 @@ unbound.
 
 ## Running Claude Code on the fabric
 
-Measured on Claude Code 2.1.281 (2026-09-24; the reference agents'
-findings F24 and F25, kept since 2026-09-26 with the fabric's deployment on
-one machine). That deployment's `harnesses/claude-code/` is the worked
-version (`run.sh`, `env.example`, its README); what follows is the recipe
-it implements.
+Measured on Claude Code 2.1.281 (2026-09-24).
 
 1. **Claude Code and bun.** `claude` on `PATH`, and `bun`: the plugin's
    server and hooks run on it.
-2. **The plugin, from the checkout until it is published.** This loads it
-   for the session as `nats-channel@inline`, hooks included; its bundle is
-   committed, nothing is built there:
+2. **The add-on, installed and named.** Install it from npm, `dist/`
+   included:
+
+   ```sh
+   npm install @synadia-ai/agent-fabric-claude-code
+   ```
+
+   and set `SYNADIA_CLAUDE_CODE_EXTENSIONS` to the installed package's
+   absolute path, `<prefix>/node_modules/@synadia-ai/agent-fabric-claude-code`,
+   in the environment `claude` starts in (see "Naming it"). Export `PWD`
+   too: the channel plugin's `.mcp.json` hands it to its server. The same
+   directory is the Claude Code plugin `agent-fabric`, which Claude Code
+   loads with a second `--plugin-dir` for ScratchPad (see "ScratchPad").
+   To develop the add-on, name this repository's `plugins/claude-code`
+   instead, with `dist/` built (see "Development").
+
+3. **The channel plugin, from the checkout until it is published.** This
+   loads it for the session as `nats-channel@inline`, hooks included; its
+   bundle is committed, nothing is built there:
 
    ```sh
    claude --plugin-dir <synadia-agents>/agents/claude-code \
      --dangerously-load-development-channels plugin:nats-channel@inline
    ```
 
-3. **The add-on, named.** This package with `dist/` built, and
-   `SYNADIA_CLAUDE_CODE_EXTENSIONS=<its absolute path>` in the environment
-   `claude` starts in (see "Naming it"). Export `PWD` too: the plugin's
-   `.mcp.json` hands it to its server.
 4. **The identity.** The channel's `config.json` with a NATS context of
    Claude Code's own and `senderIdentity: "signed"` (see "Identity"), and
    `permissions.allow: ["mcp__plugin_nats-channel_nats"]` in Claude Code's
@@ -402,7 +410,7 @@ caller.
 | `createFabricExtension(ctx, env?, scratchPad?)`                                                                                     | the same, synchronous, from settings already resolved                                                                                                     |
 | `SCRATCHPAD_OPTION`, `SP_VARS`, `SP_ENV_FILE_VAR`, `ScratchPadHandOn`, `SpEnvFile`, `spEnvFilePath(stateDir, env)`, `spBinary(env)` | ScratchPad's option key, the variables `scripts/sp` reads, the file they go to and the variable that names it, the tool extension, the packaged sp's path |
 | `EXTENSION_NAME`, `IDENTITY_OFF_WARNING`, `NO_SESSION_LINE`, `SERVED_HARNESS`, `DEFAULT_STOP_WAIT_MS`                               | the constants                                                                                                                                             |
-| `isClaudeSessionId(v)`                                                                                                              | the session-id rule the pair is published under, the pre-split plugin's (`fbd16ab`), header-safe                                                          |
+| `isClaudeSessionId(v)`                                                                                                              | the session-id rule the pair is published under, the pre-split plugin's rule, header-safe                                                                 |
 
 The contract's types, the setting's precedence (`resolveEdgeSubject`) and
 the loop guard (`loopGuard`) are `@synadia-ai/agent-fabric`'s, shared by
@@ -429,7 +437,7 @@ manifest (unit), and the references handed on (integration).
 published binaries pinned in `../scratchpad-skill/release.json` and verifies
 their archive and executable hashes with Node 20+. `npm pack` runs it too.
 `skills/` is gitignored. No Go compiler or service checkout is required.
-The [binary guide](../../docs/scratchpad-binaries.md) covers authenticated
+The [binary guide](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-binaries.md) covers authenticated
 downloads, offline archives, cache checks, and the included licenses.
 
 ```sh
@@ -443,7 +451,7 @@ npm run build
 
 ## License
 
-Apache-2.0, like the fabric package. See [LICENSE](LICENSE).
+Apache-2.0, like the fabric package. See [LICENSE](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/plugins/claude-code/LICENSE).
 
 Short artifact references
 -------------------------
@@ -455,4 +463,4 @@ Short-token reads and resolution require a compatible `sp` binary selected throu
 does not advance that pin.
 Copy the returned token unchanged into prompts and replies.
 The token survives client restarts; each content read still requires current authorization.
-See the [native client contract](../../docs/scratchpad-native.md) for recovery and capability fallback.
+See the [native client contract](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-native.md) for recovery and capability fallback.
