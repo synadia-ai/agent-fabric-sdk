@@ -55,6 +55,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startAgent, type RunningAgent } from "../src/agent.js";
 import type { AgentConfig } from "../src/config.js";
 import type { ChatMessage, ToolCall } from "../src/model.js";
+import type { OwnToolContext } from "../src/tools.js";
 import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server.js";
 
 interface ModelRequest {
@@ -615,6 +616,97 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
     } finally {
       await sensors.stop();
     }
+  });
+
+  describe("an own tool that asks its caller", () => {
+    const asked: string[] = [];
+    const stopLine = {
+      name: "stop_line",
+      description: "Stop a line, once the caller says yes.",
+      parameters: { type: "object", properties: {} },
+      run: async (_args: Record<string, unknown>, ctx: OwnToolContext) => {
+        const answer = await ctx.ask("Stop line-2? yes/no");
+        asked.push(answer);
+        return { stopped: answer.startsWith("yes"), answer };
+      },
+    };
+
+    beforeEach(() => {
+      asked.length = 0;
+    });
+
+    async function startActuator(replyTimeoutMs: number): Promise<RunningAgent> {
+      return startAgent(
+        { ...cfg, agent: { ...cfg.agent, kind: "actuator", tools: "none", readyFile: undefined }, tools: { replyTimeoutMs } },
+        () => {},
+        { scratchpad: pad, ownTools: [stopLine] },
+      );
+    }
+
+    /** Prompts the actuator; `answer` replies to its question, or leaves it unanswered with `undefined`. */
+    async function promptActuator(answer: (question: string) => Promise<string | undefined>): Promise<string> {
+      const [found] = await caller.discover({ filter: { agent: "actuator" }, timeoutMs: 500 });
+      expect(found).toBeDefined();
+      let reply = "";
+      for await (const msg of await found!.prompt("use stop_line")) {
+        if (msg.type === "query") {
+          const text = await answer(msg.prompt);
+          if (text !== undefined) await msg.reply(text);
+        } else if (msg.type === "response") {
+          reply += msg.text;
+        }
+      }
+      return words(reply);
+    }
+
+    it("asks the caller of the prompt being served and acts on the answer", async () => {
+      const actuator = await startActuator(10_000);
+      try {
+        const questions: string[] = [];
+        const reply = await promptActuator(async (q) => {
+          questions.push(q);
+          return "yes";
+        });
+        expect(questions).toEqual(["Stop line-2? yes/no"]);
+        expect(asked).toEqual(["yes"]);
+        expect(reply).toBe(`they said: ${JSON.stringify({ stopped: true, answer: "yes" })}`);
+      } finally {
+        await actuator.stop();
+      }
+    });
+
+    it("sends each prompt's question to its own caller, with two prompts served at once", async () => {
+      const actuator = await startActuator(10_000);
+      try {
+        // Neither question is answered until both are asked: the two tool calls run at once.
+        let release!: () => void;
+        const bothAsked = new Promise<void>((r) => (release = r));
+        let count = 0;
+        const answering = (answer: string) => async (): Promise<string> => {
+          if (++count === 2) release();
+          await bothAsked;
+          return answer;
+        };
+        const [first, second] = await Promise.all([promptActuator(answering("yes, first")), promptActuator(answering("no, second"))]);
+        expect(first).toBe(`they said: ${JSON.stringify({ stopped: true, answer: "yes, first" })}`);
+        expect(second).toBe(`they said: ${JSON.stringify({ stopped: false, answer: "no, second" })}`);
+        expect([...asked].sort()).toEqual(["no, second", "yes, first"]);
+      } finally {
+        await actuator.stop();
+      }
+    });
+
+    it("tells the model in words when the caller does not answer in time", async () => {
+      const actuator = await startActuator(300);
+      try {
+        const reply = await promptActuator(async () => undefined);
+        expect(asked).toEqual([]);
+        expect(reply).toMatch(/^they said: the caller did not answer: .*timed out after 300ms$/);
+        expect(toolResult(requests[requests.length - 1]!)).toEqual({ error: expect.stringMatching(/^the caller did not answer: /) });
+      } finally {
+        await actuator.stop();
+      }
+    });
   });
 
   it("refuses to start with an own tool named like an agent tool, or two own tools with one name", async () => {
