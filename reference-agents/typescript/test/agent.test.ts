@@ -12,7 +12,8 @@
 //             answers with it; otherwise it answers plainly. A prompt that
 //             starts "hush" makes it answer the question with nothing once,
 //             then with answer_agent when told the call waits; "mute", with
-//             nothing every time; "blank", with nothing to a plain prompt
+//             nothing every time; "blank", with nothing to a plain prompt;
+//             "use <tool>", a call to that tool with no arguments
 //
 //   pad     — a ScratchPad in memory, in place of the fabric package's one
 //             over the `sp` command line (the package tests that one),
@@ -74,6 +75,7 @@ interface EdgeRecord {
 }
 
 const DELEGATE = /delegate to ([^\s:]+)(?:: (.*))?/;
+const USE = /^use (\w+)/;
 
 const binary = await natsServerOnPath();
 
@@ -92,6 +94,7 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
   let asker: AgentService;
   let agent: RunningAgent;
   let agentCreds: string;
+  let cfg: AgentConfig;
   const requests: ModelRequest[] = [];
   const edges: { record: EdgeRecord; msg: Msg }[] = [];
   // What the asker was told when it asked.
@@ -199,6 +202,7 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
         requests.push({ headers: req.headers, body });
         const last = body.messages[body.messages.length - 1]!;
         const delegate = DELEGATE.exec(last.content ?? "");
+        const use = USE.exec(last.content ?? "");
         // The prompt being served: the last user message that is not the loop's own word.
         const asked =
           [...body.messages]
@@ -235,8 +239,11 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
             };
             message = { role: "assistant", content: "", tool_calls: [call] };
           } else {
-            message = { role: "assistant", content: `they said: ${result["reply"] ?? result["error"]}` };
+            message = { role: "assistant", content: `they said: ${result["reply"] ?? result["error"] ?? last.content}` };
           }
+        } else if (use !== null && body.tools?.length) {
+          const call: ToolCall = { id: "call_fake_own", type: "function", function: { name: use[1]!, arguments: "{}" } };
+          message = { role: "assistant", content: "", tool_calls: [call] };
         } else if (delegate !== null && body.tools?.length) {
           const call: ToolCall = {
             id: "call_fake_1",
@@ -269,7 +276,7 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
     if (addr === null || typeof addr === "string") throw new Error("no address");
     proxyUrl = `http://127.0.0.1:${addr.port}`;
 
-    const cfg: AgentConfig = {
+    cfg = {
       nats: { url: server.url, nkey: agentCreds },
       agent: {
         kind: "assistant",
@@ -582,5 +589,41 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
     } finally {
       await unsigned.close();
     }
+  });
+
+  it("offers its own tools after the agent tools, and with AGENT_TOOLS=none only them, and runs the model's call", async () => {
+    const own = {
+      name: "read_lines",
+      description: "The state of the plant's lines.",
+      parameters: { type: "object", properties: {} },
+      run: async () => ({ lines: [{ id: 1, state: "running" }] }),
+    };
+    const sensors = await startAgent(
+      { ...cfg, agent: { ...cfg.agent, kind: "sensors", tools: "none", readyFile: undefined } },
+      () => {},
+      { scratchpad: pad, ownTools: [own] },
+    );
+    try {
+      const [found] = await caller.discover({ filter: { agent: "sensors" }, timeoutMs: 500 });
+      let reply = "";
+      for await (const msg of await found!.prompt("use read_lines")) {
+        if (msg.type === "response") reply += msg.text;
+      }
+      expect(requests.map((r) => r.body.tools?.map((t) => t.function.name))).toEqual([["read_lines"], ["read_lines"]]);
+      expect(toolResult(requests[1]!)).toEqual({ lines: [{ id: 1, state: "running" }] });
+      expect(words(reply)).toBe(`they said: ${JSON.stringify({ lines: [{ id: 1, state: "running" }] })}`);
+    } finally {
+      await sensors.stop();
+    }
+  });
+
+  it("refuses to start with an own tool named like an agent tool, or two own tools with one name", async () => {
+    const tool = (name: string) => ({ name, description: "", parameters: {}, run: async () => ({}) });
+    await expect(startAgent(cfg, () => {}, { scratchpad: pad, ownTools: [tool("prompt_agent")] })).rejects.toThrow(
+      'own tool "prompt_agent" has the name of an agent tool',
+    );
+    await expect(startAgent(cfg, () => {}, { scratchpad: pad, ownTools: [tool("stop_line"), tool("stop_line")] })).rejects.toThrow(
+      'two own tools are named "stop_line"',
+    );
   });
 });
