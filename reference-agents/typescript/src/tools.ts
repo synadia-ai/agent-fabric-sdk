@@ -35,7 +35,7 @@
 // model reads are the SDK's, so every agent that offers these tools shows
 // its model the same ones, whatever language it is written in.
 
-import type { AgentToolName, AgentTools } from "@synadia-ai/agents";
+import { AGENT_TOOL_NAMES, type AgentToolName, type AgentTools } from "@synadia-ai/agents";
 import type { ToolsSetting } from "./config.js";
 import type { ToolRunner } from "./model.js";
 
@@ -106,3 +106,84 @@ export const NO_TOOLS: ToolRunner = {
   definitions: [],
   call: async () => JSON.stringify({ error: "this agent has no tools" }),
 };
+
+/**
+ * A tool the agent defines itself, next to the agent tools: a plant
+ * agent's `read_lines`, say. The model reads `name`, `description` and
+ * `parameters` (a JSON schema object). `run` gets the parsed arguments;
+ * what it returns goes back to the model as JSON text.
+ */
+export interface OwnTool {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Readonly<Record<string, unknown>>;
+  run(args: Record<string, unknown>): Promise<unknown>;
+}
+
+/**
+ * The names an own tool may not take: the SDK's six agent tools, offered
+ * or not, and `start_workflow` (`durable.ts`). A call goes by name, so two
+ * tools with one name cannot both be reached.
+ */
+export const RESERVED_TOOL_NAMES: ReadonlyArray<string> = [...AGENT_TOOL_NAMES, "start_workflow"];
+
+/**
+ * Throws, naming the tool, when an own tool takes a reserved name or two
+ * own tools share one. `startAgent` calls it before it connects.
+ */
+export function checkOwnTools(own: ReadonlyArray<OwnTool>): void {
+  const seen = new Set<string>();
+  for (const tool of own) {
+    if (RESERVED_TOOL_NAMES.includes(tool.name)) {
+      throw new Error(`own tool "${tool.name}" has the name of an agent tool`);
+    }
+    if (seen.has(tool.name)) throw new Error(`two own tools are named "${tool.name}"`);
+    seen.add(tool.name);
+  }
+}
+
+/**
+ * The runner with the own tools after the tools it already has. A call to
+ * an own tool runs it; any other goes to `runner`. Arguments that are not
+ * a JSON object, or a tool that throws, come back as `{"error": ...}`,
+ * never as a throw, as for the agent tools.
+ */
+export function withOwnTools(runner: ToolRunner, own: ReadonlyArray<OwnTool>): ToolRunner {
+  checkOwnTools(own);
+  if (own.length === 0) return runner;
+  const byName = new Map(own.map((tool) => [tool.name, tool]));
+  return {
+    definitions: [
+      ...runner.definitions,
+      ...own.map((t): ChatTool => ({
+        type: "function",
+        function: { name: t.name, description: t.description, parameters: t.parameters, strict: false },
+      })),
+    ],
+    call: async (name, args, toolCallId) => {
+      const tool = byName.get(name);
+      if (tool === undefined) return runner.call(name, args, toolCallId);
+      try {
+        return JSON.stringify((await tool.run(parseArgs(args))) ?? null);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  };
+}
+
+// The model sends its arguments as JSON text; a test may pass the object.
+function parseArgs(args: unknown): Record<string, unknown> {
+  let value: unknown = args;
+  if (typeof args === "string") {
+    try {
+      value = args.trim() === "" ? {} : JSON.parse(args);
+    } catch {
+      throw new Error("the arguments are not valid JSON");
+    }
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("the arguments must be a JSON object");
+  }
+  return value as Record<string, unknown>;
+}

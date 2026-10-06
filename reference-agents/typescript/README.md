@@ -75,6 +75,27 @@ The agent needs a fabric that already stands: a NATS server it has credentials f
 
 Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six (`../docs/findings.md` F18).
 
+## Your own tools
+
+An agent can offer its model tools of its own, next to the agent tools. Pass them to `startAgent` as `ownTools`:
+
+```ts
+import { startAgent } from "./agent.js";
+import type { OwnTool } from "./tools.js";
+
+const readLines: OwnTool = {
+  name: "read_lines",
+  description: "The state of each line on this floor.",
+  parameters: { type: "object", properties: {} },
+  run: async () => ({ lines: [{ id: 1, state: "running" }] }),
+};
+await startAgent(cfg, console.log, { ownTools: [readLines] });
+```
+
+The model sees the agent tools first, then yours. With `AGENT_TOOLS=none` it sees only yours. `run` gets the parsed arguments, and what it returns goes back to the model as JSON. A throw comes back as `{"error": "..."}`. A name that an agent tool already has, or two tools with one name, stop the agent at start.
+
+TypeScript only for now; the Python agent has no such option.
+
 ## How it reads
 
 `agent.ts` is the file to read; it is the list of the five behaviours with the code under each. The model loop in `model.ts` is one request per model call, no streaming, so a tool round is one request and one JSON reply. `tools.ts` is what a customer copies to show their own model loop the SDK's agent tools; `../README.md`, "The agent tools", says how an agent wires them, and states the rules for references once.

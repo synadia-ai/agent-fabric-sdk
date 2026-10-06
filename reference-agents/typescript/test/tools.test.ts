@@ -51,7 +51,16 @@ import {
 import { AgentService } from "@synadia-ai/agent-service";
 import { Agents, AgentSubject, AgentTools, signerFromSeed } from "@synadia-ai/agents";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { BLOCKING_TOOLS, chatTools, offeredTools, toolRunner, type ChatTool } from "../src/tools.js";
+import {
+  BLOCKING_TOOLS,
+  chatTools,
+  NO_TOOLS,
+  offeredTools,
+  toolRunner,
+  withOwnTools,
+  type ChatTool,
+  type OwnTool,
+} from "../src/tools.js";
 import { createModelClient, type ToolRunner } from "../src/model.js";
 import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server.js";
 
@@ -166,6 +175,72 @@ describe("the tool definitions", () => {
     const detached = { address: "agents.prompt.echo.test.target", prompt: "hi", wait: false };
     expect(promptOf(all)(detached)).toBe(true);
     expect(promptOf(byDefault)(detached)).toBe(false);
+  });
+});
+
+describe("own tools", () => {
+  const agentTools = new AgentTools({ agents: {} as Agents, tools: offeredTools("blocking") });
+  const readLines: OwnTool = {
+    name: "read_lines",
+    description: "The state of the plant's lines.",
+    parameters: { type: "object", properties: { factory: { type: "string" } }, required: ["factory"] },
+    run: async (args) => ({ factory: args["factory"], lines: [{ id: 1, state: "running" }] }),
+  };
+  const stopLine: OwnTool = {
+    name: "stop_line",
+    description: "Stop one line.",
+    parameters: { type: "object", properties: { line: { type: "integer" } } },
+    run: async () => {
+      throw new Error("line 7 does not exist");
+    },
+  };
+
+  it("come after the agent tools, in the chat-completions shape", () => {
+    const runner = withOwnTools(toolRunner(agentTools), [readLines, stopLine]);
+    expect(runner.definitions.map((d) => d.function.name)).toEqual([...BLOCKING_TOOLS, "read_lines", "stop_line"]);
+    expect(runner.definitions.slice(3)).toEqual([
+      {
+        type: "function",
+        function: { name: "read_lines", description: readLines.description, parameters: readLines.parameters, strict: false },
+      },
+      {
+        type: "function",
+        function: { name: "stop_line", description: stopLine.description, parameters: stopLine.parameters, strict: false },
+      },
+    ]);
+  });
+
+  it("are offered alone with AGENT_TOOLS=none", () => {
+    const runner = withOwnTools(NO_TOOLS, [readLines]);
+    expect(runner.definitions.map((d) => d.function.name)).toEqual(["read_lines"]);
+  });
+
+  it("run by name and return their result as JSON", async () => {
+    const runner = withOwnTools(NO_TOOLS, [readLines]);
+    expect(JSON.parse(await runner.call("read_lines", '{"factory":"north"}', "c1"))).toEqual({
+      factory: "north",
+      lines: [{ id: 1, state: "running" }],
+    });
+  });
+
+  it("return a thrown error or bad arguments in words, never a throw", async () => {
+    const runner = withOwnTools(NO_TOOLS, [readLines, stopLine]);
+    expect(JSON.parse(await runner.call("stop_line", '{"line":7}', "c1"))).toEqual({ error: "line 7 does not exist" });
+    expect(JSON.parse(await runner.call("read_lines", "{not json", "c2"))).toEqual({ error: "the arguments are not valid JSON" });
+    expect(JSON.parse(await runner.call("read_lines", "[1]", "c3"))).toEqual({ error: "the arguments must be a JSON object" });
+  });
+
+  it("leave a call to an agent tool to the agent tools", async () => {
+    const runner = withOwnTools(toolRunner(agentTools), [readLines]);
+    expect(JSON.parse(await runner.call("open_pod_bay_doors", "{}", "c1"))).toEqual({ error: 'unknown tool "open_pod_bay_doors"' });
+  });
+
+  it("may not take an agent tool's name, offered or not, nor share one", () => {
+    const named = (name: string): OwnTool => ({ ...readLines, name });
+    expect(() => withOwnTools(NO_TOOLS, [named("prompt_agent")])).toThrow('own tool "prompt_agent" has the name of an agent tool');
+    expect(() => withOwnTools(NO_TOOLS, [named("wait_agent")])).toThrow('own tool "wait_agent"');
+    expect(() => withOwnTools(NO_TOOLS, [named("start_workflow")])).toThrow('own tool "start_workflow"');
+    expect(() => withOwnTools(NO_TOOLS, [readLines, readLines])).toThrow('two own tools are named "read_lines"');
   });
 });
 

@@ -55,7 +55,7 @@ import { Histories, withToolNote } from "./history.js";
 import { converse, createModelClient, EmptyReplyError, type ChatMessage } from "./model.js";
 import { startDurableTasks, withDurableTasks, type DurableTasks } from "./durable.js";
 import { deliveredReply } from "./reply.js";
-import { NO_TOOLS, offeredTools, toolRunner } from "./tools.js";
+import { checkOwnTools, NO_TOOLS, offeredTools, toolRunner, withOwnTools, type OwnTool } from "./tools.js";
 
 export interface RunningAgent {
   /** The prompt address other agents see in discovery. */
@@ -71,6 +71,11 @@ export interface StartAgentDeps {
   readonly scratchpad?: ScratchPadClient;
   /** Where the fabric package reads the `SCRATCHPAD_*` variables; `process.env` by default. */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Tools the agent defines itself, offered to the model after the agent
+   * tools, and with `AGENT_TOOLS=none` alone (`tools.ts`, `OwnTool`).
+   */
+  readonly ownTools?: ReadonlyArray<OwnTool>;
 }
 
 export async function startAgent(
@@ -78,6 +83,11 @@ export async function startAgent(
   log: (line: string) => void = console.log,
   deps: StartAgentDeps = {},
 ): Promise<RunningAgent> {
+  // An own tool named like an agent tool, or two with one name, stop the
+  // agent here, before anything connects.
+  const ownTools = deps.ownTools ?? [];
+  checkOwnTools(ownTools);
+
   // (1) One credentials snapshot gives both the connection and the signer,
   // so the identity the agent registers is the identity the connection
   // authenticated with; nothing can drift between the two.
@@ -198,8 +208,9 @@ export async function startAgent(
     : undefined;
 
   // What the model is offered. A role that must answer itself is offered no
-  // tools at all (see `config.ts`), but for the durable one when it is on.
-  const agentTools = cfg.agent.tools === "none" ? NO_TOOLS : toolRunner(tools);
+  // agent tools (see `config.ts`), but its own tools and the durable one
+  // when it is on.
+  const agentTools = withOwnTools(cfg.agent.tools === "none" ? NO_TOOLS : toolRunner(tools), ownTools);
   const offered = durable !== undefined ? withDurableTasks(agentTools, durable) : agentTools;
 
   service.onPrompt(async (envelope, response) => {
