@@ -1,25 +1,25 @@
 {
   "go_version": "go1.26.7",
-  "release": "sp-v0.1.5",
+  "release": "sp-v0.1.6",
   "repository": "synadia-ai/agent-fabric-sdk",
   "schema": 1,
-  "source_commit": "51cc30a4fa9ada2a27808d32340633b512d3feac",
+  "source_commit": "5e518519d1f9af47364cdf5ab01d518c8a195d33",
   "targets": {
     "darwin/amd64": {
-      "archive_sha256": "76eaf0f71900ed13734a7728f340a2fd7f72cee81f67cc9ffb9122cb418d8b15",
-      "binary_sha256": "3ba91d7d6803bc38fbb473abfa4b3357b19fc769f9f634b98038ff248120cac7"
+      "archive_sha256": "45061077fd8cd50133b309b0ea49126de938de71f710a6da49e9b236154cd343",
+      "binary_sha256": "3d84751719e555218c4f977cdd5b9a5ef149d26421fc7dc6c6ec7b54586d4915"
     },
     "darwin/arm64": {
-      "archive_sha256": "54f391b50e1bd012961aea9f4b7aa22d22d16df9f52026006ccffc35276ebf34",
-      "binary_sha256": "da827dbe418a1d6ad641f785f487b5b6e4911db7ebc799ae36a2bf72530da7d0"
+      "archive_sha256": "995664f10144c170d7ffeb806aef7cfd7110bc2a79c500624028c9122602af2c",
+      "binary_sha256": "c4d85f758490a50271b581a42cc78fd9318f7c2393cc97cbd4525773c3107bfe"
     },
     "linux/amd64": {
-      "archive_sha256": "5fa7e28a7a87b27413a79a770f0baaa7eab628390a93dc377a276dc228bfcfef",
-      "binary_sha256": "0737c999f70d94bf221067d82ba3a5e550f610a290c4b00401a40320fe8ca1c3"
+      "archive_sha256": "cbfd1a6b00c6925edbdda6ea2d62343c86061b5b1412912422850438e390f5e6",
+      "binary_sha256": "d03dde699244a13ef24675189dd3452805732d331b92505c120fad0da391b23e"
     },
     "linux/arm64": {
-      "archive_sha256": "8938d0fd00aefd5de6f84ba82e4d8979aa514fc8596dbddb22f241d51f6a7583",
-      "binary_sha256": "432985976ce95d2d3a4f928b83c35e95a9f6c2ad133c73ffc30fd69d50bbb9c9"
+      "archive_sha256": "ad5beca53e15339e9b4505285273a6260730bc52e9dd82c9f01665348432a9d7",
+      "binary_sha256": "41e2ae7dfdc614ba3fa8a17ef51da5b8e02d29d4a36b718f428274c6804f9eb3"
     }
   }
 }
