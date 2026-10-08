@@ -5,23 +5,23 @@
   "type": "module",
   "description": "The TypeScript reference agent of the Synadia Agent Fabric.",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.12.0"
   },
   "scripts": {
-    "start": "node --env-file=.env --import tsx src/main.ts",
-    "echo": "node --env-file=.env --import tsx src/echo.ts",
+    "start": "node --import tsx src/main.ts",
+    "echo": "node --import tsx src/echo.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prompt": "node --env-file=.env --import tsx src/prompt.ts",
-    "start:durable": "node --env-file=.env --import tsx src/durable-main.ts"
+    "prompt": "node --import tsx src/prompt.ts",
+    "start:durable": "node --import tsx src/durable-main.ts"
   },
   "dependencies": {
     "@nats-io/nats-core": "^3.4.0",
     "@nats-io/transport-node": "^3.4.0",
-    "@synadia-ai/agent-fabric": "file:../../typescript",
-    "@synadia-ai/agent-service": "file:../../../synadia-agents/agent-sdk/typescript",
-    "@synadia-ai/agents": "file:../../../synadia-agents/client-sdk/typescript",
-    "@synadia-ai/durable": "file:../../../durable-sdk"
+    "@synadia-ai/agent-fabric": "^0.1.0",
+    "@synadia-ai/agent-service": "^0.6.0",
+    "@synadia-ai/agents": "^0.6.0",
+    "@synadia-ai/durable": "^0.1.1"
   },
   "devDependencies": {
     "@nats-io/nkeys": "^2.0.3",

@@ -32,7 +32,7 @@ What is at-least-once: a model turn or a tool call in flight when the process di
 
 ## Copy and adapt
 
-Copy `typescript/` or `python/`, and `env.example` to `.env`. Until the packages are published, an agent finds them by relative path (`package.json`'s `file:` links, `pyproject.toml`'s uv path sources), so keep your copy next to the original, as `reference-agents/<yours>/`, or change those paths. What you change:
+Copy `typescript/` or `python/`, and `env.example` to `.env`. A copy of `typescript/` goes anywhere: `npm install` there takes the packages from npm. The Python agent finds its packages by relative path (`pyproject.toml`'s uv path sources) until they are on PyPI, so keep a copy of `python/` next to the original, as `reference-agents/<yours>/`, or change those paths. What you change:
 
 **In `.env`.** Every variable is listed in `env.example`, with what it is and where your fabric gives it.
 
@@ -57,7 +57,9 @@ Keep the four behaviours; the fifth is yours to keep or leave. An agent without 
 
 ## Install
 
-On your machine: Node 22.13 or later with npm for the TypeScript native ScratchPad writer, Python 3.12 or later with `uv`, and `nats-server` on PATH for the tests. Until the packages are published, also `bun`, which builds the SDK's TypeScript packages. Then:
+**The TypeScript agent alone** needs Node 22.13 or later with npm (for the native ScratchPad writer; Node 20.12 runs it without ScratchPad) and nothing else: `npm install` in `typescript/` takes the four packages from npm.
+
+**Both agents, for work on this repository:** also Python 3.12 or later with `uv`, `nats-server` on PATH for the tests, and `bun`, which builds the SDK's TypeScript packages from their checkouts. Then:
 
 ```sh
 make setup
@@ -65,7 +67,7 @@ make setup
 
 It installs four packages in each language. `@synadia-ai/agents` and `synadia-ai-agents` are the agent protocol's caller side and the agent tools. `@synadia-ai/agent-service` and `synadia-ai-agent-service` are its host side. `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric` are the fabric's tracing, its rules for ScratchPad references and the durable run's id and trace. `@synadia-ai/durable` and `synadia-durable` are the thin durable SDK behind the fifth behaviour and the durable agent, the client of the durable engine.
 
-Until the packages are published, the agents link them by relative path. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `main`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The thin durable SDK comes from its checkout next to this repository too, `../durable-sdk`. The durable tests spawn the engine, `durable-engine serve`, on their nats-server: `DE_ENGINE` (a `-dev` build) and `DE_LICENCE` when given, else built with Go from `../durable-engine` at the commit the SDK's `engine.pin` names, with a test licence the tests mint; without either they skip. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build, `uv` installs all four editable. It is safe to run again.
+Here the agents run against the packages as they stand in their checkouts, not as published. The TypeScript agent installs from npm, and `make setup` then links the four packages over that install (`npm install --no-save`, which leaves `package.json` and the lockfile alone); the Python agent takes them by uv path sources until they are on PyPI. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `main`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The thin durable SDK comes from its checkout next to this repository too, `../durable-sdk`. The durable tests spawn the engine, `durable-engine serve`, on their nats-server: `DE_ENGINE` (a `-dev` build) and `DE_LICENCE` when given, else built with Go from `../durable-engine` at the commit the SDK's `engine.pin` names, with a test licence the tests mint; without either they skip. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build, `uv` installs all four editable. It is safe to run again.
 
 ```sh
 make test         # both agents' tests; nats-server on PATH

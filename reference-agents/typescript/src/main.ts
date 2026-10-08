@@ -1,9 +1,11 @@
 // main.ts — start one agent from the environment and run until told to stop.
 //
-//   node --env-file=.env --import tsx src/main.ts      (or: npm start)
+//   node --import tsx src/main.ts      (or: npm start)
 //
+// It reads `.env` when there is one (`dotenv.ts`); the environment wins.
 // `env.example` lists every variable.
 
+import "./dotenv.js";
 import { startAgent } from "./agent.js";
 import { loadConfig } from "./config.js";
 

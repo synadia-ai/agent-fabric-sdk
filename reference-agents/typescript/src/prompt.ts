@@ -1,6 +1,6 @@
 // prompt.ts — prompt one agent on the fabric from the command line.
 //
-//   node --env-file=.env --import tsx src/prompt.ts <address or kind> "<the prompt>"
+//   node --import tsx src/prompt.ts <address or kind> "<the prompt>"
 //   npm run prompt -- assistant "say hello"
 //
 // A caller, not an agent: it connects with the credentials the environment
@@ -15,6 +15,7 @@
 //   PROMPT_TIMEOUT_MS   how long to wait for the whole reply; default ten
 //                       minutes, because a chain of agents takes minutes
 
+import "./dotenv.js";
 import { connect } from "@nats-io/transport-node";
 import { fabricTracing, findReferences } from "@synadia-ai/agent-fabric";
 import { Agents, resolveNatsConnectionBundle, type NatsConnectionSource } from "@synadia-ai/agents";

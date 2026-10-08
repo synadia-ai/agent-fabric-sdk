@@ -1,12 +1,13 @@
 // durable-main.ts — start the durable agent from the environment and run
 // until told to stop.
 //
-//   node --env-file=.env --import tsx src/durable-main.ts   (or: npm run start:durable)
+//   node --import tsx src/durable-main.ts   (or: npm run start:durable)
 //
 // The same variables as `main.ts` (`env.example`). The connection must reach a
 // durable engine on `de.api.v1.*` (on the fabric, the tenant's import); the
 // agent creates nothing.
 
+import "./dotenv.js";
 import { startDurableAgent } from "./durable-agent.js";
 import { loadConfig } from "./config.js";
 

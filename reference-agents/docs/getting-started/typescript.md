@@ -17,19 +17,19 @@ The agent is `reference-agents/typescript/` in this repository. It is the refere
 
 ## Before you start
 
-**The tools.** Node 22.13 or later and npm; `nats-server` on PATH for the tests; until the packages are published, `bun`, with which `make setup` builds the SDK's TypeScript packages. Step 6 uses the native NATS client and needs no `sp` binary.
+**The tools.** Node 22.13 or later and npm; `nats-server` on PATH for the tests. Step 6 uses the native NATS client and needs no `sp` binary.
 
-**The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). Until they are published, the SDK comes from its checkout next to this repository, and the fabric package is this repository's own (`../typescript`, `../python`). `make setup` in `reference-agents/` checks that the SDK's checkout is there and on the right branch, builds the TypeScript packages, and installs both agents. The fabric package is a package of its own because the SDK carries no tracing.
+**The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). All of them are on npm, and `npm install` in `reference-agents/typescript` installs the versions its `package.json` names. The fabric package is a package of its own because the SDK carries no tracing.
 
 **Install and test the agent:**
 
 ```sh
-make setup        # in reference-agents/: the packages, then both agents
-cd typescript
+cd reference-agents/typescript
+npm install
 npm test          # agent tests; nats-server must be on PATH
 ```
 
-Use npm, not bun, in `reference-agents/typescript`: bun 1.4.0 cannot install this manifest (`docs/findings.md` F2). npm installs the three packages as links into their directories, so a rebuild there is what the agent runs next.
+Use npm, not bun (`docs/findings.md` F2). To run the agent against the packages' own checkouts instead, when you work on them, `make setup` in `reference-agents/` links them over the install (the reference agents' README, "Install").
 
 ## What your fabric gives you
 
