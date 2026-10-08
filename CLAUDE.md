@@ -152,12 +152,14 @@ the checkout of `synadia-agents` on `main` (everything of the rollout merged the
   `package-lock.json` committed, as for `typescript/`.
 
 - The reference agents, `reference-agents/typescript` and
-  `reference-agents/python`: this package by relative path
-  (`file:../../typescript`, `path = "../../python"`), the SDK by the same
-  sibling links (`file:../../../synadia-agents/…`), and the thin durable
-  SDK, for the durable workflows, from its checkout next to this repo,
-  `../durable-sdk` (`file:` to the built package, an editable uv path source
-  to its `python/`). Its durable tests spawn the engine, `durable-engine
+  `reference-agents/python`. TypeScript names the published versions on
+  npm (`^0.1.0`, `^0.6.0`, `^0.1.1`), so a copy of the directory installs
+  anywhere with `npm install`; `make setup` then links this package
+  (`../../typescript`), the SDK (`../../../synadia-agents/…`) and the thin
+  durable SDK (`../../../durable-sdk`) over that install with
+  `npm install --no-save`, so the tests run the checkouts. Python takes them
+  by uv path sources (`path = "../../python"`, the SDK's, and an editable
+  source to `../durable-sdk/python`) until they are on PyPI. Its durable tests spawn the engine, `durable-engine
   serve`, standalone on the test's nats-server: `DE_ENGINE` (a `-dev` build)
   and `DE_LICENCE` when given, else built with Go from `../durable-engine` at
   the commit the SDK's `engine.pin` names, into `reference-agents/.engine-bin/`,

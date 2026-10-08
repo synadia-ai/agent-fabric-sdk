@@ -1,7 +1,8 @@
 // config.ts — everything the agent is told, from the environment.
 //
 // One process, one agent, one set of variables; the file that holds them
-// is one `.env` per agent, read by Node's `--env-file` (see `env.example`).
+// is one `.env` per agent (see `env.example`), read by `dotenv.ts` or by
+// Node's `--env-file`, or none when `fabric env` exported them.
 // Nothing here is a secret the repository tracks: the credentials file and
 // the virtual key are paths and values in that untracked file.
 

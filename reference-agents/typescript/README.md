@@ -40,19 +40,21 @@ New here? `../docs/getting-started/typescript.md` walks through this agent in si
 
 - Node 22.13 or later for native ScratchPad, npm.
 - `nats-server` on PATH for the tests (`brew install nats-server`). The bounded-reply gate fails when it is absent; older fabric tests skip.
-- Until the packages are published: `make setup` in `reference-agents/`. It checks the SDK checkout `../../../synadia-agents` is there and on its branch (the `Makefile` names it), builds the SDK's two TypeScript packages and then this repository's fabric package, `../../typescript`, and installs this agent. It builds only what changed, so it is safe to run again.
+- The packages come from npm: `npm install` here installs the published `@synadia-ai/agents`, `@synadia-ai/agent-service`, `@synadia-ai/agent-fabric` and `@synadia-ai/durable` that `package.json` names. A copy of this directory anywhere installs the same way.
 - For ScratchPad, which is optional: a service import in the agent's NATS account, an allocated volume, and a private persistent workspace.
 - For durable work, which is optional: on the fabric, the tenant's import of the durable engine's API (`de.api.>`), which the console's onboarding makes, and an agent user with no durable rights of its own; the agent creates nothing. `AGENT_DURABLE=1` turns on the tool `start_workflow` in `npm start`, and `npm run start:durable` runs the durable agent with the same `.env`.
 
 ## Install and test
 
 ```sh
-make setup            # in reference-agents/
+npm install
 npm run typecheck
 npm test
 ```
 
-The three packages are `file:` links into those directories, which npm installs as symlinks: what you build there is what the agent runs next, with nothing to reinstall here. `@synadia-ai/agents` and `@synadia-ai/agent-service` are the protocol SDK, the agent tools (`AgentTools`) among it; `@synadia-ai/agent-fabric` is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratchPadExtension`, the grant request), and the ScratchPad they run on (`scratchPadFromEnv`). The agent wires them in `src/agent.ts`: `fabricTracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, and the grant endpoint. Use npm, not bun: bun 1.4.0 cannot install this manifest (`../docs/findings.md` F2). The SDK keeps the served prompt's trace scope on `globalThis`, so a process that holds two copies of a package still hangs child threads under the right parent (F1). When the packages are published, the links become versions.
+`@synadia-ai/agents` and `@synadia-ai/agent-service` are the protocol SDK, the agent tools (`AgentTools`) among it; `@synadia-ai/agent-fabric` is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratchPadExtension`, the grant request), and the ScratchPad they run on (`scratchPadFromEnv`). The agent wires them in `src/agent.ts`: `fabricTracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, and the grant endpoint. Use npm, not bun (`../docs/findings.md` F2). The SDK keeps the served prompt's trace scope on `globalThis`, so a process that holds two copies of a package still hangs child threads under the right parent (F1).
+
+**Working on the packages themselves.** `make setup` in `reference-agents/` installs from npm and then links the four packages over that install, from their checkouts: the protocol SDK from `../../../synadia-agents` on its branch (the `Makefile` names it), the thin durable SDK from `../../../durable-sdk`, and this repository's fabric package, `../../typescript`, each built first. The links leave `package.json` and the lockfile as they are, so what you build there is what the agent runs next. A plain `npm install` here puts the published versions back; `make setup` again links them. It builds only what changed, so it is safe to run again.
 
 ## Run
 
@@ -60,6 +62,15 @@ The three packages are `file:` links into those directories, which npm installs 
 cp env.example .env      # fill in the credentials path, the proxy URL, the virtual key, the model
 npm start
 ```
+
+Or, for an agent `fabric connect` set up, with no `.env`:
+
+```sh
+eval "$(fabric env <name>)"
+npm start
+```
+
+The agent reads `.env` when there is one; a variable already in the environment wins over the file's (`src/dotenv.ts`).
 
 The agent needs a fabric that already stands: a NATS server it has credentials for, the model proxy with a provider behind it, a virtual key issued for this agent that names that provider, and, for references, ScratchPad in the account. `../README.md`, "Run it", says where each comes from; `env.example` names every variable. The proxy prefixes the provider origin's path to the request's, so `MODEL_PROXY_URL` ends in `/api` for OpenRouter and in nothing for a local Ollama, whose origin is `http://localhost:11434` without `/v1`.
 

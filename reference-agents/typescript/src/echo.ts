@@ -1,7 +1,7 @@
 // echo.ts — the smallest agent on the fabric: it answers every prompt with
 // "echo: <the prompt>". No model, no tools, no ScratchPad.
 //
-//   node --env-file=.env --import tsx src/echo.ts      (or: npm run echo)
+//   node --import tsx src/echo.ts      (or: npm run echo)
 //
 // The first step of the getting-started walkthrough
 // (`docs/getting-started/typescript.md`). It shows the first of the four
@@ -10,6 +10,7 @@
 // plus more. It reads four variables of the agent's `.env`: NATS_URL,
 // NATS_CREDS, AGENT_OWNER, AGENT_NAME.
 
+import "./dotenv.js";
 import { connect } from "@nats-io/transport-node";
 import { activeTrace, fabricTracing } from "@synadia-ai/agent-fabric";
 import { AgentService } from "@synadia-ai/agent-service";

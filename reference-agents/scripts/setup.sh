@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# Installs the two agents' packages. Until the protocol SDK, the fabric
-# package and the thin durable SDK are published, the agents link
-# them by relative path (`file:` in typescript/package.json, uv path sources
-# in python/pyproject.toml): the two SDKs from checkouts next to
-# this repository, the fabric package from this repository itself. Their
-# TypeScript halves are built in place first.
+# Installs the two agents' packages for work on this repository: the
+# agents run against the packages as they stand in the checkouts, not as
+# published. TypeScript installs from npm (package.json names the published
+# versions, which is what a copy of the agent gets with `npm install`) and
+# then links the four packages over that install: the protocol SDK and the
+# thin durable SDK from checkouts next to this repository, the fabric
+# package from this repository itself, their TypeScript halves built in
+# place first. Python takes all four by uv path sources (pyproject.toml)
+# until they are on PyPI.
 #
 # Called by `make setup`, which names the SDK's checkout and its branch. Safe
 # to run twice: a package is built only when its sources are newer than its
-# build. In the two SDKs' checkouts it writes build output and
-# nothing else.
+# build, and the links are made again each time, since a plain `npm install`
+# in the agent puts the published versions back. In the two SDKs' checkouts
+# it writes build output and nothing else.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -84,15 +88,20 @@ if [ "$built" = 1 ] || stale "$dir"; then
   )
 fi
 
-# The agents. npm installs the three packages as symlinks, so a rebuild there
-# is what the agent runs next; nothing to reinstall.
+# The agents. The TypeScript agent installs what its lockfile names, from
+# npm, and then the four packages are linked over it with `--no-save`,
+# which leaves package.json and the lockfile as they are: what is built in
+# the checkouts is what the agent runs next.
 ts="$here/typescript"
 if [ ! -f "$ts/node_modules/.package-lock.json" ] ||
   [ "$ts/package.json" -nt "$ts/node_modules/.package-lock.json" ] ||
   [ "$ts/package-lock.json" -nt "$ts/node_modules/.package-lock.json" ]; then
   echo "setup: npm install in reference-agents/typescript"
-  (cd "$ts" && npm install --no-audit --no-fund)
+  (cd "$ts" && npm ci --no-audit --no-fund)
 fi
+echo "setup: linking the checkouts' packages into reference-agents/typescript"
+(cd "$ts" && npm install --no-save --no-audit --no-fund \
+  "$repo/typescript" "$sdk/agent-sdk/typescript" "$sdk/client-sdk/typescript" "$de")
 # uv installs the Python packages editable, the fabric package from ../python;
 # nothing to build. `--locked` refuses to change uv.lock, and prints nothing
 # when all is there.
