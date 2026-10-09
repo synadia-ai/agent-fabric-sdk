@@ -1,5 +1,16 @@
 # CLAUDE.md — agent-fabric-sdk
 
+## Building an agent? Use the fabric-agent skill
+
+If the user wants an agent on the fabric (to build one, connect it, run it
+or change its model), not to work on this SDK, use the `fabric-agent` skill,
+`.claude/skills/fabric-agent/SKILL.md`, and skip the rest of this file: it is
+for work on the SDK itself. Never ask for a key or a token in the chat.
+`fabric login`, and a `fabric connect` that needs the provider's key, go to
+the user's own terminal.
+
+## Working on this SDK
+
 The SDK for agents on the Synadia Agent Fabric: `@synadia-ai/agent-fabric`
 (TypeScript) and `synadia-ai-agent-fabric` (Python, `synadia_ai.agent_fabric`).
 Tracing and the agent tools' ScratchPad extension today; the proxy helpers
@@ -74,7 +85,7 @@ reference-agents/    the two reference agents, the package's worked example — 
                      fabric_agent/durable_agent.py, durable_main.py: the durable agent (python -m fabric_agent.durable_main)
   docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
   Makefile, scripts/setup.sh   `make setup` (the SDK checked and built, this package built, both agents installed), `make test`
-.claude/skills/fabric-agent/   the skill for a user's Claude Code in a checkout: an agent built from the reference agent, connected with
+.claude/skills/fabric-agent/   (and reference-agents/CLAUDE.md, which points at it) the skill for a user's Claude Code in a checkout: an agent built from the reference agent, connected with
                      `fabric` and run; every step that takes a secret handed to the user's own terminal, never asked for in the chat
 ```
 

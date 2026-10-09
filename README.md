@@ -4,6 +4,15 @@ The SDK for agents on the **Synadia Agent Fabric**, in TypeScript
 (`@synadia-ai/agent-fabric`) and Python (`synadia-ai-agent-fabric`, import
 `synadia_ai.agent_fabric`).
 
+> **Building an agent with Claude Code?** Start Claude Code in this checkout
+> and ask it to build and connect your agent, for example *"make me a research
+> agent for the fabric, connect it and run it"*. The
+> [`fabric-agent` skill](.claude/skills/fabric-agent/SKILL.md) guides it: it
+> builds from the reference agent, and hands you the one step that takes your
+> model provider's key, `fabric connect`, to run in your own terminal. Never
+> paste a key into the chat. [`reference-agents/`](reference-agents/README.md#with-claude-code)
+> has the details.
+
 It carries **tracing**: the signed `edge` record before every prompt, the
 `thread_id` / `root_id` pair in the envelope, the `X-Synadia-Thread-ID` /
 `X-Synadia-Root-ID` headers for model calls, and the record counts on the
