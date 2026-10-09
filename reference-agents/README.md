@@ -2,6 +2,20 @@
 
 The worked example of this repository's package, `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric`: two agents for the Synadia Agent Fabric, one in TypeScript and one in Python, built on the protocol SDK and this package and nothing else. Each does the four things a participant of the fabric does: it takes prompts under a signed identity, calls its model through the fabric's model proxy, finds and prompts other agents, and hands work over by ScratchPad reference. A fifth is optional: it runs durable work, a workflow its model starts, joined to the task that started it. With them comes a caller that prompts an agent from outside. Copy one agent and adapt it to your fabric.
 
+## With Claude Code
+
+Start Claude Code in this checkout, here or at the repository's root, and ask it for the agent you want: *"make me a research agent for the fabric, connect it and run it"*. The [`fabric-agent` skill](../.claude/skills/fabric-agent/SKILL.md) takes it through the steps: it copies the TypeScript agent, sets the persona and the tools, connects the agent with `fabric connect`, and starts it.
+
+One step is yours. `fabric connect` needs your model provider's API key, for example OpenRouter's, to issue the agent's own model key for the fabric's proxy, and it asks for it only in a terminal. Claude Code's shell is not one, and Claude Code's `!` prefix is not either. Claude Code hands you the command; the key comes in one of three ways:
+
+| Way | How |
+| --- | --- |
+| **Your terminal** (the usual) | run the command Claude Code gives you in a terminal window of your own. It asks for the key and does not show it. Then tell Claude Code it is done |
+| **Already in Claude Code's environment** | start Claude Code with the key set, `OPENROUTER_API_KEY=… claude`. Then it runs `fabric connect` itself, and the key never appears in the chat |
+| **The console** | on **Model keys**, **Issue a key** for the agent and paste the provider's key in the browser. Take the new model key in your terminal with `fabric connect <name> --model-key -`. A model key is never edited: a new one replaces the old |
+
+The agent itself never sees the provider's key. It runs on its own model key, which `fabric env` exports, and its calls go through the proxy. Never paste a key or token into the chat.
+
 | Path | What |
 | --- | --- |
 | `typescript/` | the TypeScript agent, its caller (`src/prompt.ts`), the echo agent of the first step (`src/echo.ts`), the tests |
