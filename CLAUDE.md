@@ -74,6 +74,8 @@ reference-agents/    the two reference agents, the package's worked example — 
                      fabric_agent/durable_agent.py, durable_main.py: the durable agent (python -m fabric_agent.durable_main)
   docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
   Makefile, scripts/setup.sh   `make setup` (the SDK checked and built, this package built, both agents installed), `make test`
+.claude/skills/fabric-agent/   the skill for a user's Claude Code in a checkout: an agent built from the reference agent, connected with
+                     `fabric` and run; every step that takes a secret handed to the user's own terminal, never asked for in the chat
 ```
 
 ## Rules
