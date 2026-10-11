@@ -80,7 +80,16 @@ plugin's `PreToolUse` hook gives it to the tools, and tracing writes it.
 
 ## Naming it
 
-Installed where Claude Code runs, `npm install @synadia-ai/agent-fabric-claude-code`,
+The published `@synadia-ai/agent-fabric-claude-code` is the whole plugin
+since 0.2.0 (2026-10-11): the Claude Code channel plugin, this add-on and
+ScratchPad's skill in one plugin folder, installed from a marketplace with
+an npm source (`.claude-plugin/marketplace.json` at the repo's root,
+`bundles/npm/claude-code.md`). This folder is the add-on's source and is not
+published alone. What follows names the add-on to a channel plugin
+installed apart from it, as the fabric's own launchers do with this folder
+built.
+
+Built where Claude Code runs, `npm install @synadia-ai/agent-fabric-claude-code`,
 and named to the plugin by absolute path (a package directory with `dist/`
 built); a package name resolves from the plugin's own directory upward,
 which for a plugin in Claude Code's plugin cache is rarely where the add-on

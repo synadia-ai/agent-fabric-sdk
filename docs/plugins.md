@@ -756,6 +756,21 @@ connected to a fabric deployment by environment alone, signed, traced, each answ
 a prompt through another agent. The paragraph below stays true for a
 plugin installed apart from its add-on.
 
+**The same for Claude Code, the same day.** `@synadia-ai/agent-fabric-claude-code`
+0.2.0 is Claude Code's bundle, the plugin `nats-channel`, its `.mcp.json`
+naming the bundled add-on. Claude Code installs plugins from a marketplace,
+and a marketplace entry may have an npm source: this repo's
+`.claude-plugin/marketplace.json`, `agent-fabric`, names the package, and
+until the repo is public the same file in any folder serves (`claude
+plugin marketplace add <folder>`, `claude plugin install
+nats-channel@agent-fabric`). The channel is not on Claude Code's list, so it
+loads with `--dangerously-load-development-channels`, which shows a warning
+and works only in an interactive session: in a container Claude Code runs
+in tmux and its dialogs are answered by attaching. Measured on 2026-10-11
+with Claude Code 2.1.296: installed from a local registry through such a
+marketplace, connected by environment alone, signed, traced, answering a
+prompt through another agent.
+
 **Installed next to the harness and named in the variable.** An operator
 installs the add-on where the harness runs, `npm install
 @synadia-ai/agent-fabric-pi` in a directory of their choosing, and names it:

@@ -1,0 +1,12 @@
+{
+  "name": "agent-fabric",
+  "owner": { "name": "Synadia" },
+  "metadata": { "description": "Synadia Agent Fabric plugins for Claude Code" },
+  "plugins": [
+    {
+      "name": "nats-channel",
+      "description": "Claude Code on the Synadia Agent Fabric: the NATS channel plugin with the fabric's tracing and ScratchPad",
+      "source": { "source": "npm", "package": "@synadia-ai/agent-fabric-claude-code", "version": "^0.2.0" }
+    }
+  ]
+}

@@ -3,11 +3,12 @@
 The fabric add-on for each of the three fully traced harnesses lives
 here, one small TypeScript package per harness: `pi/`, `openclaw/`,
 `claude-code/`, each built on `@synadia-ai/agent-fabric`. Since 2026-10-11
-`@synadia-ai/agent-fabric-pi` and `@synadia-ai/agent-fabric-openclaw` are
-published as whole plugins, the channel plugin with its add-on and
-ScratchPad's skill, built by `bundles/build.sh`; `pi/` and `openclaw/` are
-their add-ons' source. `@synadia-ai/agent-fabric-claude-code` is the
-add-on alone. The add-ons were built in that
+`@synadia-ai/agent-fabric-pi`, `@synadia-ai/agent-fabric-openclaw` and
+`@synadia-ai/agent-fabric-claude-code` are published as whole plugins, the
+channel plugin with its add-on and ScratchPad's skill, built by
+`bundles/build.sh`; Claude Code installs its from a marketplace with an npm
+source (`.claude-plugin/marketplace.json` at the repo's root). The three
+folders are the add-ons' source. The add-ons were built in that
 order; all three are here. What every
 add-on shares — the plugins' extension contract as types, the `409` loop
 guard, the edge subject setting — is in the fabric package

@@ -10,14 +10,17 @@
 #   fabric-openclaw-<v>.tar.gz  fabric-openclaw/, an OpenClaw plugin
 #                               (`openclaw plugins install`, or plugins.load.paths)
 #
-# pi's and OpenClaw's are also npm packages, the same folder packed:
+# Each is also an npm package, the same plugin folder packed:
 #
-#   synadia-ai-agent-fabric-pi-<add-on version>.tgz        @synadia-ai/agent-fabric-pi
-#   synadia-ai-agent-fabric-openclaw-<add-on version>.tgz  @synadia-ai/agent-fabric-openclaw
+#   synadia-ai-agent-fabric-pi-<add-on version>.tgz           @synadia-ai/agent-fabric-pi
+#   synadia-ai-agent-fabric-openclaw-<add-on version>.tgz     @synadia-ai/agent-fabric-openclaw
+#   synadia-ai-agent-fabric-claude-code-<add-on version>.tgz  @synadia-ai/agent-fabric-claude-code
 #
 # each a whole plugin, installed the harness's own way (`pi install
 # npm:@synadia-ai/agent-fabric-pi`, `openclaw plugins install
-# @synadia-ai/agent-fabric-openclaw`). Its manifest's entry loads the
+# @synadia-ai/agent-fabric-openclaw`; Claude Code from a marketplace whose
+# entry has the npm source, as this repo's .claude-plugin/marketplace.json).
+# Claude Code's .mcp.json names the bundled add-on, as it always did. Its manifest's entry loads the
 # bundled add-on unless an extension variable names other extensions;
 # nats-channel.js and index.js, which the fabric CLI starts with the
 # variable set, load what the variable names. Its main is the add-on, as
@@ -127,6 +130,25 @@ if (KIND === "claude-code") {
     hooks: [{ type: "command", command: 'sh "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"', timeout: 10 }],
   });
   write(`${PKG}/hooks/hooks.json`, hooks);
+
+  // The npm package a marketplace's npm source installs: the plugin folder
+  // itself, its main the add-on, as the add-on's own package was before.
+  const addon = read(`${ADDON}/package.json`);
+  write(`${PKG}/package.json`, {
+    name: "@synadia-ai/agent-fabric-claude-code",
+    version: addon.version,
+    description: "Claude Code on the Synadia Agent Fabric: the NATS channel plugin for Claude Code with the fabric's tracing and ScratchPad, in one plugin",
+    keywords: ["claude-code", "claude-code-plugin", "nats", "agent", "channel", "synadia-agent-protocol", "synadia-agent-fabric"],
+    license: addon.license,
+    author: "Synadia Communications",
+    repository: { type: "git", url: "git+https://github.com/synadia-ai/agent-fabric-sdk.git", directory: "plugins/claude-code" },
+    type: "module",
+    main: "./runtime/fabric.js",
+    exports: { ".": "./runtime/fabric.js", "./package.json": "./package.json" },
+    files: [".claude-plugin", ".mcp.json", "runtime", "hooks", "skills", "BUILD", "README.md", "LICENSE"],
+    publishConfig: { access: "public" },
+  });
+  fs.copyFileSync(`${HERE}/npm/claude-code.md`, `${PKG}/README.md`);
 
   // The tarball's root is a marketplace of this one plugin.
   fs.mkdirSync(`${MARKET}/.claude-plugin`, { recursive: true });
@@ -267,10 +289,10 @@ for harness in $harnesses; do
     COPYFILE_DISABLE=1 tar -C "$market" -czf "$file" .claude-plugin "$name"
   else
     COPYFILE_DISABLE=1 tar -C "$out" -czf "$file" "$name"
-    # The same folder as the npm package; npm publish <tgz> publishes it.
-    (cd "$pkg" && npm pack --silent --pack-destination "$out" >/dev/null)
-    ls -lh "$out/synadia-ai-agent-fabric-$harness-$(node -p "require('$pkg/package.json').version").tgz"
   fi
+  # The same plugin folder as the npm package; npm publish <tgz> publishes it.
+  (cd "$pkg" && npm pack --silent --pack-destination "$out" >/dev/null)
+  ls -lh "$out/synadia-ai-agent-fabric-$harness-$(node -p "require('$pkg/package.json').version").tgz"
   ls -lh "$file"
 done
 
