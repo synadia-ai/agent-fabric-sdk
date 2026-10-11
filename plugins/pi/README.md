@@ -76,7 +76,15 @@ it describes and counted as it goes, so there is nothing to flush.
 
 ## Naming it
 
-Installed where PI runs, `npm install @synadia-ai/agent-fabric-pi`, and
+The published `@synadia-ai/agent-fabric-pi` is the whole plugin since 0.2.0
+(2026-10-11): the pi channel plugin, this add-on and ScratchPad's skill in
+one package, installed pi's own way (`pi install npm:@synadia-ai/agent-fabric-pi`), its entry loading the add-on
+unless an extension variable names others (`bundles/build.sh`, `bundles/npm/pi.md`).
+This folder is the add-on's source and is not published alone. What follows
+names the add-on to a channel plugin installed apart from it, as the fabric's
+own launchers do with this folder built.
+
+Built where PI runs and
 named to the plugin by package name when that directory is the plugin's or
 an ancestor of it, by absolute path otherwise (a package directory with
 `dist/` built):

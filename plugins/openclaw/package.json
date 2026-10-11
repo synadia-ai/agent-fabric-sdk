@@ -1,6 +1,7 @@
 {
   "name": "@synadia-ai/agent-fabric-openclaw",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "private": true,
   "description": "The Synadia Agent Fabric add-on for the OpenClaw channel plugin: the fabric's tracing on the plugin's service and client, a trace id seeded into OpenClaw's turn and bound to the served thread by the signed served pair, and the loop guard, as one extension module the plugin loads.",
   "type": "module",
   "main": "./dist/index.cjs",

@@ -59,10 +59,11 @@ test-fixtures/       shared by both suites — see its README for every file's s
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
   scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, load-sp.mjs, install.sh
-  pi/                @synadia-ai/agent-fabric-pi — built like typescript/ (tsup, vitest, eslint, prettier)
+  pi/                the pi add-on's source, built like typescript/ (tsup, vitest, eslint, prettier); published
+                     inside @synadia-ai/agent-fabric-pi, the whole plugin bundles/build.sh makes, never alone
     src/extension.ts the factory: tracing's hooks, the guard, the scope bound at PI's events, the headers
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, edge.json
-  openclaw/          @synadia-ai/agent-fabric-openclaw — built the same way
+  openclaw/          the OpenClaw add-on's source, built the same way; published inside @synadia-ai/agent-fabric-openclaw
     src/extension.ts the factory: tracing's hooks, the guard, the served pair, the scope at OpenClaw's events
     src/trace-scope.ts the traceparent seed: OpenClaw's trace scope store, feature-checked (from fbd16ab)
     src/scratchpad.ts  ScratchPad: the shared pieces with this package's skill/scratchpad (npm run build:sp)
@@ -74,7 +75,9 @@ plugins/             the fabric add-ons for the harness plugins, one package per
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
 bundles/             self-contained harness plugins, built from the public plugin and this repo's add-on
   build.sh           [claude-code|pi|openclaw|all] → bundles/out/fabric-{claude,pi,openclaw}.tar.gz, each
-                     with ScratchPad; Claude's tarball is also a marketplace, `fabric`
+                     with ScratchPad; Claude's tarball is also a marketplace, `fabric`; pi's and OpenClaw's
+                     also npm packages, @synadia-ai/agent-fabric-{pi,openclaw}: the whole plugin, one install
+  npm/               the READMEs those two npm packages ship
   bundle.ts          one Bun build of plugin and add-on with shared chunks: one copy of the SDK
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
   typescript/        the TypeScript agent: src/agent.ts (the five behaviours), its caller, its echo; vitest
