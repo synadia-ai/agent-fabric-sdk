@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "release_tag": "bundles-v0.1.2",
+  "protocol": {
+    "repository": "synadia-ai/synadia-agents",
+    "commit": "554414d8d9740197c6c27944236f869f5671b6ae"
+  },
+  "fabric": {
+    "repository": "synadia-ai/agent-fabric-sdk",
+    "commit": "bbd312896de1bf289ef8c419a9b9aedb855b0483"
+  },
+  "scratchpad": {
+    "release": "sp-v0.1.6",
+    "source_commit": "5e518519d1f9af47364cdf5ab01d518c8a195d33"
+  },
+  "archive_headers": {
+    "uid": 0,
+    "gid": 0,
+    "uname": "",
+    "gname": "",
+    "member_mtime": 0,
+    "gzip_mtime": 0
+  },
+  "artifacts": [
+    {
+      "name": "fabric-claude-0.6.0-554414d-bbd3128.tar.gz",
+      "sha256": "10eede0807aa720a6b3812f31cf37f76ab371f0ea48c58aa58265bbf6602d43a",
+      "bytes": 11862768
+    },
+    {
+      "name": "fabric-openclaw-0.5.6-554414d-bbd3128.tar.gz",
+      "sha256": "29d0b997e02ded8e3161f6914e63b626d8cc76729ce8866357366d3f3b372fdc",
+      "bytes": 11746437
+    },
+    {
+      "name": "fabric-pi-0.5.6-554414d-bbd3128.tar.gz",
+      "sha256": "a798d7cf15f488beae410298eac3613a5006a5e7f1cf943b07cb27ba0a63d869",
+      "bytes": 11739883
+    }
+  ],
+  "checksums_sha256": "7bf1cedea34572ec3ca45061db78405a552d94b435212009d9e353cb234ff5d2"
+}
