@@ -4,6 +4,16 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-10-11
+
+### Changed
+
+- `@synadia-ai/agent-fabric-pi` is the whole plugin now: the PI channel plugin from
+  `synadia-agents`, this add-on and ScratchPad's skill, bundled by `bundles/build.sh` into one
+  package that pi installs its own way. Its entry loads the add-on unless an extension
+  variable names other extensions; its main export is the add-on, as before. This folder is the
+  add-on's source and is not published alone.
+
 ## [0.1.0] — 2026-10-06
 
 ### Added

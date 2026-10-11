@@ -10,6 +10,19 @@
 #   fabric-openclaw-<v>.tar.gz  fabric-openclaw/, an OpenClaw plugin
 #                               (`openclaw plugins install`, or plugins.load.paths)
 #
+# pi's and OpenClaw's are also npm packages, the same folder packed:
+#
+#   synadia-ai-agent-fabric-pi-<add-on version>.tgz        @synadia-ai/agent-fabric-pi
+#   synadia-ai-agent-fabric-openclaw-<add-on version>.tgz  @synadia-ai/agent-fabric-openclaw
+#
+# each a whole plugin, installed the harness's own way (`pi install
+# npm:@synadia-ai/agent-fabric-pi`, `openclaw plugins install
+# @synadia-ai/agent-fabric-openclaw`). Its manifest's entry loads the
+# bundled add-on unless an extension variable names other extensions;
+# nats-channel.js and index.js, which the fabric CLI starts with the
+# variable set, load what the variable names. Its main is the add-on, as
+# the add-on's own package was before.
+#
 # The plugins are used, never copied: each is bundled from the synadia-agents
 # checkout at whatever commit it is on. The bundle's version is the plugin's
 # plus both repos' commits, <plugin version>+fabric.<synadia-agents>.<this
@@ -73,9 +86,9 @@ skill() {
 
 # manifest <kind> …: the bundle's JSON files, written by node.
 manifest() {
-  PLUGIN=$plugin PKG=$pkg MARKET=${market:-} AGENTS_REV=$agents_rev FABRIC_REV=$fabric_rev KIND=$1 node <<'EOF'
+  PLUGIN=$plugin ADDON=$addon HERE=$here PKG=$pkg MARKET=${market:-} AGENTS_REV=$agents_rev FABRIC_REV=$fabric_rev KIND=$1 node <<'EOF'
 const fs = require("fs");
-const { PLUGIN, PKG, MARKET, AGENTS_REV, FABRIC_REV, KIND } = process.env;
+const { PLUGIN, ADDON, HERE, PKG, MARKET, AGENTS_REV, FABRIC_REV, KIND } = process.env;
 const read = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 const write = (p, v) => fs.writeFileSync(p, JSON.stringify(v, null, 2) + "\n");
 const suffix = `+fabric.${AGENTS_REV}.${FABRIC_REV}`;
@@ -124,36 +137,65 @@ if (KIND === "claude-code") {
     plugins: [{ name: "nats-channel", source: "./fabric-claude", description: manifest.description, version: manifest.version }],
   });
 } else {
-  // A package of the public plugin's name and version, its dependencies
-  // bundled, its entries the bundled ones. The add-on is named apart:
-  // SYNADIA_PI_EXTENSIONS / SYNADIA_OPENCLAW_EXTENSIONS=<bundle>/dist/fabric.js.
+  // The fabric's package of the harness, its dependencies bundled, its
+  // entries the bundled ones, its version the add-on's; the public
+  // plugin's name and version are in BUILD.
   const src = read(`${PLUGIN}/package.json`);
+  const addon = read(`${ADDON}/package.json`);
+  // The manifest's entry: the channel with the bundled add-on, unless an
+  // extension variable already names the extensions (the fabric CLI's
+  // does; set but empty, none). The channel reads the variables when it
+  // starts, after this module ran.
+  const [variable, channel, entry] =
+    KIND === "pi" ? ["SYNADIA_PI_EXTENSIONS", "./nats-channel.js", "channel.js"] : ["SYNADIA_OPENCLAW_EXTENSIONS", "./index.js", "plugin.js"];
+  fs.writeFileSync(
+    `${PKG}/dist/${entry}`,
+    [
+      "// The NATS channel with this package's fabric add-on, unless an extension",
+      "// variable already names the extensions to load.",
+      'import { fileURLToPath } from "node:url";',
+      `if (process.env.${variable} === undefined && process.env.SYNADIA_AGENT_EXTENSIONS === undefined)`,
+      `  process.env.${variable} = fileURLToPath(new URL("./fabric.js", import.meta.url));`,
+      `export { default } from ${JSON.stringify(channel)};`,
+      "",
+    ].join("\n"),
+  );
+  const title = KIND === "pi" ? "pi" : "OpenClaw";
   const pkg = {
-    name: src.name,
-    version: src.version + suffix,
-    description: described(src.description),
-    keywords: src.keywords,
-    license: src.license,
+    name: `@synadia-ai/agent-fabric-${KIND}`,
+    version: addon.version,
+    description: `${title} on the Synadia Agent Fabric: the NATS channel for ${title} with the fabric's tracing and ScratchPad, in one package`,
+    keywords: [...new Set([...(src.keywords ?? []), "synadia-agent-fabric"])],
+    license: addon.license,
     author: src.author,
-    repository: src.repository,
+    repository: { type: "git", url: "git+https://github.com/synadia-ai/agent-fabric-sdk.git", directory: `plugins/${KIND}` },
     type: "module",
+    main: "./dist/fabric.js",
+    exports: { ".": "./dist/fabric.js", "./package.json": "./package.json" },
+    files: ["dist", "skill", "BUILD", "README.md", "LICENSE", ...(KIND === "openclaw" ? ["openclaw.plugin.json"] : [])],
     peerDependencies: src.peerDependencies,
+    publishConfig: { access: "public" },
   };
   if (KIND === "pi") {
-    pkg.pi = { extensions: ["./dist/nats-channel.js"], skills: ["./skill"] };
+    pkg.pi = { extensions: [`./dist/${entry}`], skills: ["./skill"] };
   } else {
     pkg.openclaw = {
       ...src.openclaw,
-      extensions: ["./dist/index.js"],
-      runtimeExtensions: ["./dist/index.js"],
+      extensions: [`./dist/${entry}`],
+      runtimeExtensions: [`./dist/${entry}`],
       setupEntry: "./dist/setup-entry.js",
       runtimeSetupEntry: "./dist/setup-entry.js",
     };
   }
   write(`${PKG}/package.json`, pkg);
+  fs.copyFileSync(`${HERE}/npm/${KIND}.md`, `${PKG}/README.md`);
 }
 
-fs.writeFileSync(`${PKG}/BUILD`, `synadia-agents ${AGENTS_REV}\nagent-fabric-sdk ${FABRIC_REV}\nbuilt ${new Date().toISOString()}\n`);
+const plugin = KIND === "claude-code" ? read(`${PLUGIN}/.claude-plugin/plugin.json`) : read(`${PLUGIN}/package.json`);
+fs.writeFileSync(
+  `${PKG}/BUILD`,
+  `plugin ${plugin.name} ${plugin.version}\nsynadia-agents ${AGENTS_REV}\nagent-fabric-sdk ${FABRIC_REV}\nbuilt ${new Date().toISOString()}\n`,
+);
 EOF
 }
 
@@ -225,6 +267,9 @@ for harness in $harnesses; do
     COPYFILE_DISABLE=1 tar -C "$market" -czf "$file" .claude-plugin "$name"
   else
     COPYFILE_DISABLE=1 tar -C "$out" -czf "$file" "$name"
+    # The same folder as the npm package; npm publish <tgz> publishes it.
+    (cd "$pkg" && npm pack --silent --pack-destination "$out" >/dev/null)
+    ls -lh "$out/synadia-ai-agent-fabric-$harness-$(node -p "require('$pkg/package.json').version").tgz"
   fi
   ls -lh "$file"
 done

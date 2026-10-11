@@ -738,6 +738,24 @@ the `served` vocabulary and its publisher, the TypeScript half's twin byte
 for byte (gap 2, closed 2026-09-23), as the repo's rule requires of every
 wire artefact.
 
+**Amended 2026-10-11: pi's and OpenClaw's packages are the whole plugin.**
+An operator installs one package the harness's own way: `pi install
+npm:@synadia-ai/agent-fabric-pi`, `openclaw plugins install
+@synadia-ai/agent-fabric-openclaw`. Version 0.2.0 of each is the bundle
+`bundles/build.sh` makes: the channel plugin compiled from `synadia-agents`,
+this repo's add-on and ScratchPad's skill. The plugin is used, never copied:
+it is compiled in at build time, as the fabric CLI's bundles always were.
+Its manifest's entry names the bundled add-on in the extension variable
+unless one is already set, so the plugin is traced without a setting; the
+package's main export is the add-on, as 0.1.0's was. `plugins/pi` and
+`plugins/openclaw` are the add-ons' source and are not published alone.
+With `NATS_URL` and `NATS_CREDS` (the channels read both since
+`synadia-agents` #233) the plugin needs no NATS context. Measured on
+2026-10-11: both packages from a local registry into fresh containers,
+connected to a fabric deployment by environment alone, signed, traced, each answering
+a prompt through another agent. The paragraph below stays true for a
+plugin installed apart from its add-on.
+
 **Installed next to the harness and named in the variable.** An operator
 installs the add-on where the harness runs, `npm install
 @synadia-ai/agent-fabric-pi` in a directory of their choosing, and names it:
