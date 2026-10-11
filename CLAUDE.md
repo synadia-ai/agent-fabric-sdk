@@ -68,7 +68,8 @@ plugins/             the fabric add-ons for the harness plugins, one package per
     src/trace-scope.ts the traceparent seed: OpenClaw's trace scope store, feature-checked (from fbd16ab)
     src/scratchpad.ts  ScratchPad: the shared pieces with this package's skill/scratchpad (npm run build:sp)
     test/unit/       a fake of the plugin drives the events; test/integration/ a nats-server, served.json
-  claude-code/       @synadia-ai/agent-fabric-claude-code — built the same way, and a Claude Code plugin of its own
+  claude-code/       the Claude Code add-on's source, built the same way, and a Claude Code plugin of its own; published inside
+                     @synadia-ai/agent-fabric-claude-code, the whole plugin, which .claude-plugin/marketplace.json names
     src/extension.ts the factory: tracing's hooks, the guard, the served pair on the session, end at the Stop
     src/scratchpad.ts  ScratchPad: the shared pieces, and the file scripts/sp reads (the module cannot reach Bash's environment)
     .claude-plugin/, hooks/  the plugin `agent-fabric`: the SessionStart hook that names that file; skills/scratchpad (npm run build:sp)
@@ -77,7 +78,7 @@ bundles/             self-contained harness plugins, built from the public plugi
   build.sh           [claude-code|pi|openclaw|all] → bundles/out/fabric-{claude,pi,openclaw}.tar.gz, each
                      with ScratchPad; Claude's tarball is also a marketplace, `fabric`; pi's and OpenClaw's
                      also npm packages, @synadia-ai/agent-fabric-{pi,openclaw}: the whole plugin, one install
-  npm/               the READMEs those two npm packages ship
+  npm/               the READMEs the three npm packages ship
   bundle.ts          one Bun build of plugin and add-on with shared chunks: one copy of the SDK
 reference-agents/    the two reference agents, the package's worked example — README.md is theirs and the tools'
   typescript/        the TypeScript agent: src/agent.ts (the five behaviours), its caller, its echo; vitest
