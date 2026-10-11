@@ -4,6 +4,16 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## The channels from the environment, the whole-plugin packages
+
+[bundles-v0.1.2.json](bundles-v0.1.2.json) describes the prepared `bundles-v0.1.2` assets.
+The protocol source is `synadia-agents` main at `554414d`: the pi and Claude Code channels connect with `NATS_URL` and `NATS_CREDS` when no context is set (#233), and Claude Code's channel is 0.6.0.
+The Fabric source is `bbd3128`: each bundle is also the npm package of its harness (#63, #64), and pi's and OpenClaw's manifests name an entry that loads the bundled add-on unless an extension variable is set.
+The fabric CLI is unaffected: it sets the variable and a NATS context, which wins, and it starts the files it always started.
+ScratchPad is unchanged from `bundles-v0.1.1`: `sp-v0.1.6`.
+Checked before publication: each archive installed with `fabric install-plugins` (v0.8.0), a pi and an OpenClaw agent connected with `fabric connect`, run the CLI's way against staging, signed, the add-on loaded, each answering a console prompt through another agent; Claude Code's bundle installed in the CLI's layout.
+The archives are `build.sh`'s, repacked with the headers above; their members and bytes are the build's.
+
 ## ScratchPad 0.1.6 refresh
 
 [bundles-v0.1.1.json](bundles-v0.1.1.json) describes the prepared `bundles-v0.1.1` assets.
