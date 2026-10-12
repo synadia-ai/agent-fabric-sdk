@@ -8,10 +8,10 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- The bundled OpenClaw channel plugin is 0.5.7 (`synadia-agents` #234): with the agent's name
-  in `SYNADIA_OPENCLAW_NAME`, the install and every gateway start no longer print "could not
-  persist channel config skeleton … must have required property 'agentName'". The channel never
-  needed that config entry when the environment names the agent.
+- The bundled OpenClaw channel plugin is 0.5.7 (`synadia-agents` #234). With the agent's name in
+  `SYNADIA_OPENCLAW_NAME`, the gateway start no longer prints "could not persist channel config
+  skeleton …". The install, where no name is known yet, prints one line saying where the name
+  comes from.
 
 ## [0.2.0] — 2026-10-11
 
