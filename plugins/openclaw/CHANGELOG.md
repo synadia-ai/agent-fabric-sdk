@@ -4,6 +4,15 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-10-12
+
+### Fixed
+
+- The bundled OpenClaw channel plugin is 0.5.7 (`synadia-agents` #234): with the agent's name
+  in `SYNADIA_OPENCLAW_NAME`, the install and every gateway start no longer print "could not
+  persist channel config skeleton … must have required property 'agentName'". The channel never
+  needed that config entry when the environment names the agent.
+
 ## [0.2.0] — 2026-10-11
 
 ### Changed
