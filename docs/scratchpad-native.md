@@ -252,8 +252,9 @@ Generic `fenced`, `denied`, or missing-volume responses cannot settle a previous
 After a saved release returns `conflict`, recovery can request a read-only plan for
 the exact saved request. Only a strictly greater native sequence for the same
 incarnation, slot, generation, and target proves the old release fence cannot win.
-The client then clears only that release intent and reports `fenced`. The live
-volume remains usable; this outcome claims neither disposal nor capacity return.
+The client then clears only that release intent and reports `fenced`. The lifetime
+remains nonterminal. Inspect the reported lifetime and renew before ordinary work
+if needed. This outcome claims neither disposal nor capacity return.
 Review a new plan before another release attempt. An unknown or mismatched probe,
 or a previously observed accepted fence, keeps the saved release pending.
 The completed workspace refuses new mutations. Repeated recovery returns its saved result; repeating apply requires the complete identical plan.

@@ -263,8 +263,9 @@ scripts/sp retire --operation-id "$RETIRE_ID" --end-promises --apply
 Review the first result before applying. The exact terminal operation persists for recovery.
 If recovery proves a strictly newer nonterminal plan for the same incarnation,
 slot, generation, target, and saved request, it clears only the old release intent
-and reports `fenced`. The volume is still usable. Review a new plan before applying
-again; this refusal does not mean that artifacts were disposed or capacity returned.
+and reports `fenced`. The lifetime remains nonterminal. Inspect the reported
+lifetime and renew before ordinary work if needed. Review a new plan before
+applying again; this refusal does not mean that artifacts were disposed or capacity returned.
 Unknown or mismatched evidence and an already accepted terminal fence stay pending.
 `disposed` reports physical disposal; only `capacity_returned` confirms admission capacity is free.
 If a successor generation proves the old lifetime ended but this workspace never
