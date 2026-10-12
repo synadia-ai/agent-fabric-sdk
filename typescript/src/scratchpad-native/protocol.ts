@@ -1,7 +1,8 @@
 import { invalid } from "./errors";
 import unicode15Unassigned from "@unicode/unicode-15.0.0/General_Category/Unassigned/regex.mjs";
 
-// api/v2 and ADR-0004 at ScratchPad 2f59c514c9d8aed39b510eae1abbab8062185ed5.
+// Core protocol baseline: ScratchPad 2f59c514c9d8aed39b510eae1abbab8062185ed5.
+// Optional lifecycle fields and their recovery rules are in docs/scratchpad-native.md.
 export const SUBJECT_PREFIX = "sp.v1.api.v2.";
 export const METADATA_HEADER = "ScratchPad-Metadata";
 export const REPLY_HEADER = "ScratchPad-Reply";
@@ -32,6 +33,7 @@ export const CODES = [
   "exists",
   "conflict",
   "fenced",
+  "generation_retired",
   "intent_changed",
   "capacity",
   "summary_limit",
@@ -98,6 +100,7 @@ export interface Command {
   base: Head;
   root: ContentID;
   trace: Trace;
+  remove_path?: string;
   retention: RetentionIntent;
 }
 export interface Receipt {
@@ -147,6 +150,68 @@ export interface VolumeView {
   writers: WriterSlot[];
   retentions: RetentionSlot[];
   grants: GrantSlot[];
+  lifetime?: LifetimeView;
+}
+export interface AdmissionBinding {
+  slot: number;
+  generation: number;
+  operation_id: string;
+}
+export interface LifetimeView {
+  admission: AdmissionBinding;
+  phase: "active" | "shrinking" | "expiring";
+  expires_at: number;
+  grace_until: number;
+  max_lease_seconds: number;
+  grace_seconds: number;
+  recovery_reads: boolean;
+  reserve_objects: number;
+  reserve_bytes: number;
+}
+export interface RenewRequest {
+  target: Target;
+  until: number;
+}
+export interface RemovalRequest {
+  target: Target;
+  command: Command;
+}
+export interface RemovalPlan extends RemovalRequest {
+  slot: number;
+  generation: number;
+  sequence: number;
+  added_objects: number;
+  added_bytes: number;
+}
+export interface VolumeReleaseRequest {
+  target: Target;
+  operation_id: string;
+  end_promises: boolean;
+}
+export interface ReleaseEffects {
+  objects: number;
+  bytes: number;
+  retentions: number;
+  read_grants: number;
+  access_slots: number;
+  references: number;
+}
+export interface VolumeReleasePlan {
+  request: VolumeReleaseRequest;
+  incarnation: string;
+  slot: number;
+  generation: number;
+  sequence: number;
+  head: Head;
+  effects: ReleaseEffects;
+}
+export interface VolumeReleaseResult {
+  target: Target;
+  slot: number;
+  generation: number;
+  operation_id: string;
+  disposed: boolean;
+  capacity_returned: boolean;
 }
 export interface Limits {
   object_bytes: number;
@@ -172,6 +237,7 @@ export interface ReservedScope {
   volume: string;
   objects: number;
   bytes: number;
+  admission?: AdmissionBinding;
 }
 export interface Info {
   principal: Principal;
@@ -217,6 +283,7 @@ export interface PutRequest {
 export interface CreateRequest {
   volume: string;
   action: Action;
+  admission?: AdmissionBinding;
 }
 export interface PublishRequest {
   target: Target;
@@ -484,16 +551,11 @@ export function validateGrantHandle(value: unknown): asserts value is GrantHandl
   uint(v.generation, undefined, 1);
 }
 export function validateCommand(value: unknown): asserts value is Command {
-  const v = record(value, [
-    "creation_id",
-    "writer",
-    "number",
-    "operation_id",
-    "base",
-    "root",
-    "trace",
-    "retention",
-  ]);
+  const v = record(
+    value,
+    ["creation_id", "writer", "number", "operation_id", "base", "root", "trace", "retention"],
+    ["remove_path"],
+  );
   validateTarget({ volume: "v", creation_id: v.creation_id });
   validateWriter(v.writer);
   uint(v.number, undefined, 1);
@@ -509,6 +571,10 @@ export function validateCommand(value: unknown): asserts value is Command {
     r.enabled || (r.slot === 0 && r.generation === 0 && r.until === 0),
     "disabled retention must be zero",
   );
+  if (v.remove_path !== undefined) {
+    validatePath(v.remove_path);
+    check(v.remove_path !== "/" && !r.enabled, "removal cannot retain or remove the root");
+  }
 }
 export function validateReceipt(value: unknown): asserts value is Receipt {
   const v = record(value, ["volume", "principal", "command", "head", "retention"]);
@@ -544,19 +610,24 @@ export function sameValue(a: unknown, b: unknown): boolean {
 }
 
 export function validateVolumeView(value: unknown): asserts value is VolumeView {
-  const v = record(value, [
-    "target",
-    "owner",
-    "head",
-    "revision",
-    "closed",
-    "epoch",
-    "objects",
-    "bytes",
-    "writers",
-    "retentions",
-    "grants",
-  ]);
+  const v = record(
+    value,
+    [
+      "target",
+      "owner",
+      "head",
+      "revision",
+      "closed",
+      "epoch",
+      "objects",
+      "bytes",
+      "writers",
+      "retentions",
+      "grants",
+    ],
+    ["lifetime"],
+  );
+  if (v.lifetime !== undefined) validateLifetimeView(v.lifetime);
   validateTarget(v.target);
   validatePrincipal(v.owner);
   validateHead(v.head);
@@ -578,13 +649,14 @@ export function validateVolumeView(value: unknown): asserts value is VolumeView 
     if (slot.principal !== undefined) {
       validatePrincipal(slot.principal);
       check(slot.principal.account === v.owner.account, "writer belongs to another account");
-    } else check(!slot.write && slot.number === 0, "writer identity absent");
+    } else check(!slot.write, "writer identity absent");
     if (slot.number === 0) check(slot.receipt === undefined, "unused writer has a receipt");
     else {
       validateReceipt(slot.receipt);
       check(
-        slot.write &&
-          sameValue(slot.receipt.principal, slot.principal) &&
+        ((slot.principal === undefined && !slot.write) ||
+          (slot.write && sameValue(slot.receipt.principal, slot.principal))) &&
+          slot.receipt.principal.account === v.owner.account &&
           slot.receipt.volume === v.target.volume &&
           slot.receipt.command.creation_id === v.target.creation_id &&
           slot.receipt.command.writer.slot === index &&
@@ -652,7 +724,8 @@ export function validateInfo(value: unknown): asserts value is Info {
   check(Array.isArray(v.scopes) && v.scopes.length <= 16, "scope count exceeds bound");
   const seen = new Set<string>();
   for (const raw of v.scopes) {
-    const scope = record(raw, ["volume", "objects", "bytes"]);
+    const scope = record(raw, ["volume", "objects", "bytes"], ["admission"]);
+    if (scope.admission !== undefined) validateAdmissionBinding(scope.admission);
     validateVolume(scope.volume);
     uint(scope.objects, MAX_VOLUME_OBJECTS, 1);
     uint(scope.bytes, MAX_VOLUME_BYTES, 4);
@@ -664,6 +737,137 @@ export function validateContentObject(value: unknown): asserts value is ContentO
   const v = record(value, ["kind", "id"]);
   validateContentID(v.id);
   check(v.kind === "chnk" || v.kind === "fobj" || v.kind === "tree", "unsupported object kind");
+}
+export function validateAdmissionBinding(value: unknown): asserts value is AdmissionBinding {
+  const v = record(value, ["slot", "generation", "operation_id"]);
+  uint(v.slot, 255);
+  uint(v.generation, undefined, 1);
+  validateAction({ operation_id: v.operation_id, trace: {} });
+}
+export function validateLifetimeView(value: unknown): asserts value is LifetimeView {
+  const v = record(value, [
+    "admission",
+    "phase",
+    "expires_at",
+    "grace_until",
+    "max_lease_seconds",
+    "grace_seconds",
+    "recovery_reads",
+    "reserve_objects",
+    "reserve_bytes",
+  ]);
+  validateAdmissionBinding(v.admission);
+  for (const key of ["expires_at", "grace_until", "max_lease_seconds", "grace_seconds"])
+    uint(v[key]);
+  bool(v.recovery_reads);
+  uint(v.reserve_objects, 128);
+  uint(v.reserve_bytes, 8 * 2 ** 20);
+  check((v.reserve_objects === 0) === (v.reserve_bytes === 0), "incomplete metadata reserve");
+  check(
+    v.phase === "active" || v.phase === "shrinking" || v.phase === "expiring",
+    "invalid lifetime phase",
+  );
+  check(
+    v.phase === "expiring"
+      ? (v.expires_at as number) > 0 &&
+          (v.grace_until === 0 || (v.grace_until as number) >= (v.expires_at as number))
+      : v.grace_until === 0,
+    "invalid lifetime grace",
+  );
+  check(
+    v.expires_at === 0
+      ? v.grace_seconds === 0
+      : (v.max_lease_seconds as number) > 0 && (v.grace_seconds as number) > 0,
+    "invalid lease policy",
+  );
+}
+export function validateRenewRequest(value: unknown): asserts value is RenewRequest {
+  const v = record(value, ["target", "until"]);
+  validateTarget(v.target);
+  uint(v.until, undefined, 1);
+}
+export function validateRemovalRequest(value: unknown): asserts value is RemovalRequest {
+  const v = record(value, ["target", "command"]);
+  validateTarget(v.target);
+  validateCommand(v.command);
+  check(
+    v.command.remove_path && v.command.creation_id === v.target.creation_id,
+    "invalid removal command",
+  );
+}
+export function validateRemovalPlan(value: unknown): asserts value is RemovalPlan {
+  const v = record(value, [
+    "target",
+    "slot",
+    "generation",
+    "sequence",
+    "command",
+    "added_objects",
+    "added_bytes",
+  ]);
+  validateRemovalRequest({ target: v.target, command: v.command });
+  uint(v.slot, 255);
+  uint(v.generation, undefined, 1);
+  uint(v.sequence, undefined, 1);
+  uint(v.added_objects, 128);
+  uint(v.added_bytes, 8 * 2 ** 20);
+}
+export function validateVolumeReleaseRequest(
+  value: unknown,
+): asserts value is VolumeReleaseRequest {
+  const v = record(value, ["target", "operation_id", "end_promises"]);
+  validateTarget(v.target);
+  validateAction({ operation_id: v.operation_id, trace: {} });
+  bool(v.end_promises);
+}
+export function validateVolumeReleasePlan(value: unknown): asserts value is VolumeReleasePlan {
+  const v = record(value, [
+    "request",
+    "incarnation",
+    "slot",
+    "generation",
+    "sequence",
+    "head",
+    "effects",
+  ]);
+  validateVolumeReleaseRequest(v.request);
+  text(v.incarnation, 64, 64);
+  check(/^[0-9a-f]{64}$/.test(v.incarnation), "invalid release incarnation");
+  uint(v.slot, 255);
+  uint(v.generation, undefined, 1);
+  uint(v.sequence, undefined, 1);
+  validateHead(v.head);
+  const effects = record(v.effects, [
+    "objects",
+    "bytes",
+    "retentions",
+    "read_grants",
+    "access_slots",
+    "references",
+  ]);
+  uint(effects.objects, MAX_VOLUME_OBJECTS);
+  uint(effects.bytes, MAX_VOLUME_BYTES);
+  uint(effects.retentions, RETENTION_SLOTS);
+  uint(effects.read_grants, GRANT_SLOTS);
+  uint(effects.access_slots, WRITER_SLOTS);
+  uint(effects.references, RETENTION_SLOTS);
+}
+export function validateVolumeReleaseResult(value: unknown): asserts value is VolumeReleaseResult {
+  const v = record(value, [
+    "target",
+    "slot",
+    "generation",
+    "operation_id",
+    "disposed",
+    "capacity_returned",
+  ]);
+  validateTarget(v.target);
+  uint(v.slot, 255);
+  uint(v.generation, undefined, 1);
+  validateAction({ operation_id: v.operation_id, trace: {} });
+  bool(v.disposed);
+  bool(v.capacity_returned);
+  check(!v.capacity_returned || v.disposed, "capacity returned before disposal");
 }
 export function validateObjectSpec(value: unknown): asserts value is ObjectSpec {
   const v = record(value, ["object", "length"]);

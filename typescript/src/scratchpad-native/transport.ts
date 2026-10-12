@@ -12,6 +12,13 @@ export interface TransportOptions {
   timeoutMs?: number;
 }
 
+function normalizeCommand(command: p.Command): p.Command {
+  return {
+    ...command,
+    trace: Object.fromEntries(Object.entries(command.trace).filter(([, value]) => value !== "")),
+  };
+}
+
 function pathRequest(v: Record<string, unknown>): void {
   p.validateTarget(v.target);
   p.validateContentID(v.root);
@@ -25,11 +32,27 @@ function validateRequest(verb: string, value: unknown): void {
       p.validateEmpty(value);
       return;
     case "volume.create": {
-      const v = p.record(value, ["volume", "action"]);
+      const v = p.record(value, ["volume", "action"], ["admission"]);
       p.validateVolume(v.volume);
       p.validateAction(v.action);
+      if (v.admission !== undefined) p.validateAdmissionBinding(v.admission);
       return;
     }
+    case "volume.renew":
+      p.validateRenewRequest(value);
+      return;
+    case "volume.remove.plan":
+      p.validateRemovalRequest(value);
+      return;
+    case "volume.remove.apply":
+      p.validateRemovalPlan(value);
+      return;
+    case "volume.release.plan":
+      p.validateVolumeReleaseRequest(value);
+      return;
+    case "volume.release.apply":
+      p.validateVolumeReleasePlan(value);
+      return;
     case "volume.get": {
       const v = p.record(value, ["target"]);
       p.validateTarget(v.target);
@@ -98,6 +121,7 @@ function validateRequest(verb: string, value: unknown): void {
       const v = p.record(value, ["target", "command"]);
       p.validateTarget(v.target);
       p.validateCommand(v.command);
+      p.check(v.command.remove_path === undefined, "removal requires volume.remove.apply");
       p.check(
         v.target.creation_id === v.command.creation_id,
         "command names another creation identity",
@@ -386,6 +410,102 @@ export class ScratchPadTransport {
       options,
     );
     this.matching(result.target.volume === expected.volume, true, "reply names another volume");
+    this.matching(
+      p.sameValue(result.lifetime?.admission, expected.admission),
+      true,
+      "creation reply names another admission",
+    );
+    return result;
+  }
+  async renewLease(request: p.RenewRequest, options: RequestOptions = {}): Promise<p.VolumeView> {
+    const expected = structuredClone(request);
+    const result = await this.view("volume.renew", expected.target, expected, true, options);
+    this.matching(
+      result.lifetime !== undefined && result.lifetime.expires_at >= expected.until,
+      true,
+      "renewal reply differs from saved deadline",
+    );
+    return result;
+  }
+  async planRemoval(
+    request: p.RemovalRequest,
+    options: RequestOptions = {},
+  ): Promise<p.RemovalPlan> {
+    const expected = structuredClone(request);
+    const result = await this.control(
+      "volume.remove.plan",
+      expected,
+      p.validateRemovalPlan,
+      false,
+      options,
+    );
+    this.matching(
+      p.sameValue(result.target, expected.target) &&
+        p.sameValue(
+          normalizeCommand(result.command),
+          normalizeCommand({ ...expected.command, root: result.command.root }),
+        ),
+      false,
+      "removal plan changed requested intent",
+    );
+    return result;
+  }
+  async applyRemoval(plan: p.RemovalPlan, options: RequestOptions = {}): Promise<p.Receipt> {
+    const expected = structuredClone(plan);
+    const result = await this.control(
+      "volume.remove.apply",
+      expected,
+      p.validateReceipt,
+      true,
+      options,
+    );
+    this.matching(
+      result.volume === expected.target.volume &&
+        p.sameValue(normalizeCommand(result.command), normalizeCommand(expected.command)),
+      true,
+      "removal receipt changed saved command",
+    );
+    return result;
+  }
+  async planVolumeRelease(
+    request: p.VolumeReleaseRequest,
+    options: RequestOptions = {},
+  ): Promise<p.VolumeReleasePlan> {
+    const expected = structuredClone(request);
+    const result = await this.control(
+      "volume.release.plan",
+      expected,
+      p.validateVolumeReleasePlan,
+      false,
+      options,
+    );
+    this.matching(
+      p.sameValue(result.request, expected),
+      false,
+      "release plan changed requested disposition",
+    );
+    return result;
+  }
+  async applyVolumeRelease(
+    plan: p.VolumeReleasePlan,
+    options: RequestOptions = {},
+  ): Promise<p.VolumeReleaseResult> {
+    const expected = structuredClone(plan);
+    const result = await this.control(
+      "volume.release.apply",
+      expected,
+      p.validateVolumeReleaseResult,
+      true,
+      options,
+    );
+    this.matching(
+      p.sameValue(result.target, expected.request.target) &&
+        result.slot === expected.slot &&
+        result.generation === expected.generation &&
+        result.operation_id === expected.request.operation_id,
+      true,
+      "release reply changed saved lifetime or operation",
+    );
     return result;
   }
   getVolume(target: p.Target, options: RequestOptions = {}): Promise<p.VolumeView> {
@@ -470,13 +590,9 @@ export class ScratchPadTransport {
       true,
       options,
     );
-    const normalize = (command: p.Command): p.Command => ({
-      ...command,
-      trace: Object.fromEntries(Object.entries(command.trace).filter(([, value]) => value !== "")),
-    });
     this.matching(
       result.volume === expected.target.volume &&
-        p.sameValue(normalize(result.command), normalize(expected.command)),
+        p.sameValue(normalizeCommand(result.command), normalizeCommand(expected.command)),
       true,
       "receipt names another command",
     );

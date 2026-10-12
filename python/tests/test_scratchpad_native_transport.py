@@ -107,6 +107,44 @@ async def test_publication_is_one_shot_and_preserves_full_command() -> None:
     assert json.loads(nc.calls[0][1]) == publication()
 
 
+async def test_dormant_receipt_does_not_grant_its_former_writer_access() -> None:
+    saved = copy.deepcopy(RECEIPT)
+    saved["command"]["writer"]["slot"] = 1
+    view: p.Wire = {
+        "target": TARGET,
+        "owner": PRINCIPAL,
+        "head": saved["head"],
+        "revision": 2,
+        "closed": False,
+        "epoch": 0,
+        "objects": 1,
+        "bytes": 4,
+        "writers": [{"generation": 1, "number": 0, "write": False} for _ in range(8)],
+        "retentions": [{"generation": 0} for _ in range(8)],
+        "grants": [{"generation": 0} for _ in range(16)],
+    }
+    view["writers"][1] = {"generation": 1, "number": 1, "write": False, "receipt": saved}
+    observed = await client(Connection(message(view))).get_volume(TARGET)
+    assert observed["writers"][1] == view["writers"][1]
+    assert "principal" not in observed["writers"][1]
+    for corrupt in ("write", "account", "number", "assigned_readonly"):
+        changed = copy.deepcopy(view)
+        slot = changed["writers"][1]
+        if corrupt == "write":
+            slot["write"] = True
+        elif corrupt == "account":
+            slot["receipt"]["principal"]["account"] = (
+                "ADYGVCD4O7RNGXKVYEGEU6LQTJFMAWCBI66CZCGTHQ43A7LMGLQUQTME"
+            )
+        elif corrupt == "number":
+            slot["receipt"]["command"]["number"] += 1
+        else:
+            slot["principal"] = PRINCIPAL
+        with pytest.raises(NativeScratchPadError) as failure:
+            await client(Connection(message(changed))).get_volume(TARGET)
+        assert failure.value.code == "corrupt" and not failure.value.unknown
+
+
 async def test_optional_zero_trace_matches_go_semantics() -> None:
     request = publication()
     request["command"]["trace"] = {"thread_id": "", "root_id": "", "tool_call_id": ""}

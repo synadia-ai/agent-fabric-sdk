@@ -19,6 +19,13 @@ _MAX_TIMEOUT_S = 300
 _HEADER_FRAME_BYTES = 12
 
 
+def _normalize_command(command: Wire) -> Wire:
+    return {
+        **command,
+        "trace": {key: value for key, value in command["trace"].items() if value != ""},
+    }
+
+
 def _path_request(v: Wire) -> None:
     p.validate_target(v["target"])
     p.validate_content_id(v["root"])
@@ -49,9 +56,21 @@ def _validate_request(verb: str, value: object) -> None:  # noqa: PLR0912, PLR09
     if verb in ("info", "reference.info"):
         p.validate_empty(value)
     elif verb == "volume.create":
-        v = p.record(value, ("volume", "action"))
+        v = p.record(value, ("volume", "action"), ("admission",))
         p.validate_volume(v["volume"])
         p.validate_action(v["action"])
+        if "admission" in v:
+            p.validate_admission_binding(v["admission"])
+    elif verb == "volume.renew":
+        p.validate_renew_request(value)
+    elif verb == "volume.remove.plan":
+        p.validate_removal_request(value)
+    elif verb == "volume.remove.apply":
+        p.validate_removal_plan(value)
+    elif verb == "volume.release.plan":
+        p.validate_volume_release_request(value)
+    elif verb == "volume.release.apply":
+        p.validate_volume_release_plan(value)
     elif verb == "volume.get":
         p.validate_target(p.record(value, ("target",))["target"])
     elif verb in ("object.prepare", "object.verify"):
@@ -73,6 +92,7 @@ def _validate_request(verb: str, value: object) -> None:  # noqa: PLR0912, PLR09
         v = p.record(value, ("target", "command"))
         target = p.validate_target(v["target"])
         command = p.validate_command(v["command"])
+        p.check("remove_path" not in command, "removal requires volume.remove.apply")
         p.check(
             target["creation_id"] == command["creation_id"],
             "command names another creation identity",
@@ -280,6 +300,75 @@ class ScratchPadTransport:
             mutation=True,
             detail="reply names another volume",
         )
+        self._matching(
+            result.get("lifetime", {}).get("admission") == request.get("admission"),
+            mutation=True,
+            detail="creation reply names another admission",
+        )
+        return result
+
+    async def renew_lease(self, request: Wire) -> Wire:
+        expected = copy.deepcopy(request)
+        result = await self._view("volume.renew", expected["target"], expected, mutation=True)
+        self._matching(
+            "lifetime" in result and result["lifetime"]["expires_at"] >= expected["until"],
+            mutation=True,
+            detail="renewal reply differs from saved deadline",
+        )
+        return result
+
+    async def plan_removal(self, request: Wire) -> Wire:
+        expected = copy.deepcopy(request)
+        result = await self._control(
+            "volume.remove.plan", expected, p.validate_removal_plan, mutation=False
+        )
+        self._matching(
+            result["target"] == expected["target"]
+            and _normalize_command(result["command"])
+            == _normalize_command({**expected["command"], "root": result["command"]["root"]}),
+            mutation=False,
+            detail="removal plan changed requested intent",
+        )
+        return result
+
+    async def apply_removal(self, plan: Wire) -> Wire:
+        expected = copy.deepcopy(plan)
+        result = await self._control(
+            "volume.remove.apply", expected, p.validate_receipt, mutation=True
+        )
+        self._matching(
+            result["volume"] == expected["target"]["volume"]
+            and _normalize_command(result["command"]) == _normalize_command(expected["command"]),
+            mutation=True,
+            detail="removal receipt changed saved command",
+        )
+        return result
+
+    async def plan_volume_release(self, request: Wire) -> Wire:
+        expected = copy.deepcopy(request)
+        result = await self._control(
+            "volume.release.plan", expected, p.validate_volume_release_plan, mutation=False
+        )
+        self._matching(
+            result["request"] == expected,
+            mutation=False,
+            detail="release plan changed requested disposition",
+        )
+        return result
+
+    async def apply_volume_release(self, plan: Wire) -> Wire:
+        expected = copy.deepcopy(plan)
+        result = await self._control(
+            "volume.release.apply", expected, p.validate_volume_release_result, mutation=True
+        )
+        self._matching(
+            result["target"] == expected["request"]["target"]
+            and result["slot"] == expected["slot"]
+            and result["generation"] == expected["generation"]
+            and result["operation_id"] == expected["request"]["operation_id"],
+            mutation=True,
+            detail="release reply changed saved lifetime or operation",
+        )
         return result
 
     async def get_volume(self, target: Wire) -> Wire:
@@ -341,15 +430,9 @@ class ScratchPadTransport:
             "checkpoint.publish", request, p.validate_receipt, mutation=True
         )
 
-        def normalize(command: Wire) -> Wire:
-            return {
-                **command,
-                "trace": {key: value for key, value in command["trace"].items() if value != ""},
-            }
-
         self._matching(
             result["volume"] == request["target"]["volume"]
-            and normalize(result["command"]) == normalize(request["command"]),
+            and _normalize_command(result["command"]) == _normalize_command(request["command"]),
             mutation=True,
             detail="receipt names another command",
         )

@@ -225,6 +225,9 @@ describe("the flags from the environment", () => {
       "maintain",
       "spool-inspect",
       "spool-remove",
+      "remove",
+      "renew",
+      "retire",
     ]) {
       expect(run([command]).args).not.toContain("--volume");
     }
@@ -250,6 +253,22 @@ describe("the flags from the environment", () => {
     const r = run(["init"], noVolume);
     expect(r.status).toBe(2);
     expect(r.error?.message).toContain("SCRATCHPAD_VOLUME is unset");
+  });
+
+  it("passes lifecycle choices with the bound workspace and treats end-promises as a boolean", () => {
+    const r = run(["--end-promises", "retire", "--operation-id", "retire-1", "--apply"]);
+    expect(r.status).toBe(0);
+    expect(flag(r.args, "--dir")).toBe("/state/scratchpad");
+    expect(flag(r.args, "--creds")).toBe("/keys/pi.creds");
+    expect(r.args.slice(-5)).toEqual([
+      "--end-promises",
+      "retire",
+      "--operation-id",
+      "retire-1",
+      "--apply",
+    ]);
+    expect(r.args).not.toContain("--volume");
+    expect(run(["--end-promises", "init"]).args).toContain("--volume");
   });
 
   it("adds the served prompt's trace when both ids are set, and neither when one is missing", () => {

@@ -76,6 +76,31 @@ function harness(reply: Msg | Error = message(receipt)): {
 const publication = (): p.PublishRequest => structuredClone({ target, command });
 
 describe("native ScratchPad transport outcome boundaries", () => {
+  it("accepts an exact dormant receipt without granting its former writer access", async () => {
+    const view = volume(),
+      saved = structuredClone(receipt);
+    saved.command.writer.slot = 1;
+    view.head = saved.head;
+    view.revision = 2;
+    view.writers[1] = { generation: 1, number: 1, write: false, receipt: saved };
+    const observed = await harness(message(view)).client.getVolume(target);
+    expect(observed.writers[1]).toEqual(view.writers[1]);
+    expect(observed.writers[1]).not.toHaveProperty("principal");
+    for (const corrupt of ["write", "account", "number", "assigned_readonly"]) {
+      const changed = structuredClone(view),
+        slot = changed.writers[1]!;
+      if (corrupt === "write") slot.write = true;
+      if (corrupt === "account")
+        slot.receipt!.principal.account =
+          "ADYGVCD4O7RNGXKVYEGEU6LQTJFMAWCBI66CZCGTHQ43A7LMGLQUQTME";
+      if (corrupt === "number") slot.receipt!.command.number++;
+      if (corrupt === "assigned_readonly") slot.principal = principal;
+      await expect(harness(message(changed)).client.getVolume(target)).rejects.toMatchObject({
+        code: "corrupt",
+        unknown: false,
+      });
+    }
+  });
   it("sends a publication once, after a public flush, and validates the full receipt", async () => {
     const h = harness();
     const result = await h.client.publish(publication());
