@@ -1,5 +1,16 @@
 # ScratchPad protocol vectors
 
+[`bootstrap-v1.json`](bootstrap-v1.json) contains two public creation descriptors,
+15 malformed JSON inputs and one SDK counter precision refusal.
+Both languages use these inputs to verify the complete Action, strict keys,
+NKEY checksums and admission binding. The 4096-byte ceiling includes whitespace.
+The zero account key is canonical public data, not an invented refusal case.
+Run `python3 scripts/generate-bootstrap-fixture.py` to regenerate the fixture.
+The [schema](../schemas/scratchpad-bootstrap-v1.json) describes its structure;
+consumers also check NKEY checksums, byte bounds, counter precision and owner identity.
+The native SDKs refuse counters above 9007199254740991 rather than round them.
+Other consumers may preserve the service's unsigned 64-bit values.
+
 Vector set: `scratchpad-v2-vector-build-2f59c514`.
 
 [`codec/manifest.txt`](codec/manifest.txt) lists 47 JSON vectors for canonical encoding and decoding.

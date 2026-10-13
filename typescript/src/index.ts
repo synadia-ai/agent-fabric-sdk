@@ -147,6 +147,7 @@ export {
   DEFAULT_GRANT_TTL_S,
   DEFAULT_SP_BIN,
   SCRATCHPAD_BIN_VAR,
+  SCRATCHPAD_BOOTSTRAP_FILE_VAR,
   SCRATCHPAD_DIR_VAR,
   SCRATCHPAD_GRANT_TTL_S_VAR,
   SCRATCHPAD_VOLUME_VAR,
@@ -162,6 +163,9 @@ export { loopGuard, loopGuardDescription, LOOP_GUARD_CODE, type LoopGuard } from
 
 export {
   nativeScratchPad,
+  decodeScratchPadBootstrap,
+  MAX_BOOTSTRAP_BYTES,
+  type ScratchPadBootstrap,
   nativeScratchPadFromEnv,
   NativeScratchPad,
   type AdmissionBinding,

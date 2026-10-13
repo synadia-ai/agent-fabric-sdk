@@ -39,6 +39,31 @@ def flag(argv: list[str], name: str) -> str | None:
     return argv[argv.index(f"--{name}") + 1] if f"--{name}" in argv else None
 
 
+async def test_bootstrap_derives_volume_and_passes_file_only_to_init(
+    tmp_path: Path, log: Path
+) -> None:
+    fixture = json.loads(
+        (Path(__file__).parents[2] / "test-fixtures/scratchpad/bootstrap-v1.json").read_text()
+    )
+    file = tmp_path / "bootstrap file.json"
+    file.write_text(json.dumps(fixture["valid"]))
+    env = {
+        "SCRATCHPAD_BOOTSTRAP_FILE": str(file),
+        "SCRATCHPAD_BIN": str(FAKE_SP),
+        "SCRATCHPAD_DIR": str(tmp_path / "bootstrap-work"),
+        "NATS_CREDS": "/nowhere/agent.creds",
+    }
+    pad = scratchpad_from_env(env, creator="agents.prompt.assistant.test.main")
+    assert pad is not None
+    await pad.commit("bootstrap", "/bootstrap.md", None)
+    calls = argvs(log)
+    assert flag(calls[0], "bootstrap-file") == str(file)
+    assert flag(calls[0], "volume") == "Replies"
+    assert all("--bootstrap-file" not in argv for argv in calls[1:])
+    with pytest.raises(ValueError, match="configured volume"):
+        scratchpad_from_env({**env, "SCRATCHPAD_VOLUME": "Custom"})
+
+
 def test_off_when_the_volume_is_unset_or_empty() -> None:
     assert scratchpad_from_env({}) is None
     assert scratchpad_from_env({"SCRATCHPAD_VOLUME": "", "NATS_CREDS": "/nowhere/a.creds"}) is None

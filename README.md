@@ -5,8 +5,8 @@ The SDK for agents on the **Synadia Agent Fabric**, in TypeScript
 `synadia_ai.agent_fabric`).
 
 > **Building an agent with Claude Code?** Start Claude Code in this checkout
-> and ask it to build and connect your agent, for example *"make me a research
-> agent for the fabric, connect it and run it"*. The
+> and ask it to build and connect your agent, for example _"make me a research
+> agent for the fabric, connect it and run it"_. The
 > [`fabric-agent` skill](.claude/skills/fabric-agent/SKILL.md) guides it: it
 > builds from the reference agent, and hands you the one step that takes your
 > model provider's key, `fabric connect`, to run in your own terminal. Never
@@ -68,13 +68,25 @@ import { AgentService } from "@synadia-ai/agent-service";
 import { fabricTracing, traceHeaders } from "@synadia-ai/agent-fabric";
 
 const tracing = fabricTracing(); // edges to TRACE.edges; { edgeSubject: null } only propagates
-const agents = new Agents({ nc, identity: { signer }, interceptors: [tracing.promptInterceptor] });
-const svc = new AgentService({ nc, agent: "triage", owner: "acme", name: "main",
-  interceptors: [tracing.requestInterceptor], heartbeatExtras: tracing.heartbeatExtras });
+const agents = new Agents({
+  nc,
+  identity: { signer },
+  interceptors: [tracing.promptInterceptor],
+});
+const svc = new AgentService({
+  nc,
+  agent: "triage",
+  owner: "acme",
+  name: "main",
+  interceptors: [tracing.requestInterceptor],
+  heartbeatExtras: tracing.heartbeatExtras,
+});
 svc.onPrompt(async (envelope, response) => {
   const answer = await callModel(envelope.prompt, { headers: traceHeaders() });
   const [lookup] = await agents.discover({ filter: { agent: "lookup" } }); // a child thread:
-  for await (const m of await lookup!.prompt(answer, { context: { toolCallId: "toolu_01" } }))
+  for await (const m of await lookup!.prompt(answer, {
+    context: { toolCallId: "toolu_01" },
+  }))
     if (m.type === "response") await response.send(m.text);
 });
 ```
@@ -112,11 +124,11 @@ ScratchPad volume and opens nothing until the volume's owner grants the
 reader. The extension keeps the fabric's rules for that
 (`agent-fabric` `docs/agent-tools.md` §2.2), on `AgentTools`' three hooks:
 
-| Hook | What it does | Field it adds |
-| --- | --- | --- |
-| discovery fields | reads `scratchpad_refs_ok: "true"` from the agent's registration | `reads_scratchpad_references` |
-| prompt rewrite | checks each reference token and gets the target read on it before sending | `references_removed` and `note` |
-| reply look | remembers the references that arrive in a reply or a question | none |
+| Hook             | What it does                                                              | Field it adds                   |
+| ---------------- | ------------------------------------------------------------------------- | ------------------------------- |
+| discovery fields | reads `scratchpad_refs_ok: "true"` from the agent's registration          | `reads_scratchpad_references`   |
+| prompt rewrite   | checks each reference token and gets the target read on it before sending | `references_removed` and `note` |
+| reply look       | remembers the references that arrive in a reply or a question             | none                            |
 
 The prompt rewrite, for each reference in the prompt:
 
@@ -170,19 +182,48 @@ into a grant or a request only when it is one the edge record would carry.
 ```ts
 import { AgentService } from "@synadia-ai/agent-service";
 import { Agents, AgentSubject, AgentTools } from "@synadia-ai/agents";
-import { activeTrace, fabricTracing, grantRequestEndpoint, READS_REFERENCES_KEY, scratchPadExtension,
-  nativeScratchPadFromEnv } from "@synadia-ai/agent-fabric";
+import {
+  activeTrace,
+  fabricTracing,
+  grantRequestEndpoint,
+  READS_REFERENCES_KEY,
+  scratchPadExtension,
+  nativeScratchPadFromEnv,
+} from "@synadia-ai/agent-fabric";
 
 const address = AgentSubject.new("triage", "acme", "main").prompt;
 const tracing = fabricTracing();
-const agents = new Agents({ nc, identity: { signer }, interceptors: [tracing.promptInterceptor] });
-const scratchPad = (await nativeScratchPadFromEnv(process.env, { creator: address, nc }))!;
+const agents = new Agents({
+  nc,
+  identity: { signer },
+  interceptors: [tracing.promptInterceptor],
+});
+const scratchPad = (await nativeScratchPadFromEnv(process.env, {
+  creator: address,
+  nc,
+}))!;
 const references = scratchPadExtension({ scratchPad, agents });
-const tools = new AgentTools({ agents, selfAddress: address, extensions: [references] });
-const svc = new AgentService({ nc, agent: "triage", owner: "acme", name: "main", identity: { signer },
-  interceptors: [tracing.requestInterceptor, tools.requestInterceptor, references.requestInterceptor],
+const tools = new AgentTools({
+  agents,
+  selfAddress: address,
+  extensions: [references],
+});
+const svc = new AgentService({
+  nc,
+  agent: "triage",
+  owner: "acme",
+  name: "main",
+  identity: { signer },
+  interceptors: [
+    tracing.requestInterceptor,
+    tools.requestInterceptor,
+    references.requestInterceptor,
+  ],
   extraMetadata: { [READS_REFERENCES_KEY]: "true" },
-  extraEndpoints: [grantRequestEndpoint({ promptAddress: address, scratchPad })] });
+  extraEndpoints: [
+    grantRequestEndpoint({ promptAddress: address, scratchPad }),
+  ],
+});
 svc.onPrompt(async (envelope, response) => {
   const answer = await runModel(envelope.prompt, tools); // tools.execute(name, args, { toolCallId })
   const ref = await scratchPad.commit(answer, "/replies/r.md", activeTrace());
@@ -224,25 +265,25 @@ await svc.start()
 
 The same surface in both languages (TypeScript names; Python in snake_case):
 
-| | |
-| --- | --- |
-| `fabricTracing(options?)` → `{ promptInterceptor, requestInterceptor, heartbeatExtras }` | The three hooks the SDK takes. `options.edgeSubject`: default `"TRACE.edges"`, `null` for propagate-only; a subject that can never be published to throws at construction |
-| `traceHeaders()` | `X-Synadia-Thread-ID` and `X-Synadia-Root-ID` of the running execution, `{}` outside one; counts the turn |
-| `activeTrace()`, `bindActiveTrace(scope, fn)` | The ambient `TraceScope` (`threadId`, `rootId`, `turnCountHint`). TypeScript keeps it in one `AsyncLocalStorage` on `globalThis` under `Symbol.for("@synadia-ai/agent-fabric:trace-scope")`, so every installed copy shares it; Python in a `ContextVar` (`bind_active_trace(scope)` is a context manager) |
-| `buildEdgeRecord(agent, threadId, parentId, rootId, toolCallId, turnCountHint)` | One record's bytes and its `record_id` |
-| `traceRecordCounts()` | Process-wide `{ published, dropped }` — what the heartbeat reports as `records_published` / `records_dropped` |
-| `TraceOptions`, `TraceScope`, `TraceRecordCounts`, `FabricTracing`, `isThreadId`, `randomThreadId`, `validToolCallId`, the constants | The rest of the vocabulary |
-| `scratchPadExtension({ scratchPad, agents, discoverTimeoutMs?, grantRequestTimeoutMs? })` → `ScratchPadExtension` | The extension for `AgentTools`' `extensions`: the three hooks, plus `remember(text)`, `requestInterceptor` (remembers the references in served prompts) and `grantCaller(reference, sender)` (the reply side: grants a verified sender read first-hand; `false` for any other) |
-| `ScratchPad`, `Grantee`, `GrantKind`, `TraceIds` | The port the extension runs on, and its types |
-| `nativeScratchPad({ nc, volume, dir, creator, ttlSeconds?, timeoutMs? })` | Native TypeScript writer and Fabric port, with durable recovery and byte/stream publication. Node 22.13+. |
-| `scratchPadReader({ nc, timeoutMs? })` | Native authenticated byte, text, and stream reads; no writer workspace. |
-| `nativeScratchPadFromEnv(env, { nc, creator })` | Native TypeScript configuration; requires `SCRATCHPAD_DIR` when a volume is enabled. |
-| `spCliScratchPad({ volume, nats, bin?, dir?, grantTtlS?, creator? })` → `ScratchPadClient` | The port's ready implementation over the sp v2 command line, with the agent's `commit(text, path, trace)` and `read(reference, trace)`; a refusal or failure of `sp` is a `ScratchPadError` with its `code` and whether the outcome is `unknown`. Python: `SpCliScratchPad(...)` |
-| `scratchPadFromEnv(env?, { creator?, nats? })` → `ScratchPadClient \| undefined` | The same from `SCRATCHPAD_VOLUME` (unset: off), `SCRATCHPAD_BIN`, `SCRATCHPAD_DIR`, `SCRATCHPAD_GRANT_TTL_S` and the agent's `NATS_CREDS`/`NATS_URL` (`sp` reads no NATS context). Python: `scratchpad_from_env(env=None, *, creator=None, nats=None)` |
-| `findReferences`, `removeReferences`, `referenceCreator`, `readsReferences`, `granteeFromIdentity`, `READS_REFERENCES_KEY`, `REFERENCE_PREFIX`, `SHORT_REFERENCE_PREFIX` | The references' vocabulary |
-| `requestGrant(agents, creatorAddress, request, { timeoutMs? })` | The requester's side; never throws, a refusal carries its reason |
-| `grantRequestEndpoint({ promptAddress, scratchPad, logger? })` | The creator's side: an extra endpoint for the agent's `AgentService` (`extraEndpoints` / `extra_endpoints`) |
-| `answerGrantRequest(requester, payload, scratchPad)`, `encodeGrantRequest`, `encodeGrantReply`, `grantSubject`, `GrantRequest`, `GrantReply` | The creator's rule for an already verified requester, and the wire shapes |
+|                                                                                                                                                                          |                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fabricTracing(options?)` → `{ promptInterceptor, requestInterceptor, heartbeatExtras }`                                                                                 | The three hooks the SDK takes. `options.edgeSubject`: default `"TRACE.edges"`, `null` for propagate-only; a subject that can never be published to throws at construction                                                                                                                                  |
+| `traceHeaders()`                                                                                                                                                         | `X-Synadia-Thread-ID` and `X-Synadia-Root-ID` of the running execution, `{}` outside one; counts the turn                                                                                                                                                                                                  |
+| `activeTrace()`, `bindActiveTrace(scope, fn)`                                                                                                                            | The ambient `TraceScope` (`threadId`, `rootId`, `turnCountHint`). TypeScript keeps it in one `AsyncLocalStorage` on `globalThis` under `Symbol.for("@synadia-ai/agent-fabric:trace-scope")`, so every installed copy shares it; Python in a `ContextVar` (`bind_active_trace(scope)` is a context manager) |
+| `buildEdgeRecord(agent, threadId, parentId, rootId, toolCallId, turnCountHint)`                                                                                          | One record's bytes and its `record_id`                                                                                                                                                                                                                                                                     |
+| `traceRecordCounts()`                                                                                                                                                    | Process-wide `{ published, dropped }` — what the heartbeat reports as `records_published` / `records_dropped`                                                                                                                                                                                              |
+| `TraceOptions`, `TraceScope`, `TraceRecordCounts`, `FabricTracing`, `isThreadId`, `randomThreadId`, `validToolCallId`, the constants                                     | The rest of the vocabulary                                                                                                                                                                                                                                                                                 |
+| `scratchPadExtension({ scratchPad, agents, discoverTimeoutMs?, grantRequestTimeoutMs? })` → `ScratchPadExtension`                                                        | The extension for `AgentTools`' `extensions`: the three hooks, plus `remember(text)`, `requestInterceptor` (remembers the references in served prompts) and `grantCaller(reference, sender)` (the reply side: grants a verified sender read first-hand; `false` for any other)                             |
+| `ScratchPad`, `Grantee`, `GrantKind`, `TraceIds`                                                                                                                         | The port the extension runs on, and its types                                                                                                                                                                                                                                                              |
+| `nativeScratchPad({ nc, volume?, bootstrapFile?, dir, creator, ttlSeconds?, timeoutMs? })`                                                                               | Native TypeScript writer and Fabric port. Supply a volume or exact public bootstrap file. Node 22.13+.                                                                                                                                                                                                     |
+| `scratchPadReader({ nc, timeoutMs? })`                                                                                                                                   | Native authenticated byte, text, and stream reads; no writer workspace.                                                                                                                                                                                                                                    |
+| `nativeScratchPadFromEnv(env, { nc, creator })`                                                                                                                          | A volume or `SCRATCHPAD_BOOTSTRAP_FILE` enables the native writer; requires persistent `SCRATCHPAD_DIR`.                                                                                                                                                                                                   |
+| `spCliScratchPad({ volume?, bootstrapFile?, nats, bin?, dir?, grantTtlS?, creator? })` → `ScratchPadClient`                                                              | The optional command-line adapter; a bootstrap import requires persistent `dir` and a compatible `sp`. Python: `SpCliScratchPad(...)`, with `bootstrap_file`.                                                                                                                                              |
+| `scratchPadFromEnv(env?, { creator?, nats? })` → `ScratchPadClient \| undefined`                                                                                         | The same from `SCRATCHPAD_VOLUME` or `SCRATCHPAD_BOOTSTRAP_FILE`, plus `SCRATCHPAD_BIN`, `SCRATCHPAD_DIR`, `SCRATCHPAD_GRANT_TTL_S` and the agent's connection. Both selectors unset means off. Python: `scratchpad_from_env(...)`.                                                                        |
+| `findReferences`, `removeReferences`, `referenceCreator`, `readsReferences`, `granteeFromIdentity`, `READS_REFERENCES_KEY`, `REFERENCE_PREFIX`, `SHORT_REFERENCE_PREFIX` | The references' vocabulary                                                                                                                                                                                                                                                                                 |
+| `requestGrant(agents, creatorAddress, request, { timeoutMs? })`                                                                                                          | The requester's side; never throws, a refusal carries its reason                                                                                                                                                                                                                                           |
+| `grantRequestEndpoint({ promptAddress, scratchPad, logger? })`                                                                                                           | The creator's side: an extra endpoint for the agent's `AgentService` (`extraEndpoints` / `extra_endpoints`)                                                                                                                                                                                                |
+| `answerGrantRequest(requester, payload, scratchPad)`, `encodeGrantRequest`, `encodeGrantReply`, `grantSubject`, `GrantRequest`, `GrantReply`                             | The creator's rule for an already verified requester, and the wire shapes                                                                                                                                                                                                                                  |
 
 ## On the wire
 
@@ -289,7 +330,7 @@ Measured against the tracing the protocol SDK had at `c9d7bcb`:
   a traced handler, used to trace with the service's options. A client now
   runs fabric code only when it is given the prompt interceptor.
 - **Python: lineage on an explicit `Envelope`.** `agent.prompt(Envelope(…,
-  thread_id=…, root_id=…))` could choose the lineage it was sent with, and
+thread_id=…, root_id=…))` could choose the lineage it was sent with, and
   `Envelope(thread_id="bad")` raised at construction. The SDK now sends an
   envelope's extra fields with it, since a relay must preserve them (§5.6),
   and a prompt interceptor's field of the same name replaces one. The

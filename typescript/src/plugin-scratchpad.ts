@@ -67,10 +67,12 @@ import {
 } from "./scratchpad.js";
 import {
   SCRATCHPAD_BIN_VAR,
+  SCRATCHPAD_BOOTSTRAP_FILE_VAR,
   SCRATCHPAD_DIR_VAR,
   SCRATCHPAD_VOLUME_VAR,
   spCliScratchPad,
 } from "./scratchpad-cli.js";
+import { readScratchPadBootstrapFile } from "./scratchpad-native/bootstrap";
 import {
   READS_SCRATCHPAD_REFERENCES_FIELD,
   scratchPadExtension,
@@ -91,6 +93,7 @@ export const SP_VARS = {
   creds: "SP_NATS_CREDS",
   dir: SCRATCHPAD_DIR_VAR,
   volume: SCRATCHPAD_VOLUME_VAR,
+  bootstrapFile: SCRATCHPAD_BOOTSTRAP_FILE_VAR,
   creator: "SP_CREATOR",
   threadId: "SP_THREAD_ID",
   rootId: "SP_ROOT_ID",
@@ -104,6 +107,7 @@ export interface ScratchPadSettings {
   readonly url: string;
   readonly creds: string;
   readonly volume: string;
+  readonly bootstrapFile?: string;
   /** Unset when neither a setting nor the plugin's state directory gives one. */
   readonly dir?: string;
   /**
@@ -136,8 +140,15 @@ export async function resolveScratchPad(
     return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
   };
 
-  const volume = pick("volume", SP_VARS.volume);
+  const configuredBootstrap = pick("bootstrapFile", SP_VARS.bootstrapFile);
+  const bootstrapFile =
+    configuredBootstrap === undefined ? undefined : resolve(expandHome(configuredBootstrap));
+  const bootstrap =
+    bootstrapFile === undefined ? undefined : readScratchPadBootstrapFile(bootstrapFile);
+  const volume = pick("volume", SP_VARS.volume) ?? bootstrap?.volume;
   if (volume === undefined) return undefined;
+  if (bootstrap && bootstrap.volume !== volume)
+    throw new Error("ScratchPad bootstrap differs from the configured volume");
 
   let url = pick("url", "NATS_URL");
   let creds = pick("creds", "NATS_CREDS");
@@ -173,6 +184,8 @@ export async function resolveScratchPad(
   if (dir === undefined && ctx.settings.stateDir !== undefined) {
     dir = join(ctx.settings.stateDir, "scratchpad");
   }
+  if (bootstrap && dir === undefined)
+    throw new Error("ScratchPad bootstrap requires a persistent workspace directory");
   if (dir !== undefined) {
     dir = resolve(expandHome(dir));
     try {
@@ -188,6 +201,7 @@ export async function resolveScratchPad(
     url,
     creds: expandHome(creds),
     volume,
+    ...(bootstrapFile === undefined ? {} : { bootstrapFile }),
     ...(dir !== undefined ? { dir } : {}),
     ...(grants !== undefined ? { grants } : {}),
   };
@@ -197,7 +211,13 @@ export async function resolveScratchPad(
 export function exportScratchPad(settings: ScratchPadSettings, env: Env): void {
   env[SP_VARS.url] = settings.url;
   env[SP_VARS.creds] = settings.creds;
-  env[SP_VARS.volume] = settings.volume;
+  if (settings.bootstrapFile !== undefined) {
+    env[SP_VARS.bootstrapFile] = settings.bootstrapFile;
+    delete env[SP_VARS.volume];
+  } else {
+    env[SP_VARS.volume] = settings.volume;
+    delete env[SP_VARS.bootstrapFile];
+  }
   if (settings.dir !== undefined) env[SP_VARS.dir] = settings.dir;
   if (settings.grants !== undefined) env[SP_VARS.grants] = settings.grants;
 }
@@ -365,6 +385,7 @@ export function spPort(
   if (bin === undefined) return undefined;
   const port = spCliScratchPad({
     volume: settings.volume,
+    ...(settings.bootstrapFile === undefined ? {} : { bootstrapFile: settings.bootstrapFile }),
     nats: { url: settings.url, creds: settings.creds },
     bin,
     creator,

@@ -233,6 +233,17 @@ describe("the flags from the environment", () => {
     }
   });
 
+  it("supplies a configured bootstrap to init without inventing a volume or operation", () => {
+    const { SCRATCHPAD_VOLUME: _, ...connection } = CONNECTION;
+    const env = { ...connection, SCRATCHPAD_BOOTSTRAP_FILE: "/state/bootstrap file.json" };
+    const result = run(["init"], env);
+    expect(result.status).toBe(0);
+    expect(flag(result.args, "--bootstrap-file")).toBe(env.SCRATCHPAD_BOOTSTRAP_FILE);
+    expect(result.args).not.toContain("--volume");
+    expect(result.args).not.toContain("--operation-id");
+    expect(run(["recover"], env).args).not.toContain("--bootstrap-file");
+  });
+
   it("adds the connection and the workspace to the spool commands, and passes --apply on", () => {
     const r = run(["spool-remove", "--apply"]);
     expect(r.status).toBe(0);
@@ -252,7 +263,8 @@ describe("the flags from the environment", () => {
     const { SCRATCHPAD_VOLUME: _, ...noVolume } = CONNECTION;
     const r = run(["init"], noVolume);
     expect(r.status).toBe(2);
-    expect(r.error?.message).toContain("SCRATCHPAD_VOLUME is unset");
+    expect(r.error?.message).toContain("no volume or bootstrap file");
+    expect(r.binary).toBeUndefined();
   });
 
   it("passes lifecycle choices with the bound workspace and treats end-promises as a boolean", () => {
@@ -337,6 +349,7 @@ describe("the flags from the environment", () => {
     ["--creds=/tmp/other.creds"],
     ["-dir", "/tmp"],
     ["--volume", "theirs"],
+    ["--bootstrap-file", "/foreign.json"],
     ["--thread-id", "a".repeat(32)],
     ["--root-id=x"],
     ["--creator", "someone"],

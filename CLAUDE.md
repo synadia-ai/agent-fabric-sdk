@@ -140,7 +140,10 @@ reference-agents/    the two reference agents, the package's worked example — 
   Both languages keep the optional CLI adapter. Tests with a fake `sp` inject
   that adapter explicitly; the real-service suites qualify native recovery.
   The variables the CLI adapter reads
-  (`SCRATCHPAD_VOLUME`, `_BIN`, `_DIR`, `_GRANT_TTL_S`) are a contract.
+  (`SCRATCHPAD_VOLUME`, `_BIN`, `_DIR`, `_GRANT_TTL_S`, `_BOOTSTRAP_FILE`) are a contract.
+  A bootstrap file selects the complete saved creation request and can supply
+  the volume. Never overwrite an existing workspace or invent a new creation
+  action when importing it; see `docs/scratchpad-native.md`.
 
 ## The protocol SDK during development
 
@@ -177,7 +180,7 @@ the checkout of `synadia-agents` on `main` (everything of the rollout merged the
   `npm install --no-save`, so the tests run the checkouts. Python takes them
   by uv path sources (`path = "../../python"`, the SDK's, and an editable
   source to `../durable-sdk/python`) until they are on PyPI. Its durable tests spawn the engine, `durable-engine
-  serve`, standalone on the test's nats-server: `DE_ENGINE` (a `-dev` build)
+serve`, standalone on the test's nats-server: `DE_ENGINE` (a `-dev` build)
   and `DE_LICENCE` when given, else built with Go from `../durable-engine` at
   the commit the SDK's `engine.pin` names, into `reference-agents/.engine-bin/`,
   with a test licence it mints; without either they skip. Those checkouts

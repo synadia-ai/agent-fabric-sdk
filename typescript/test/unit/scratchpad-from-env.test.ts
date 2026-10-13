@@ -52,6 +52,33 @@ describe("ScratchPad from the environment", () => {
     expect(scratchPadFromEnv({ SCRATCHPAD_GRANT_TTL_S: "soon" })).toBeUndefined();
   });
 
+  it("derives a bootstrap volume and passes its file only to init", async () => {
+    await writeFile(log, "");
+    const fixture = JSON.parse(
+      await readFile(
+        new URL("../../../test-fixtures/scratchpad/bootstrap-v1.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { valid: object };
+    const file = join(dir, "bootstrap file.json");
+    await writeFile(file, JSON.stringify(fixture.valid));
+    const env = {
+      SCRATCHPAD_BOOTSTRAP_FILE: file,
+      SCRATCHPAD_BIN: FAKE_SP,
+      SCRATCHPAD_DIR: join(dir, "bootstrap-work"),
+      NATS_CREDS: "/nowhere/agent.creds",
+    };
+    const pad = scratchPadFromEnv(env, { creator: "agents.prompt.assistant.test.main" });
+    await pad!.commit("bootstrap", "/bootstrap.md", undefined);
+    const calls = await argvs();
+    expect(flag(calls[0]!, "bootstrap-file")).toBe(file);
+    expect(flag(calls[0]!, "volume")).toBe("Replies");
+    expect(calls.slice(1).every((argv) => !argv.includes("--bootstrap-file"))).toBe(true);
+    expect(() => scratchPadFromEnv({ ...env, SCRATCHPAD_VOLUME: "Custom" })).toThrow(
+      /configured volume/,
+    );
+  });
+
   it("reads the four variables and the agent's credentials", async () => {
     await writeFile(log, "");
     const pad = scratchPadFromEnv(

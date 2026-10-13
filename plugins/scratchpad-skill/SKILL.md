@@ -25,7 +25,7 @@ shell command can then allow `scripts/sp` by its path, and does not ask.
 the NATS server, this agent's credentials, its workspace, its volume on
 `init`, the trace of the prompt you are serving, your address as the
 creator of what you publish, and the agent that prompted you as the grantee
-of a grant. Never pass `--url`, `--creds`, `--dir`, `--volume`,
+of a grant. Never pass `--url`, `--creds`, `--dir`, `--volume`, `--bootstrap-file`,
 `--thread-id`, `--root-id`, `--creator`, `--grantee-account` or
 `--grantee-user` yourself; `scripts/sp` refuses them.
 
@@ -67,13 +67,27 @@ An expired reference or refused grant does not authorize another identity or pat
 
 ```sh
 scripts/sp info
-scripts/sp init --operation-id "$CREATE_ID"
+scripts/sp init
 scripts/sp describe
 ```
 
 `info` returns this agent's authenticated principal, owned scope allowances, and request limits.
 It needs no initialized workspace and changes no recovery state.
 The scope byte and object figures are configured allowances; `describe` shows current usage.
+
+### Import the configured bootstrap
+
+When `SCRATCHPAD_BOOTSTRAP_FILE` is configured, the wrapper supplies it on `init`.
+The public file selects one volume, admission binding, and complete saved creation Action.
+It contains no credentials and supplies no authentication authority.
+Run `scripts/sp init` without inventing a creation operation identifier.
+Keep both the file and the private workspace across restarts.
+An exact matching import preserves existing commands, writer state, and unknown outcomes.
+A different creation request refuses; an `exists` result never permits adoption.
+Saved creation recovery uses the owner's connection and does not need admin ensure.
+An expiry or closed refusal alone does not settle an earlier possibly sent creation.
+An explicit later admission needs a separate workspace; never erase the earlier one to continue.
+A configured custom volume must match the file. Unsupported command lines refuse the import.
 An empty scope list needs an operator admission check before this agent can publish.
 Volumes readable through another owner's grant are not listed; their granted references can still be read.
 If `info` reports an unknown command, an older binary was selected; continue with the existing commands and ask the operator for the allowances.

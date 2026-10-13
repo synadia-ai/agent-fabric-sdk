@@ -15,6 +15,7 @@ from typing import Any, NoReturn
 from nats.aio.client import Client as NatsClient
 
 from ..scratchpad import Grantee, GrantKind, TraceIds, _resolve
+from .bootstrap import read_scratchpad_bootstrap_file
 from .codec import (
     chunk_stream,
     decode_reference,
@@ -1465,18 +1466,29 @@ class NativeScratchPad(ScratchPadReader):
 async def native_scratchpad(
     *,
     nc: NatsClient,
-    volume: str,
+    volume: str | None = None,
+    bootstrap_file: str | os.PathLike[str] | None = None,
     dir: str | os.PathLike[str],
     creator: str,
     timeout_s: float = 10,
     ttl_seconds: int = 600,
 ) -> NativeScratchPad:
     """Construct a native writer; create its remote volume only on first use."""
-    validate_volume(volume)
+    if volume is not None:
+        validate_volume(volume)
     text(creator, 512, 1)
     uint(ttl_seconds, MAX_GRANT_SECONDS, 1)
     transport = ScratchPadTransport(nc, timeout_s=timeout_s)
     info = await transport.info()
+    bootstrap = None if bootstrap_file is None else read_scratchpad_bootstrap_file(bootstrap_file)
+    volume = volume if volume is not None else bootstrap["volume"] if bootstrap else None
+    validate_volume(volume)
+    if bootstrap:
+        check(
+            bootstrap["principal"] == info["principal"],
+            "bootstrap names another authenticated principal",
+        )
+        check(bootstrap["volume"] == volume, "bootstrap differs from the configured volume")
     scope = next((scope for scope in info["scopes"] if scope["volume"] == volume), None)
     store = WorkspaceStore.open(dir)
     try:
@@ -1486,20 +1498,40 @@ async def native_scratchpad(
                 refuse(
                     "denied", "authenticated principal owns no provisioned scope for this volume"
                 )
+            if bootstrap and scope.get("admission") != bootstrap["admission"]:
+                refuse("fenced", "bootstrap does not match the current admission")
             state = {
                 "version": 1,
                 "principal": info["principal"],
                 "volume": volume,
                 "creator": creator,
-                "creation": {"operation_id": str(uuid.uuid4()), "trace": {}},
+                "creation": deepcopy(bootstrap["creation"])
+                if bootstrap
+                else {"operation_id": str(uuid.uuid4()), "trace": {}},
                 **({"admission": deepcopy(scope["admission"])} if "admission" in scope else {}),
                 "next": 1,
                 "grants": [],
             }
             store.save(state)
         validate_state(state)
-        if "target" not in state and (
-            scope is None or state.get("admission") != scope.get("admission")
+        if bootstrap:
+            check(
+                state["principal"] == bootstrap["principal"]
+                and state["volume"] == bootstrap["volume"]
+                and state.get("admission") == bootstrap["admission"]
+                and state["creation"] == bootstrap["creation"],
+                "workspace differs from the bootstrap creation request",
+            )
+            if (
+                "disposal" in state
+                or "disposal_plan" in state
+                or state.get("pending", {}).get("kind") == "volume_release"
+            ):
+                refuse("fenced", "bootstrap cannot reopen a workspace with a saved disposal")
+        if (
+            not bootstrap
+            and "target" not in state
+            and (scope is None or state.get("admission") != scope.get("admission"))
         ):
             refuse("fenced", "saved creation cannot adopt a new lifetime")
         check(
@@ -1517,10 +1549,11 @@ async def native_scratchpad(
 async def native_scratchpad_from_env(
     env: Mapping[str, str] | None = None, *, nc: NatsClient, creator: str, timeout_s: float = 10
 ) -> NativeScratchPad | None:
-    """Use the configured volume on the existing connection; an unset volume disables the client."""
+    """A volume or bootstrap file enables the native client on its existing connection."""
     env = os.environ if env is None else env
     volume = env.get("SCRATCHPAD_VOLUME")
-    if not volume:
+    bootstrap_file = env.get("SCRATCHPAD_BOOTSTRAP_FILE") or None
+    if not volume and not bootstrap_file:
         return None
     directory = env.get("SCRATCHPAD_DIR")
     check(bool(directory), "SCRATCHPAD_DIR must name a persistent private directory")
@@ -1532,7 +1565,8 @@ async def native_scratchpad_from_env(
     )
     return await native_scratchpad(
         nc=nc,
-        volume=volume,
+        volume=volume or None,
+        bootstrap_file=bootstrap_file,
         dir=directory,
         creator=creator,
         timeout_s=timeout_s,

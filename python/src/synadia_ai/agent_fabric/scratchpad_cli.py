@@ -97,6 +97,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard
 
+from ._scratchpad_native.bootstrap import read_scratchpad_bootstrap_file
 from ._scratchpad_native.codec import encode_reference
 from ._scratchpad_native.references import (
     SHORT_REFERENCE_PREFIX,
@@ -158,6 +159,7 @@ _REFERENCE_FIELDS = {
 
 #: The variables :func:`scratchpad_from_env` reads.
 SCRATCHPAD_VOLUME_VAR = "SCRATCHPAD_VOLUME"
+SCRATCHPAD_BOOTSTRAP_FILE_VAR = "SCRATCHPAD_BOOTSTRAP_FILE"
 SCRATCHPAD_BIN_VAR = "SCRATCHPAD_BIN"
 SCRATCHPAD_DIR_VAR = "SCRATCHPAD_DIR"
 SCRATCHPAD_GRANT_TTL_S_VAR = "SCRATCHPAD_GRANT_TTL_S"
@@ -480,13 +482,25 @@ class SpCliScratchPad:
     def __init__(
         self,
         *,
-        volume: str,
+        volume: str | None = None,
+        bootstrap_file: str | os.PathLike[str] | None = None,
         nats: SpCliConnection,
         bin: str = DEFAULT_SP_BIN,
         dir: str | None = None,
         grant_ttl_s: float = DEFAULT_GRANT_TTL_S,
         creator: str | None = None,
     ) -> None:
+        bootstrap = (
+            None if bootstrap_file is None else read_scratchpad_bootstrap_file(bootstrap_file)
+        )
+        volume = volume if volume is not None else bootstrap["volume"] if bootstrap else None
+        if not isinstance(volume, str) or not _VOLUME.fullmatch(volume):
+            raise ValueError("ScratchPad: a valid volume or bootstrap file is required")
+        if bootstrap and bootstrap["volume"] != volume:
+            raise ValueError("ScratchPad: bootstrap differs from the configured volume")
+        if bootstrap and not dir:
+            raise ValueError("ScratchPad: bootstrap import requires a persistent dir")
+        self._bootstrap_file = None if bootstrap_file is None else os.fspath(bootstrap_file)
         if nats.creds is None or nats.url is None:
             raise ValueError(
                 "ScratchPad: the sp CLI needs NATS_URL and NATS_CREDS; "
@@ -547,12 +561,18 @@ class SpCliScratchPad:
     ) -> Any:
         # A read targets the reference's volume, which can belong to another agent.
         volume = [] if command in ("read", "resolve") else ["--volume", self._volume_name]
+        bootstrap_args = (
+            ["--bootstrap-file", self._bootstrap_file]
+            if command == "init" and self._bootstrap_file
+            else []
+        )
         argv = [
             command,
             *self._connection,
             "--dir",
             str(self._workspace()),
             *volume,
+            *bootstrap_args,
             *args,
             *_trace_flags(trace, tool_call_id),
         ]
@@ -1023,7 +1043,8 @@ def scratchpad_from_env(
     nats: SpCliConnection | None = None,
 ) -> SpCliScratchPad | None:
     """The agent's ScratchPad as the environment configures it (default: the
-    process environment), or ``None`` when ``SCRATCHPAD_VOLUME`` is unset:
+    process environment), or ``None`` when both ``SCRATCHPAD_VOLUME`` and
+    ``SCRATCHPAD_BOOTSTRAP_FILE`` are unset:
     ScratchPad off.
 
     Reads ``SCRATCHPAD_VOLUME``, ``SCRATCHPAD_BIN``, ``SCRATCHPAD_DIR`` and
@@ -1042,7 +1063,8 @@ def scratchpad_from_env(
         return None if value == "" else value
 
     volume = optional(SCRATCHPAD_VOLUME_VAR)
-    if volume is None:
+    bootstrap_file = optional(SCRATCHPAD_BOOTSTRAP_FILE_VAR)
+    if volume is None and bootstrap_file is None:
         return None
     grant_ttl_s = DEFAULT_GRANT_TTL_S
     ttl = optional(SCRATCHPAD_GRANT_TTL_S_VAR)
@@ -1066,6 +1088,7 @@ def scratchpad_from_env(
             nats = _Connection(url=url)
     return SpCliScratchPad(
         volume=volume,
+        bootstrap_file=bootstrap_file,
         nats=nats,
         bin=optional(SCRATCHPAD_BIN_VAR) or DEFAULT_SP_BIN,
         dir=optional(SCRATCHPAD_DIR_VAR),
@@ -1078,6 +1101,7 @@ __all__ = [
     "DEFAULT_GRANT_TTL_S",
     "DEFAULT_SP_BIN",
     "SCRATCHPAD_BIN_VAR",
+    "SCRATCHPAD_BOOTSTRAP_FILE_VAR",
     "SCRATCHPAD_DIR_VAR",
     "SCRATCHPAD_GRANT_TTL_S_VAR",
     "SCRATCHPAD_VOLUME_VAR",
