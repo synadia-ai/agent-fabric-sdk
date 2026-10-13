@@ -1,0 +1,541 @@
+{
+  "source": "scratchpad-public-admission-slot-u32-v1",
+  "valid": [
+    {
+      "slot": 256,
+      "values": {
+        "admission": {
+          "slot": 256,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "lifetime": {
+          "admission": {
+            "slot": 256,
+            "generation": 7,
+            "operation_id": "admit-7"
+          },
+          "phase": "active",
+          "expires_at": 0,
+          "grace_until": 0,
+          "max_lease_seconds": 0,
+          "grace_seconds": 0,
+          "recovery_reads": true,
+          "reserve_objects": 128,
+          "reserve_bytes": 8388608
+        },
+        "removal_plan": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 256,
+          "generation": 7,
+          "sequence": 42,
+          "command": {
+            "creation_id": "abababababababababababababababab",
+            "writer": {
+              "slot": 0,
+              "generation": 1
+            },
+            "number": 1,
+            "operation_id": "remove",
+            "base": {
+              "generation": 1,
+              "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "trace": {},
+            "retention": {
+              "enabled": false,
+              "slot": 0,
+              "generation": 0,
+              "until": 0
+            },
+            "remove_path": "/obsolete"
+          },
+          "added_objects": 1,
+          "added_bytes": 4
+        },
+        "release_plan": {
+          "request": {
+            "target": {
+              "volume": "Replies",
+              "creation_id": "abababababababababababababababab"
+            },
+            "operation_id": "release",
+            "end_promises": true
+          },
+          "incarnation": "abababababababababababababababababababababababababababababababab",
+          "slot": 256,
+          "generation": 7,
+          "sequence": 43,
+          "head": {
+            "generation": 1,
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          "effects": {
+            "objects": 1,
+            "bytes": 4,
+            "retentions": 0,
+            "read_grants": 0,
+            "access_slots": 1,
+            "references": 0
+          }
+        },
+        "release_result": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 256,
+          "generation": 7,
+          "operation_id": "release",
+          "disposed": true,
+          "capacity_returned": true
+        }
+      },
+      "canonical_json": {
+        "admission": "{\"slot\":256,\"generation\":7,\"operation_id\":\"admit-7\"}",
+        "lifetime": "{\"admission\":{\"slot\":256,\"generation\":7,\"operation_id\":\"admit-7\"},\"phase\":\"active\",\"expires_at\":0,\"grace_until\":0,\"max_lease_seconds\":0,\"grace_seconds\":0,\"recovery_reads\":true,\"reserve_objects\":128,\"reserve_bytes\":8388608}",
+        "removal_plan": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":256,\"generation\":7,\"sequence\":42,\"command\":{\"creation_id\":\"abababababababababababababababab\",\"writer\":{\"slot\":0,\"generation\":1},\"number\":1,\"operation_id\":\"remove\",\"base\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"trace\":{},\"retention\":{\"enabled\":false,\"slot\":0,\"generation\":0,\"until\":0},\"remove_path\":\"/obsolete\"},\"added_objects\":1,\"added_bytes\":4}",
+        "release_plan": "{\"request\":{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"operation_id\":\"release\",\"end_promises\":true},\"incarnation\":\"abababababababababababababababababababababababababababababababab\",\"slot\":256,\"generation\":7,\"sequence\":43,\"head\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"effects\":{\"objects\":1,\"bytes\":4,\"retentions\":0,\"read_grants\":0,\"access_slots\":1,\"references\":0}}",
+        "release_result": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":256,\"generation\":7,\"operation_id\":\"release\",\"disposed\":true,\"capacity_returned\":true}"
+      }
+    },
+    {
+      "slot": 1000,
+      "values": {
+        "admission": {
+          "slot": 1000,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "lifetime": {
+          "admission": {
+            "slot": 1000,
+            "generation": 7,
+            "operation_id": "admit-7"
+          },
+          "phase": "active",
+          "expires_at": 0,
+          "grace_until": 0,
+          "max_lease_seconds": 0,
+          "grace_seconds": 0,
+          "recovery_reads": true,
+          "reserve_objects": 128,
+          "reserve_bytes": 8388608
+        },
+        "removal_plan": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 1000,
+          "generation": 7,
+          "sequence": 42,
+          "command": {
+            "creation_id": "abababababababababababababababab",
+            "writer": {
+              "slot": 0,
+              "generation": 1
+            },
+            "number": 1,
+            "operation_id": "remove",
+            "base": {
+              "generation": 1,
+              "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "trace": {},
+            "retention": {
+              "enabled": false,
+              "slot": 0,
+              "generation": 0,
+              "until": 0
+            },
+            "remove_path": "/obsolete"
+          },
+          "added_objects": 1,
+          "added_bytes": 4
+        },
+        "release_plan": {
+          "request": {
+            "target": {
+              "volume": "Replies",
+              "creation_id": "abababababababababababababababab"
+            },
+            "operation_id": "release",
+            "end_promises": true
+          },
+          "incarnation": "abababababababababababababababababababababababababababababababab",
+          "slot": 1000,
+          "generation": 7,
+          "sequence": 43,
+          "head": {
+            "generation": 1,
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          "effects": {
+            "objects": 1,
+            "bytes": 4,
+            "retentions": 0,
+            "read_grants": 0,
+            "access_slots": 1,
+            "references": 0
+          }
+        },
+        "release_result": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 1000,
+          "generation": 7,
+          "operation_id": "release",
+          "disposed": true,
+          "capacity_returned": true
+        }
+      },
+      "canonical_json": {
+        "admission": "{\"slot\":1000,\"generation\":7,\"operation_id\":\"admit-7\"}",
+        "lifetime": "{\"admission\":{\"slot\":1000,\"generation\":7,\"operation_id\":\"admit-7\"},\"phase\":\"active\",\"expires_at\":0,\"grace_until\":0,\"max_lease_seconds\":0,\"grace_seconds\":0,\"recovery_reads\":true,\"reserve_objects\":128,\"reserve_bytes\":8388608}",
+        "removal_plan": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":1000,\"generation\":7,\"sequence\":42,\"command\":{\"creation_id\":\"abababababababababababababababab\",\"writer\":{\"slot\":0,\"generation\":1},\"number\":1,\"operation_id\":\"remove\",\"base\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"trace\":{},\"retention\":{\"enabled\":false,\"slot\":0,\"generation\":0,\"until\":0},\"remove_path\":\"/obsolete\"},\"added_objects\":1,\"added_bytes\":4}",
+        "release_plan": "{\"request\":{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"operation_id\":\"release\",\"end_promises\":true},\"incarnation\":\"abababababababababababababababababababababababababababababababab\",\"slot\":1000,\"generation\":7,\"sequence\":43,\"head\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"effects\":{\"objects\":1,\"bytes\":4,\"retentions\":0,\"read_grants\":0,\"access_slots\":1,\"references\":0}}",
+        "release_result": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":1000,\"generation\":7,\"operation_id\":\"release\",\"disposed\":true,\"capacity_returned\":true}"
+      }
+    },
+    {
+      "slot": 10000,
+      "values": {
+        "admission": {
+          "slot": 10000,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "lifetime": {
+          "admission": {
+            "slot": 10000,
+            "generation": 7,
+            "operation_id": "admit-7"
+          },
+          "phase": "active",
+          "expires_at": 0,
+          "grace_until": 0,
+          "max_lease_seconds": 0,
+          "grace_seconds": 0,
+          "recovery_reads": true,
+          "reserve_objects": 128,
+          "reserve_bytes": 8388608
+        },
+        "removal_plan": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 10000,
+          "generation": 7,
+          "sequence": 42,
+          "command": {
+            "creation_id": "abababababababababababababababab",
+            "writer": {
+              "slot": 0,
+              "generation": 1
+            },
+            "number": 1,
+            "operation_id": "remove",
+            "base": {
+              "generation": 1,
+              "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "trace": {},
+            "retention": {
+              "enabled": false,
+              "slot": 0,
+              "generation": 0,
+              "until": 0
+            },
+            "remove_path": "/obsolete"
+          },
+          "added_objects": 1,
+          "added_bytes": 4
+        },
+        "release_plan": {
+          "request": {
+            "target": {
+              "volume": "Replies",
+              "creation_id": "abababababababababababababababab"
+            },
+            "operation_id": "release",
+            "end_promises": true
+          },
+          "incarnation": "abababababababababababababababababababababababababababababababab",
+          "slot": 10000,
+          "generation": 7,
+          "sequence": 43,
+          "head": {
+            "generation": 1,
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          "effects": {
+            "objects": 1,
+            "bytes": 4,
+            "retentions": 0,
+            "read_grants": 0,
+            "access_slots": 1,
+            "references": 0
+          }
+        },
+        "release_result": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 10000,
+          "generation": 7,
+          "operation_id": "release",
+          "disposed": true,
+          "capacity_returned": true
+        }
+      },
+      "canonical_json": {
+        "admission": "{\"slot\":10000,\"generation\":7,\"operation_id\":\"admit-7\"}",
+        "lifetime": "{\"admission\":{\"slot\":10000,\"generation\":7,\"operation_id\":\"admit-7\"},\"phase\":\"active\",\"expires_at\":0,\"grace_until\":0,\"max_lease_seconds\":0,\"grace_seconds\":0,\"recovery_reads\":true,\"reserve_objects\":128,\"reserve_bytes\":8388608}",
+        "removal_plan": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":10000,\"generation\":7,\"sequence\":42,\"command\":{\"creation_id\":\"abababababababababababababababab\",\"writer\":{\"slot\":0,\"generation\":1},\"number\":1,\"operation_id\":\"remove\",\"base\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"trace\":{},\"retention\":{\"enabled\":false,\"slot\":0,\"generation\":0,\"until\":0},\"remove_path\":\"/obsolete\"},\"added_objects\":1,\"added_bytes\":4}",
+        "release_plan": "{\"request\":{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"operation_id\":\"release\",\"end_promises\":true},\"incarnation\":\"abababababababababababababababababababababababababababababababab\",\"slot\":10000,\"generation\":7,\"sequence\":43,\"head\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"effects\":{\"objects\":1,\"bytes\":4,\"retentions\":0,\"read_grants\":0,\"access_slots\":1,\"references\":0}}",
+        "release_result": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":10000,\"generation\":7,\"operation_id\":\"release\",\"disposed\":true,\"capacity_returned\":true}"
+      }
+    },
+    {
+      "slot": 100000,
+      "values": {
+        "admission": {
+          "slot": 100000,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "lifetime": {
+          "admission": {
+            "slot": 100000,
+            "generation": 7,
+            "operation_id": "admit-7"
+          },
+          "phase": "active",
+          "expires_at": 0,
+          "grace_until": 0,
+          "max_lease_seconds": 0,
+          "grace_seconds": 0,
+          "recovery_reads": true,
+          "reserve_objects": 128,
+          "reserve_bytes": 8388608
+        },
+        "removal_plan": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 100000,
+          "generation": 7,
+          "sequence": 42,
+          "command": {
+            "creation_id": "abababababababababababababababab",
+            "writer": {
+              "slot": 0,
+              "generation": 1
+            },
+            "number": 1,
+            "operation_id": "remove",
+            "base": {
+              "generation": 1,
+              "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "trace": {},
+            "retention": {
+              "enabled": false,
+              "slot": 0,
+              "generation": 0,
+              "until": 0
+            },
+            "remove_path": "/obsolete"
+          },
+          "added_objects": 1,
+          "added_bytes": 4
+        },
+        "release_plan": {
+          "request": {
+            "target": {
+              "volume": "Replies",
+              "creation_id": "abababababababababababababababab"
+            },
+            "operation_id": "release",
+            "end_promises": true
+          },
+          "incarnation": "abababababababababababababababababababababababababababababababab",
+          "slot": 100000,
+          "generation": 7,
+          "sequence": 43,
+          "head": {
+            "generation": 1,
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          "effects": {
+            "objects": 1,
+            "bytes": 4,
+            "retentions": 0,
+            "read_grants": 0,
+            "access_slots": 1,
+            "references": 0
+          }
+        },
+        "release_result": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 100000,
+          "generation": 7,
+          "operation_id": "release",
+          "disposed": true,
+          "capacity_returned": true
+        }
+      },
+      "canonical_json": {
+        "admission": "{\"slot\":100000,\"generation\":7,\"operation_id\":\"admit-7\"}",
+        "lifetime": "{\"admission\":{\"slot\":100000,\"generation\":7,\"operation_id\":\"admit-7\"},\"phase\":\"active\",\"expires_at\":0,\"grace_until\":0,\"max_lease_seconds\":0,\"grace_seconds\":0,\"recovery_reads\":true,\"reserve_objects\":128,\"reserve_bytes\":8388608}",
+        "removal_plan": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":100000,\"generation\":7,\"sequence\":42,\"command\":{\"creation_id\":\"abababababababababababababababab\",\"writer\":{\"slot\":0,\"generation\":1},\"number\":1,\"operation_id\":\"remove\",\"base\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"trace\":{},\"retention\":{\"enabled\":false,\"slot\":0,\"generation\":0,\"until\":0},\"remove_path\":\"/obsolete\"},\"added_objects\":1,\"added_bytes\":4}",
+        "release_plan": "{\"request\":{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"operation_id\":\"release\",\"end_promises\":true},\"incarnation\":\"abababababababababababababababababababababababababababababababab\",\"slot\":100000,\"generation\":7,\"sequence\":43,\"head\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"effects\":{\"objects\":1,\"bytes\":4,\"retentions\":0,\"read_grants\":0,\"access_slots\":1,\"references\":0}}",
+        "release_result": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":100000,\"generation\":7,\"operation_id\":\"release\",\"disposed\":true,\"capacity_returned\":true}"
+      }
+    },
+    {
+      "slot": 4294967295,
+      "values": {
+        "admission": {
+          "slot": 4294967295,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "lifetime": {
+          "admission": {
+            "slot": 4294967295,
+            "generation": 7,
+            "operation_id": "admit-7"
+          },
+          "phase": "active",
+          "expires_at": 0,
+          "grace_until": 0,
+          "max_lease_seconds": 0,
+          "grace_seconds": 0,
+          "recovery_reads": true,
+          "reserve_objects": 128,
+          "reserve_bytes": 8388608
+        },
+        "removal_plan": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 4294967295,
+          "generation": 7,
+          "sequence": 42,
+          "command": {
+            "creation_id": "abababababababababababababababab",
+            "writer": {
+              "slot": 0,
+              "generation": 1
+            },
+            "number": 1,
+            "operation_id": "remove",
+            "base": {
+              "generation": 1,
+              "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "trace": {},
+            "retention": {
+              "enabled": false,
+              "slot": 0,
+              "generation": 0,
+              "until": 0
+            },
+            "remove_path": "/obsolete"
+          },
+          "added_objects": 1,
+          "added_bytes": 4
+        },
+        "release_plan": {
+          "request": {
+            "target": {
+              "volume": "Replies",
+              "creation_id": "abababababababababababababababab"
+            },
+            "operation_id": "release",
+            "end_promises": true
+          },
+          "incarnation": "abababababababababababababababababababababababababababababababab",
+          "slot": 4294967295,
+          "generation": 7,
+          "sequence": 43,
+          "head": {
+            "generation": 1,
+            "root": "AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          "effects": {
+            "objects": 1,
+            "bytes": 4,
+            "retentions": 0,
+            "read_grants": 0,
+            "access_slots": 1,
+            "references": 0
+          }
+        },
+        "release_result": {
+          "target": {
+            "volume": "Replies",
+            "creation_id": "abababababababababababababababab"
+          },
+          "slot": 4294967295,
+          "generation": 7,
+          "operation_id": "release",
+          "disposed": true,
+          "capacity_returned": true
+        }
+      },
+      "canonical_json": {
+        "admission": "{\"slot\":4294967295,\"generation\":7,\"operation_id\":\"admit-7\"}",
+        "lifetime": "{\"admission\":{\"slot\":4294967295,\"generation\":7,\"operation_id\":\"admit-7\"},\"phase\":\"active\",\"expires_at\":0,\"grace_until\":0,\"max_lease_seconds\":0,\"grace_seconds\":0,\"recovery_reads\":true,\"reserve_objects\":128,\"reserve_bytes\":8388608}",
+        "removal_plan": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":4294967295,\"generation\":7,\"sequence\":42,\"command\":{\"creation_id\":\"abababababababababababababababab\",\"writer\":{\"slot\":0,\"generation\":1},\"number\":1,\"operation_id\":\"remove\",\"base\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"trace\":{},\"retention\":{\"enabled\":false,\"slot\":0,\"generation\":0,\"until\":0},\"remove_path\":\"/obsolete\"},\"added_objects\":1,\"added_bytes\":4}",
+        "release_plan": "{\"request\":{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"operation_id\":\"release\",\"end_promises\":true},\"incarnation\":\"abababababababababababababababababababababababababababababababab\",\"slot\":4294967295,\"generation\":7,\"sequence\":43,\"head\":{\"generation\":1,\"root\":\"AQIDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"effects\":{\"objects\":1,\"bytes\":4,\"retentions\":0,\"read_grants\":0,\"access_slots\":1,\"references\":0}}",
+        "release_result": "{\"target\":{\"volume\":\"Replies\",\"creation_id\":\"abababababababababababababababab\"},\"slot\":4294967295,\"generation\":7,\"operation_id\":\"release\",\"disposed\":true,\"capacity_returned\":true}"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "negative",
+      "slot": -1
+    },
+    {
+      "name": "overflow",
+      "slot": 4294967296
+    },
+    {
+      "name": "fractional",
+      "slot": 0.5
+    },
+    {
+      "name": "string",
+      "slot": "256"
+    },
+    {
+      "name": "boolean",
+      "slot": true
+    },
+    {
+      "name": "null",
+      "slot": null
+    }
+  ]
+}

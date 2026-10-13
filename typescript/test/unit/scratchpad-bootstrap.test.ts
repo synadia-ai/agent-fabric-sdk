@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { headers, type Msg, type NatsConnection } from "@nats-io/nats-core";
+import { Ajv } from "ajv";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   decodeScratchPadBootstrap,
@@ -28,9 +29,18 @@ const fixture = JSON.parse(
   valid: ScratchPadBootstrap;
   valid_json: string;
   valid_trace: ScratchPadBootstrap;
+  valid_slots: { name: string; descriptor: ScratchPadBootstrap }[];
   malformed: { name: string; json: string }[];
   sdk_refusals: { name: string; json: string }[];
 };
+const schema = new Ajv({ strict: true, strictRequired: false, strictTypes: false }).compile(
+  JSON.parse(
+    readFileSync(
+      new URL("../../../test-fixtures/schemas/scratchpad-bootstrap-v1.json", import.meta.url),
+      "utf8",
+    ),
+  ) as Record<string, unknown>,
+);
 const creator = "agents.prompt.test.acme.main";
 type Wire = Record<string, unknown>;
 const directories: string[] = [],
@@ -162,6 +172,16 @@ describe("public ScratchPad bootstrap descriptor", () => {
   it.each([...fixture.malformed, ...fixture.sdk_refusals])("refuses $name", ({ json }) => {
     expect(() => decodeScratchPadBootstrap(json)).toThrow();
   });
+  it.each(fixture.valid_slots)("accepts $name in the schema and decoder", ({ descriptor }) => {
+    expect(schema(descriptor)).toBe(true);
+    expect(decodeScratchPadBootstrap(JSON.stringify(descriptor))).toEqual(descriptor);
+  });
+  it.each(fixture.malformed.filter(({ name }) => name.includes("slot")))(
+    "the schema refuses $name",
+    ({ json }) => {
+      expect(schema(JSON.parse(json) as unknown)).toBe(false);
+    },
+  );
   it("reads only a bounded regular file", async () => {
     const { file, root } = await paths();
     expect(readScratchPadBootstrapFile(file)).toEqual(fixture.valid_trace);
@@ -245,22 +265,46 @@ describe("public ScratchPad bootstrap descriptor", () => {
     expect(await readFile(join(dir, "scratchpad.sqlite"))).toEqual(before);
     expect(service.calls.every((call) => call.verb === "info")).toBe(true);
   });
-  it("replays unknown creation from saved state without current discovery or admin ensure", async () => {
-    const { file, dir } = await paths(),
-      service = new Service();
-    service.dropCreate = true;
-    const pad = await nativeScratchPad({ nc: service.nc, dir, creator, bootstrapFile: file });
-    await expect(pad.describe()).rejects.toMatchObject({ unknown: true });
-    await pad.close();
-    service.scope = undefined;
-    const resumed = await nativeScratchPad({ nc: service.nc, dir, creator, bootstrapFile: file });
-    clients.push(resumed);
-    expect((await resumed.describe()).volume.target).toEqual(service.view.target);
-    const attempts = service.calls.filter((call) => call.verb === "volume.create");
-    expect(attempts).toHaveLength(2);
-    expect(attempts[0]!.body).toEqual(attempts[1]!.body);
-    expect(service.calls.every((call) => ["info", "volume.create"].includes(call.verb))).toBe(true);
-  });
+  it.each([
+    { name: "original admission", descriptor: fixture.valid_trace },
+    ...fixture.valid_slots,
+  ])(
+    "$name replays exact unknown creation from SQLite without discovery or admin ensure",
+    async ({ descriptor }) => {
+      const { file, dir } = await paths(descriptor),
+        service = new Service();
+      service.scope = { ...service.scope!, admission: descriptor.admission };
+      service.view.lifetime!.admission = descriptor.admission;
+      service.dropCreate = true;
+      const pad = await nativeScratchPad({ nc: service.nc, dir, creator, bootstrapFile: file });
+      await expect(pad.describe()).rejects.toMatchObject({ unknown: true });
+      await pad.close();
+      expect(await saved(dir)).toMatchObject({
+        admission: descriptor.admission,
+        creation: descriptor.creation,
+      });
+      service.scope = undefined;
+      const resumed = await nativeScratchPad({ nc: service.nc, dir, creator, bootstrapFile: file });
+      clients.push(resumed);
+      expect((await resumed.describe()).volume.target).toEqual(service.view.target);
+      const attempts = service.calls.filter((call) => call.verb === "volume.create");
+      expect(attempts).toHaveLength(2);
+      expect(attempts[0]!.body).toEqual(attempts[1]!.body);
+      expect(attempts[1]!.body).toEqual({
+        volume: descriptor.volume,
+        action: descriptor.creation,
+        admission: descriptor.admission,
+      });
+      await resumed.close();
+      expect(await saved(dir)).toMatchObject({
+        admission: descriptor.admission,
+        creation: descriptor.creation,
+      });
+      expect(service.calls.every((call) => ["info", "volume.create"].includes(call.verb))).toBe(
+        true,
+      );
+    },
+  );
   it("never adopts an existence refusal or reopens a disposed workspace", async () => {
     const { file, dir } = await paths(),
       service = new Service();

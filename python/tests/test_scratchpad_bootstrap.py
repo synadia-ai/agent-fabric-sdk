@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from jsonschema import Draft7Validator
 from nats import NATS
 
 from synadia_ai.agent_fabric._scratchpad_native import protocol as p
@@ -28,6 +29,13 @@ from .test_scratchpad_native_transport import message
 
 FIXTURE = json.loads(
     (Path(__file__).parents[2] / "test-fixtures/scratchpad/bootstrap-v1.json").read_text()
+)
+SCHEMA = Draft7Validator(
+    json.loads(
+        (
+            Path(__file__).parents[2] / "test-fixtures/schemas/scratchpad-bootstrap-v1.json"
+        ).read_text()
+    )
 )
 CREATOR = "agents.prompt.test.acme.main"
 
@@ -66,6 +74,22 @@ def test_shared_complete_request_and_byte_bound() -> None:
 def test_shared_refusals(case: dict[str, str]) -> None:
     with pytest.raises(NativeScratchPadError):
         decode_scratchpad_bootstrap(case["json"])
+
+
+@pytest.mark.parametrize("case", FIXTURE["valid_slots"], ids=lambda case: case["name"])
+def test_uint32_bootstrap_schema_and_decoder(case: dict[str, Any]) -> None:
+    descriptor = case["descriptor"]
+    assert SCHEMA.is_valid(descriptor)
+    assert decode_scratchpad_bootstrap(json.dumps(descriptor)) == descriptor
+
+
+@pytest.mark.parametrize(
+    "case",
+    [case for case in FIXTURE["malformed"] if "slot" in case["name"]],
+    ids=lambda case: case["name"],
+)
+def test_invalid_slot_schema_refusals(case: dict[str, str]) -> None:
+    assert not SCHEMA.is_valid(json.loads(case["json"]))
 
 
 def test_regular_bounded_file(tmp_path: Path) -> None:
@@ -191,8 +215,19 @@ async def test_matching_import_and_trace_mismatch_preserve_sqlite_bytes(tmp_path
     assert all(verb == "info" for verb, _ in service.calls)
 
 
-async def test_unknown_create_replays_without_discovery_or_admin(tmp_path: Path) -> None:
-    file, directory, service = bootstrap(tmp_path), tmp_path / "work", Service()
+@pytest.mark.parametrize(
+    "case",
+    [{"name": "original admission", "descriptor": FIXTURE["valid_trace"]}, *FIXTURE["valid_slots"]],
+    ids=lambda case: case["name"],
+)
+async def test_unknown_create_replays_without_discovery_or_admin(
+    tmp_path: Path, case: dict[str, Any]
+) -> None:
+    descriptor = case["descriptor"]
+    file, directory, service = bootstrap(tmp_path, descriptor), tmp_path / "work", Service()
+    assert service.scope is not None
+    service.scope = {**service.scope, "admission": descriptor["admission"]}
+    service.view["lifetime"]["admission"] = descriptor["admission"]
     service.drop = "volume.create"
     pad = await native_scratchpad(
         nc=cast(NATS, service), dir=directory, creator=CREATOR, bootstrap_file=file
@@ -201,6 +236,8 @@ async def test_unknown_create_replays_without_discovery_or_admin(tmp_path: Path)
         await pad.describe()
     assert error.value.unknown
     await pad.close()
+    assert saved(directory)["admission"] == descriptor["admission"]
+    assert saved(directory)["creation"] == descriptor["creation"]
     service.scope = None
     resumed = await native_scratchpad(
         nc=cast(NATS, service), dir=directory, creator=CREATOR, bootstrap_file=file
@@ -211,6 +248,13 @@ async def test_unknown_create_replays_without_discovery_or_admin(tmp_path: Path)
         await resumed.close()
     attempts = [body for verb, body in service.calls if verb == "volume.create"]
     assert len(attempts) == 2 and attempts[0] == attempts[1]
+    assert attempts[1] == {
+        "volume": descriptor["volume"],
+        "action": descriptor["creation"],
+        "admission": descriptor["admission"],
+    }
+    assert saved(directory)["admission"] == descriptor["admission"]
+    assert saved(directory)["creation"] == descriptor["creation"]
     assert all(verb in {"info", "volume.create"} for verb, _ in service.calls)
 
 

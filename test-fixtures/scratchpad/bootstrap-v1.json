@@ -40,6 +40,128 @@
       }
     }
   },
+  "valid_slots": [
+    {
+      "name": "admission-slot-256",
+      "descriptor": {
+        "version": 1,
+        "principal": {
+          "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+          "user": "UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA"
+        },
+        "volume": "Replies",
+        "admission": {
+          "slot": 256,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "creation": {
+          "operation_id": "console-create-7",
+          "trace": {
+            "thread_id": "11111111111111111111111111111111",
+            "root_id": "22222222222222222222222222222222",
+            "tool_call_id": "bootstrap <&> café"
+          }
+        }
+      }
+    },
+    {
+      "name": "admission-slot-1000",
+      "descriptor": {
+        "version": 1,
+        "principal": {
+          "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+          "user": "UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA"
+        },
+        "volume": "Replies",
+        "admission": {
+          "slot": 1000,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "creation": {
+          "operation_id": "console-create-7",
+          "trace": {
+            "thread_id": "11111111111111111111111111111111",
+            "root_id": "22222222222222222222222222222222",
+            "tool_call_id": "bootstrap <&> café"
+          }
+        }
+      }
+    },
+    {
+      "name": "admission-slot-10000",
+      "descriptor": {
+        "version": 1,
+        "principal": {
+          "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+          "user": "UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA"
+        },
+        "volume": "Replies",
+        "admission": {
+          "slot": 10000,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "creation": {
+          "operation_id": "console-create-7",
+          "trace": {
+            "thread_id": "11111111111111111111111111111111",
+            "root_id": "22222222222222222222222222222222",
+            "tool_call_id": "bootstrap <&> café"
+          }
+        }
+      }
+    },
+    {
+      "name": "admission-slot-100000",
+      "descriptor": {
+        "version": 1,
+        "principal": {
+          "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+          "user": "UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA"
+        },
+        "volume": "Replies",
+        "admission": {
+          "slot": 100000,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "creation": {
+          "operation_id": "console-create-7",
+          "trace": {
+            "thread_id": "11111111111111111111111111111111",
+            "root_id": "22222222222222222222222222222222",
+            "tool_call_id": "bootstrap <&> café"
+          }
+        }
+      }
+    },
+    {
+      "name": "admission-slot-4294967295",
+      "descriptor": {
+        "version": 1,
+        "principal": {
+          "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+          "user": "UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA"
+        },
+        "volume": "Replies",
+        "admission": {
+          "slot": 4294967295,
+          "generation": 7,
+          "operation_id": "admit-7"
+        },
+        "creation": {
+          "operation_id": "console-create-7",
+          "trace": {
+            "thread_id": "11111111111111111111111111111111",
+            "root_id": "22222222222222222222222222222222",
+            "tool_call_id": "bootstrap <&> café"
+          }
+        }
+      }
+    }
+  ],
   "malformed": [
     {
       "name": "unsupported-version",
@@ -58,8 +180,24 @@
       "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":0,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
     },
     {
-      "name": "slot-outside-ceiling",
-      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":256,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+      "name": "slot-overflow",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":4294967296,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "negative-slot",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":-1,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "fractional-slot",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0.5,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "string-slot",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":\"256\",\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "boolean-slot",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":true,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
     },
     {
       "name": "empty-operation",

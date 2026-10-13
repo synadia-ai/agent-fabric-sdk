@@ -132,6 +132,8 @@ await pad.recover();
 
 The descriptor has exactly `version: 1`, `principal`, `volume`, `admission`, and `creation`.
 `creation` contains the complete `operation_id` and `trace`; `admission` contains slot, generation and operation identifier.
+Admission slots in bindings, lifetime views, removal plans, and release plans and results accept unsigned 32-bit values from 0 to 4294967295.
+The service's configured volume capacity is independent of this wire bound.
 It contains no credentials or target and supplies no authentication authority.
 The [public schema](../test-fixtures/schemas/scratchpad-bootstrap-v1.json) describes the fields.
 Consumers refuse duplicate or unknown keys, invalid NKEYs, invalid request fields, and files above 4096 UTF-8 bytes.
