@@ -5,6 +5,7 @@ their Python 3.11 requirement. Preserve each writer's private directory across
 restarts and close its client before shutdown. The caller owns the connection.
 """
 
+from ._scratchpad_native.bootstrap import MAX_BOOTSTRAP_BYTES, decode_scratchpad_bootstrap
 from ._scratchpad_native.client import (
     NativeScratchPad,
     native_scratchpad,
@@ -21,10 +22,12 @@ from ._scratchpad_native.references import decode_short_reference
 
 __all__ = [
     "DEFAULT_READ_LIMIT_BYTES",
+    "MAX_BOOTSTRAP_BYTES",
     "NativeScratchPad",
     "NativeScratchPadError",
     "ScratchPadReader",
     "decode_reference",
+    "decode_scratchpad_bootstrap",
     "decode_short_reference",
     "encode_reference",
     "native_scratchpad",

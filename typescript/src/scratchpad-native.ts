@@ -16,6 +16,11 @@ export {
   type ReadBytesOptions,
 } from "./scratchpad-native/reader";
 export { NativeScratchPadError } from "./scratchpad-native/errors";
+export {
+  decodeScratchPadBootstrap,
+  MAX_BOOTSTRAP_BYTES,
+  type ScratchPadBootstrap,
+} from "./scratchpad-native/bootstrap";
 export { encodeReference, decodeReference, type Reference } from "./scratchpad-native/codec";
 export { decodeShortReference, type ShortReference } from "./scratchpad-native/references";
 export type {

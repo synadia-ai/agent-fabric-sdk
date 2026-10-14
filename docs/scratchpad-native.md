@@ -71,14 +71,24 @@ import { nativeScratchPad, scratchPadReader } from "@synadia-ai/agent-fabric";
 
 // nc is the agent's existing authenticated NATS connection.
 const pad = await nativeScratchPad({
-  nc, volume: "Writer", creator: "agents.prompt.writer.demo.main",
+  nc,
+  volume: "Writer",
+  creator: "agents.prompt.writer.demo.main",
   dir: "/var/lib/my-agent/scratchpad", // private; preserve across restarts
 });
 await pad.recover();
-const published = await pad.publishBytes(new TextEncoder().encode("result"), "/result.txt", {
-  operationId: "task-123-result", ttlSeconds: 600,
+const published = await pad.publishBytes(
+  new TextEncoder().encode("result"),
+  "/result.txt",
+  {
+    operationId: "task-123-result",
+    ttlSeconds: 600,
+  },
+);
+await pad.grantRead(published.reference, {
+  account: readerAccount,
+  user: readerUser,
 });
-await pad.grantRead(published.reference, { account: readerAccount, user: readerUser });
 // The receiving agent uses its own connection and does not need a writer directory.
 const reader = await scratchPadReader({ nc: readerConnection });
 const bytes = await reader.readBytes(published.reference);
@@ -98,9 +108,48 @@ Subsequent ranges use the expanded descriptor with normal authorization.
 Both forms enforce the descriptor deadline before and after each content range and before successful completion, including empty files. Each reader caches at most 64 metadata expansions for creator and grant routing.
 A fresh reader, or eviction from this disposable cache, requires another service lookup.
 `commit(text, path, trace)` returns a reference; `read(reference, trace)` returns verified UTF-8 text.
-`nativeScratchPadFromEnv(env, { nc, creator })` uses `SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, and `SCRATCHPAD_GRANT_TTL_S`.
-An unset volume disables ScratchPad. A configured volume requires a persistent directory; there is no temporary-directory default.
+`nativeScratchPadFromEnv(env, { nc, creator })` uses `SCRATCHPAD_VOLUME`, `SCRATCHPAD_BOOTSTRAP_FILE`, `SCRATCHPAD_DIR`, and `SCRATCHPAD_GRANT_TTL_S`.
+ScratchPad is disabled when both the volume and bootstrap file are unset.
+A configured volume or bootstrap requires a persistent directory; there is no temporary-directory default.
 Both reference agents use the native factory. `SCRATCHPAD_BIN` belongs to the separate CLI adapter.
+
+### Import a public bootstrap descriptor
+
+`SCRATCHPAD_BOOTSTRAP_FILE` names a public JSON file that selects one exact creation request.
+TypeScript also accepts `bootstrapFile`; Python accepts `bootstrap_file`.
+The client derives the volume when it is omitted. An explicit different volume refuses.
+Keep the file and the private workspace across restarts.
+
+```ts
+const pad = await nativeScratchPad({
+  nc,
+  creator: "agents.prompt.writer.demo.main",
+  dir: "/var/lib/my-agent/scratchpad",
+  bootstrapFile: "/etc/agent/scratchpad-bootstrap.json",
+});
+await pad.recover();
+```
+
+The descriptor has exactly `version: 1`, `principal`, `volume`, `admission`, and `creation`.
+`creation` contains the complete `operation_id` and `trace`; `admission` contains slot, generation and operation identifier.
+It contains no credentials or target and supplies no authentication authority.
+The [public schema](../test-fixtures/schemas/scratchpad-bootstrap-v1.json) describes the fields.
+Consumers refuse duplicate or unknown keys, invalid NKEYs, invalid request fields, and files above 4096 UTF-8 bytes.
+The native SDKs also retain their existing safe integer counter ceiling of 9007199254740991.
+
+The client checks the authenticated principal and exact discovered admission before saving a new SQLite state.
+It saves the complete creation request before transmission.
+An existing matching state is preserved; differing creation, volume, principal or admission refuses.
+Restore and disposal state cannot be adopted. Accepted writer commands never cause an implicit reset.
+An unknown creation keeps its saved request. Exact owner recovery does not require admin ensure.
+An `exists` refusal never permits target adoption; `expired` or `closed` alone does not settle an earlier possibly sent request.
+A later admission requires a separate workspace and leaves the earlier recovery state intact.
+
+The CLI adapters accept the same file option and environment variable, require an explicit persistent directory for import,
+and pass `sp init --bootstrap-file` to a compatible command line.
+The shared harness wrapper supplies that flag from configuration; the model does not supply it.
+Reusable setup exports the bootstrap file variable without a default `SCRATCHPAD_VOLUME`, so unaware consumers remain disabled.
+Existing APIs without a bootstrap file retain their creation behavior.
 
 The Python interface uses snake_case names and returns dictionaries for publications and recovery results:
 
@@ -220,13 +269,13 @@ Retries keep their saved deadline; the client never renews a lease implicitly.
 recovery-read availability, lease limits, and reserved metadata allowance.
 An expiry of zero denotes a durable volume. The client invents no lease duration.
 
-| TypeScript | Python | Operation |
-| --- | --- | --- |
-| `renewLease(until)` | `renew_lease(until)` | Persist and request one absolute Unix deadline in seconds. |
-| `planRemoval(path, { operationId })` | `plan_removal(path, operation_id=...)` | Read-only removal plan for an initialized writer. |
-| `applyRemoval(plan)` | `apply_removal(plan)` | Save and apply that exact plan; return the checkpoint receipt. |
-| `planVolumeRelease({ operationId, endPromises })` | `plan_volume_release(operation_id=..., end_promises=...)` | List the head and protection promises the release would end. |
-| `applyVolumeRelease(plan)` | `apply_volume_release(plan)` | Save and apply that exact terminal decision. |
+| TypeScript                                        | Python                                                    | Operation                                                      |
+| ------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
+| `renewLease(until)`                               | `renew_lease(until)`                                      | Persist and request one absolute Unix deadline in seconds.     |
+| `planRemoval(path, { operationId })`              | `plan_removal(path, operation_id=...)`                    | Read-only removal plan for an initialized writer.              |
+| `applyRemoval(plan)`                              | `apply_removal(plan)`                                     | Save and apply that exact plan; return the checkpoint receipt. |
+| `planVolumeRelease({ operationId, endPromises })` | `plan_volume_release(operation_id=..., end_promises=...)` | List the head and protection promises the release would end.   |
+| `applyVolumeRelease(plan)`                        | `apply_volume_release(plan)`                              | Save and apply that exact terminal decision.                   |
 
 The agent chooses what to remove when its quota is full. Selective removal uses
 the reported metadata reserve within its bounds. A receipt confirms the new head;

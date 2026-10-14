@@ -60,6 +60,7 @@ import { ScratchPadReader, wireTrace } from "./reader";
 import type { ScratchPadReaderOptions } from "./reader";
 import { ScratchPadTransport } from "./transport";
 import { WorkspaceStore } from "./store";
+import { readScratchPadBootstrapFile } from "./bootstrap";
 import {
   SHORT_REFERENCE_PREFIX,
   validateReferenceSpec,
@@ -73,7 +74,10 @@ import type { Reference } from "./codec";
 export interface NativeScratchPadOptions extends ScratchPadReaderOptions {
   /** Private directory on a persistent local filesystem. One client owns it at a time. */
   dir: string;
-  volume: string;
+  /** Required unless bootstrapFile supplies the exact volume. */
+  volume?: string;
+  /** Public descriptor file. Never a credentials file or an adoption target. */
+  bootstrapFile?: string;
   /** Prompt address used only to route Fabric grant requests. It is not authentication. */
   creator: string;
   ttlSeconds?: number;
@@ -1536,25 +1540,42 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
 export async function nativeScratchPad(
   options: NativeScratchPadOptions,
 ): Promise<NativeScratchPad> {
-  validateVolume(options.volume);
+  if (options.volume !== undefined) validateVolume(options.volume);
   text(options.creator, 512, 1);
   const ttl = options.ttlSeconds ?? 600;
   uint(ttl, MAX_GRANT_SECONDS, 1);
   const transport = new ScratchPadTransport(options.nc, options);
   const info: Info = await transport.info();
-  const scope = info.scopes.find((scope) => scope.volume === options.volume);
+  const bootstrap =
+    options.bootstrapFile === undefined
+      ? undefined
+      : readScratchPadBootstrapFile(options.bootstrapFile);
+  const volume = options.volume ?? bootstrap?.volume;
+  validateVolume(volume);
+  if (bootstrap) {
+    check(
+      sameValue(bootstrap.principal, info.principal),
+      "bootstrap names another authenticated principal",
+    );
+    check(bootstrap.volume === volume, "bootstrap differs from the configured volume");
+  }
+  const scope = info.scopes.find((scope) => scope.volume === volume);
   const store = await WorkspaceStore.open(options.dir);
   try {
     let state = store.load();
     if (state === undefined) {
       if (!scope)
         refuse("denied", "authenticated principal owns no provisioned scope for this volume");
+      if (bootstrap && !sameValue(scope.admission, bootstrap.admission))
+        refuse("fenced", "bootstrap does not match the current admission");
       state = {
         version: 1,
         principal: info.principal,
-        volume: options.volume,
+        volume,
         creator: options.creator,
-        creation: { operation_id: randomUUID(), trace: {} },
+        creation: bootstrap
+          ? structuredClone(bootstrap.creation)
+          : { operation_id: randomUUID(), trace: {} },
         ...(scope.admission ? { admission: structuredClone(scope.admission) } : {}),
         next: 1,
         grants: [],
@@ -1562,14 +1583,25 @@ export async function nativeScratchPad(
       store.save(state);
     }
     validateState(state);
-    if (!state.target && (!scope || !sameValue(state.admission, scope.admission)))
+    if (bootstrap) {
+      check(
+        sameValue(state.principal, bootstrap.principal) &&
+          state.volume === bootstrap.volume &&
+          sameValue(state.admission, bootstrap.admission) &&
+          sameValue(state.creation, bootstrap.creation),
+        "workspace differs from the bootstrap creation request",
+      );
+      if (state.disposal || state.disposal_plan || state.pending?.kind === "volume_release")
+        refuse("fenced", "bootstrap cannot reopen a workspace with a saved disposal");
+    }
+    if (!bootstrap && !state.target && (!scope || !sameValue(state.admission, scope.admission)))
       refuse(
         "fenced",
         "saved creation does not match the current admission; it cannot adopt a new lifetime",
       );
     check(
       sameValue(state.principal, info.principal) &&
-        state.volume === options.volume &&
+        state.volume === volume &&
         state.creator === options.creator,
       "workspace is bound to another principal, volume, or creator",
     );
@@ -1580,20 +1612,22 @@ export async function nativeScratchPad(
   }
 }
 
-/** Environment configuration for SDK agents, using their existing connection. */
+/** A volume or bootstrap file enables the native client on its existing connection. */
 export async function nativeScratchPadFromEnv(
   env: Readonly<Record<string, string | undefined>>,
   options: ScratchPadReaderOptions & { creator: string },
 ): Promise<NativeScratchPad | undefined> {
   const volume = env["SCRATCHPAD_VOLUME"];
-  if (!volume) return undefined;
+  const bootstrapFile = env["SCRATCHPAD_BOOTSTRAP_FILE"] || undefined;
+  if (!volume && !bootstrapFile) return undefined;
   const dir = env["SCRATCHPAD_DIR"];
   check(dir, "SCRATCHPAD_DIR must name a persistent private directory for the native client");
   const value = env["SCRATCHPAD_GRANT_TTL_S"];
   check(value === undefined || /^[0-9]+$/.test(value), "SCRATCHPAD_GRANT_TTL_S must be an integer");
   return nativeScratchPad({
     ...options,
-    volume,
+    ...(volume ? { volume } : {}),
+    ...(bootstrapFile ? { bootstrapFile } : {}),
     dir,
     ...(value === undefined ? {} : { ttlSeconds: Number(value) }),
   });

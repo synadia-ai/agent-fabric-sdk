@@ -43,6 +43,24 @@ function context(options: Record<string, unknown> = {}, stateDir?: string): Agen
 }
 
 describe("resolveScratchPad", () => {
+  it("clears the opposite plugin-owned environment when selecting bootstrap or legacy settings", () => {
+    const env: Record<string, string | undefined> = { SCRATCHPAD_VOLUME: "Replies" };
+    exportScratchPad(
+      {
+        url: "nats://x:1",
+        creds: "/c",
+        volume: "Replies",
+        bootstrapFile: "/bootstrap.json",
+        dir: "/work",
+      },
+      env,
+    );
+    expect(env.SCRATCHPAD_BOOTSTRAP_FILE).toBe("/bootstrap.json");
+    expect(env.SCRATCHPAD_VOLUME).toBeUndefined();
+    exportScratchPad({ url: "nats://x:1", creds: "/c", volume: "Legacy" }, env);
+    expect(env.SCRATCHPAD_VOLUME).toBe("Legacy");
+    expect(env.SCRATCHPAD_BOOTSTRAP_FILE).toBeUndefined();
+  });
   it("is off without a volume", async () => {
     expect(
       await resolveScratchPad(context(), { NATS_URL: "nats://x:1", NATS_CREDS: "/c" }),

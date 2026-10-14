@@ -1,0 +1,111 @@
+{
+  "source": "scratchpad-bootstrap-v1",
+  "max_bytes": 4096,
+  "valid": {
+    "version": 1,
+    "principal": {
+      "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+      "user": "UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA"
+    },
+    "volume": "Replies",
+    "admission": {
+      "slot": 0,
+      "generation": 7,
+      "operation_id": "admit-7"
+    },
+    "creation": {
+      "operation_id": "console-create-7",
+      "trace": {}
+    }
+  },
+  "valid_json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}",
+  "valid_trace": {
+    "version": 1,
+    "principal": {
+      "account": "ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS",
+      "user": "UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA"
+    },
+    "volume": "Replies",
+    "admission": {
+      "slot": 0,
+      "generation": 7,
+      "operation_id": "admit-7"
+    },
+    "creation": {
+      "operation_id": "console-create-7",
+      "trace": {
+        "thread_id": "11111111111111111111111111111111",
+        "root_id": "22222222222222222222222222222222",
+        "tool_call_id": "bootstrap <&> café"
+      }
+    }
+  },
+  "malformed": [
+    {
+      "name": "unsupported-version",
+      "json": "{\"version\":2,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "bad-account-checksum",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCT\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "invalid-volume",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"../Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "zero-generation",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":0,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "slot-outside-ceiling",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":256,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "empty-operation",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"\",\"trace\":{}}}"
+    },
+    {
+      "name": "partial-trace",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{\"thread_id\":\"11111111111111111111111111111111\"}}}"
+    },
+    {
+      "name": "unknown-top-field",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}},\"unexpected\":true}"
+    },
+    {
+      "name": "unknown-principal-field",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\",\"unexpected\":true},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "unknown-admission-field",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\",\"unexpected\":true},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "unknown-creation-field",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{},\"unexpected\":true}}"
+    },
+    {
+      "name": "unknown-trace-field",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{\"unexpected\":true}}}"
+    },
+    {
+      "name": "duplicate-version",
+      "json": "{\"version\":1,\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "duplicate-principal",
+      "json": "{\"version\":1,\"principal\":{\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\",\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    },
+    {
+      "name": "duplicate-trace",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":7,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{\"tool_call_id\":\"\",\"tool_call_id\":\"\"}}}"
+    }
+  ],
+  "sdk_refusals": [
+    {
+      "name": "unsupported-counter-precision",
+      "json": "{\"version\":1,\"principal\":{\"account\":\"ACGACHUFS2GNIOTCLOF5ARXYQX2S2FCDNIRVT23OZ6D7KUELKCB67TCS\",\"user\":\"UDK5U4TSY7GR2UDGAUGCF4QHVZSJXYA7WN5YP3EOZBBYBIMWTGY3OTKA\"},\"volume\":\"Replies\",\"admission\":{\"slot\":0,\"generation\":9007199254740992,\"operation_id\":\"admit-7\"},\"creation\":{\"operation_id\":\"console-create-7\",\"trace\":{}}}"
+    }
+  ]
+}

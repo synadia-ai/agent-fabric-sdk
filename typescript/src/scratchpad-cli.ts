@@ -98,6 +98,7 @@ import {
   validateResolvedReference,
 } from "./scratchpad-native/references";
 import { encodeReference } from "./scratchpad-native/codec";
+import { readScratchPadBootstrapFile } from "./scratchpad-native/bootstrap";
 
 /**
  * The agent's ScratchPad: the {@link ScratchPad} port, which the rules for
@@ -119,7 +120,9 @@ export interface SpCliScratchPadOptions {
    * deployment provisions it for the agent's account and user; the first
    * commit creates it.
    */
-  readonly volume: string;
+  readonly volume?: string;
+  /** Exact public creation descriptor, imported by sp init. Requires a persistent dir. */
+  readonly bootstrapFile?: string;
   /**
    * The agent's own connection source: `sp` authenticates the same way. It
    * takes a URL with a credentials file; it reads no NATS context, and an
@@ -461,6 +464,18 @@ export function cleanupCannotHelp(view: VolumeView, at: number = now()): string 
  * with itself.
  */
 export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClient {
+  const bootstrap =
+    options.bootstrapFile === undefined
+      ? undefined
+      : readScratchPadBootstrapFile(options.bootstrapFile);
+  const selectedVolume = options.volume ?? bootstrap?.volume;
+  if (!selectedVolume || !VOLUME_RE.test(selectedVolume))
+    throw new Error("ScratchPad: a valid volume or bootstrap file is required");
+  const volumeName = selectedVolume;
+  if (bootstrap && bootstrap.volume !== volumeName)
+    throw new Error("ScratchPad: bootstrap differs from the configured volume");
+  if (bootstrap && !options.dir)
+    throw new Error("ScratchPad: bootstrap import requires a persistent dir");
   // `sp` takes a URL and a credentials file. It reads no NATS context, and
   // an nkey seed alone is not a form it accepts.
   if (!("creds" in options.nats) || options.nats.creds === undefined) {
@@ -470,7 +485,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
   }
   const connection = ["--url", options.nats.url, "--creds", options.nats.creds];
   const bin = options.bin ?? DEFAULT_SP_BIN;
-  const configuredDir = options.dir ?? join(tmpdir(), `scratchpad-${options.volume}`);
+  const configuredDir = options.dir ?? join(tmpdir(), `scratchpad-${volumeName}`);
   const grantTtlS = Math.min(options.grantTtlS ?? DEFAULT_GRANT_TTL_S, DEFAULT_GRANT_TTL_S);
 
   // The CLI's workspace: the configured directory with every symlink
@@ -556,8 +571,21 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
       : [];
     if (opts.trace && opts.toolCallId !== undefined) trace.push("--tool-call-id", opts.toolCallId);
     // A read targets the reference's volume, which can belong to another agent.
-    const volume = ["read", "resolve"].includes(command) ? [] : ["--volume", options.volume];
-    const argv = [command, ...connection, "--dir", await workspace(), ...volume, ...args, ...trace];
+    const volume = ["read", "resolve"].includes(command) ? [] : ["--volume", volumeName];
+    const bootstrapArgs =
+      command === "init" && options.bootstrapFile
+        ? ["--bootstrap-file", options.bootstrapFile]
+        : [];
+    const argv = [
+      command,
+      ...connection,
+      "--dir",
+      await workspace(),
+      ...volume,
+      ...bootstrapArgs,
+      ...args,
+      ...trace,
+    ];
     const maxStdout = opts.maxStdout ?? MAX_STDOUT;
     const { code, stdout, stderr } = await new Promise<{
       code: number | null;
@@ -632,7 +660,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
         false,
       );
     }
-    if (r.target.volume !== options.volume) {
+    if (r.target.volume !== volumeName) {
       throw new ScratchPadError(
         `sp ${command}: the workspace is bound to another volume`,
         "invalid",
@@ -1020,6 +1048,7 @@ export function spCliScratchPad(options: SpCliScratchPadOptions): ScratchPadClie
 
 /** The variables {@link scratchPadFromEnv} reads. */
 export const SCRATCHPAD_VOLUME_VAR = "SCRATCHPAD_VOLUME";
+export const SCRATCHPAD_BOOTSTRAP_FILE_VAR = "SCRATCHPAD_BOOTSTRAP_FILE";
 export const SCRATCHPAD_BIN_VAR = "SCRATCHPAD_BIN";
 export const SCRATCHPAD_DIR_VAR = "SCRATCHPAD_DIR";
 export const SCRATCHPAD_GRANT_TTL_S_VAR = "SCRATCHPAD_GRANT_TTL_S";
@@ -1037,7 +1066,7 @@ export interface ScratchPadFromEnvOptions {
 
 /**
  * The agent's ScratchPad as the environment configures it, or `undefined`
- * when `SCRATCHPAD_VOLUME` is unset: ScratchPad off. Reads
+ * when both `SCRATCHPAD_VOLUME` and `SCRATCHPAD_BOOTSTRAP_FILE` are unset. Reads
  * `SCRATCHPAD_VOLUME`, `SCRATCHPAD_BIN`, `SCRATCHPAD_DIR` and
  * `SCRATCHPAD_GRANT_TTL_S`, and, unless `options.nats` is given, the
  * connection the agent's own configuration reads: `NATS_CREDS` with
@@ -1056,7 +1085,8 @@ export function scratchPadFromEnv(
     return value === undefined || value === "" ? undefined : value;
   };
   const volume = optional(SCRATCHPAD_VOLUME_VAR);
-  if (volume === undefined) return undefined;
+  const bootstrapFile = optional(SCRATCHPAD_BOOTSTRAP_FILE_VAR);
+  if (volume === undefined && bootstrapFile === undefined) return undefined;
   const ttl = optional(SCRATCHPAD_GRANT_TTL_S_VAR);
   let grantTtlS: number | undefined;
   if (ttl !== undefined) {
@@ -1076,7 +1106,8 @@ export function scratchPadFromEnv(
   const bin = optional(SCRATCHPAD_BIN_VAR);
   const dir = optional(SCRATCHPAD_DIR_VAR);
   return spCliScratchPad({
-    volume,
+    ...(volume === undefined ? {} : { volume }),
+    ...(bootstrapFile === undefined ? {} : { bootstrapFile }),
     nats,
     ...(bin !== undefined ? { bin } : {}),
     ...(dir !== undefined ? { dir } : {}),

@@ -13,6 +13,9 @@ fallback instead of requiring a new identity or workspace.
 - `scripts/sp` selects the packaged executable and adds the connection,
   persistent workspace, volume, trace, creator, and verified caller context
   from the add-on. It preserves the Fabric identity and grant rules.
+  `SCRATCHPAD_BOOTSTRAP_FILE` supplies an exact public creation descriptor on
+  `init`; the wrapper owns `--bootstrap-file` and derives the volume through
+  the compatible command line. Preserve the file and the private workspace.
 - `release.json` pins the release, distribution repository, opaque source
   and toolchain identifiers, and all four archive and executable hashes.
 - `load-sp.mjs` downloads and verifies those archives with Node 20+.

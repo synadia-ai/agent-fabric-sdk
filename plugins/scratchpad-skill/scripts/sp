@@ -94,7 +94,7 @@ for arg in "$@"; do
   case $arg in
     -*)
       case $name in
-        url | creds | dir | volume | thread-id | root-id | tool-call-id | creator | grantee-account | grantee-user)
+        url | creds | dir | volume | bootstrap-file | thread-id | root-id | tool-call-id | creator | grantee-account | grantee-user)
           refuse "--$name is set by the agent, not passed; run the command without it" ;;
       esac
       ;;
@@ -102,12 +102,12 @@ for arg in "$@"; do
 done
 
 if [ -n "${SP_ENV_FILE:-}" ] && [ -f "$SP_ENV_FILE" ]; then
-  unset SP_THREAD_ID SP_ROOT_ID SP_CALLER_ACCOUNT SP_CALLER_USER
+  unset SP_THREAD_ID SP_ROOT_ID SP_CALLER_ACCOUNT SP_CALLER_USER SCRATCHPAD_VOLUME SCRATCHPAD_BOOTSTRAP_FILE
   while IFS= read -r line || [ -n "$line" ]; do
     case $line in
       *=*)
         case ${line%%=*} in
-          SP_NATS_URL | SP_NATS_CREDS | SCRATCHPAD_DIR | SCRATCHPAD_VOLUME | SP_CREATOR | \
+          SP_NATS_URL | SP_NATS_CREDS | SCRATCHPAD_DIR | SCRATCHPAD_VOLUME | SCRATCHPAD_BOOTSTRAP_FILE | SP_CREATOR | \
             SP_THREAD_ID | SP_ROOT_ID | SP_CALLER_ACCOUNT | SP_CALLER_USER | SP_GRANTS_FILE)
             # The name is one of these; the value is assigned as it is.
             eval "${line%%=*}=\${line#*=}"
@@ -150,8 +150,14 @@ fi
 
 case $command in
   init)
-    [ -n "${SCRATCHPAD_VOLUME:-}" ] || refuse "ScratchPad has no volume for this agent: SCRATCHPAD_VOLUME is unset"
-    set -- --volume "$SCRATCHPAD_VOLUME" "$@"
+    if [ -n "${SCRATCHPAD_BOOTSTRAP_FILE:-}" ]; then
+      set -- --bootstrap-file "$SCRATCHPAD_BOOTSTRAP_FILE" "$@"
+    else
+      [ -n "${SCRATCHPAD_VOLUME:-}" ] || refuse "ScratchPad has no volume or bootstrap file for this agent"
+    fi
+    if [ -n "${SCRATCHPAD_VOLUME:-}" ]; then
+      set -- --volume "$SCRATCHPAD_VOLUME" "$@"
+    fi
     ;;
   publish-file)
     if [ -n "${SP_CREATOR:-}" ]; then
