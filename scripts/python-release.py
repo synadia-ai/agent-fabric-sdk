@@ -267,7 +267,8 @@ def verify(directory: Path, version: str, install: bool) -> None:
         exceptions = [
             arg
             for name in DEPENDENCIES
-            for arg in ("--exclude-newer-package", f"{name}=9999-12-31T23:59:59Z")
+            # The pinned Linux uv rejects the maximum year-9999 timestamp.
+            for arg in ("--exclude-newer-package", f"{name}=2100-01-01T00:00:00Z")
         ]
         for py in ("3.11", "3.12", "3.13"):
             for artifact in artifacts:
