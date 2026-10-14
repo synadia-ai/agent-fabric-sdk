@@ -55,14 +55,14 @@ describe("at start", () => {
 
   it("takes the volume and the connection from the variables, the workspace under the state directory", async () => {
     const env: Record<string, string | undefined> = {
-      SCRATCHPAD_VOLUME: "pi-vol",
+      SCRATCHPAD_VOLUME: "pivol7",
       NATS_URL: "nats://127.0.0.1:4222",
       NATS_CREDS: "/keys/pi.creds",
     };
     const { lines } = await started(env, { stateDir: home });
     const dir = join(home, "scratchpad");
     expect(env).toEqual({
-      SCRATCHPAD_VOLUME: "pi-vol",
+      SCRATCHPAD_VOLUME: "pivol7",
       NATS_URL: "nats://127.0.0.1:4222",
       NATS_CREDS: "/keys/pi.creds",
       // What scripts/sp reads: the connection under names of its own.
@@ -75,13 +75,13 @@ describe("at start", () => {
     });
     expect(statSync(dir).isDirectory()).toBe(true);
     expect(lines.filter((l) => l.level === "info").at(-1)?.message).toBe(
-      `agent-fabric: ScratchPad volume pi-vol, workspace ${dir}, for the skill's scripts/sp`,
+      `agent-fabric: ScratchPad volume pivol7, workspace ${dir}, for the skill's scripts/sp`,
     );
   });
 
   it("prefers the config entry's options to the variables", async () => {
     const env: Record<string, string | undefined> = {
-      SCRATCHPAD_VOLUME: "from-env",
+      SCRATCHPAD_VOLUME: "fromenv",
       NATS_URL: "nats://env:4222",
       NATS_CREDS: "/env.creds",
     };
@@ -89,14 +89,14 @@ describe("at start", () => {
     await started(env, {
       options: {
         [SCRATCHPAD_OPTION]: {
-          volume: "from-options",
+          volume: "fromoptions",
           url: "nats://opt:4222",
           creds: "/opt.creds",
           dir,
         },
       },
     });
-    expect(env[SP_VARS.volume]).toBe("from-options");
+    expect(env[SP_VARS.volume]).toBe("fromoptions");
     expect(env[SP_VARS.url]).toBe("nats://opt:4222");
     expect(env[SP_VARS.creds]).toBe("/opt.creds");
     expect(env[SP_VARS.dir]).toBe(dir);
@@ -105,7 +105,7 @@ describe("at start", () => {
 
   it("reads the URL and the credentials file from the plugin's NATS context, which sp cannot", async () => {
     natsContext("fabric", { url: "nats://ctx:4333", creds: "/ctx/pi.creds" });
-    const env: Record<string, string | undefined> = { SCRATCHPAD_VOLUME: "pi-vol" };
+    const env: Record<string, string | undefined> = { SCRATCHPAD_VOLUME: "pivol7" };
     await started(env, { stateDir: home });
     expect(env[SP_VARS.url]).toBe("nats://ctx:4333");
     expect(env[SP_VARS.creds]).toBe("/ctx/pi.creds");
@@ -123,9 +123,9 @@ describe("at start", () => {
 
   it("stays off, with a warning, when no connection sp can use is found", async () => {
     natsContext("fabric", { url: "nats://ctx:4333" });
-    const env: Record<string, string | undefined> = { SCRATCHPAD_VOLUME: "pi-vol" };
+    const env: Record<string, string | undefined> = { SCRATCHPAD_VOLUME: "pivol7" };
     const { lines } = await started(env, { stateDir: home });
-    expect(env).toEqual({ SCRATCHPAD_VOLUME: "pi-vol" });
+    expect(env).toEqual({ SCRATCHPAD_VOLUME: "pivol7" });
     expect(lines.filter((l) => l.level === "warn").map((l) => l.message)).toEqual([
       expect.stringContaining("ScratchPad is off: sp needs a NATS URL and a credentials file"),
     ]);
@@ -133,7 +133,7 @@ describe("at start", () => {
 
   it("stays off, with a warning, when the context cannot be read", async () => {
     natsContext("present", { url: "nats://x:1" });
-    const env: Record<string, string | undefined> = { SCRATCHPAD_VOLUME: "pi-vol" };
+    const env: Record<string, string | undefined> = { SCRATCHPAD_VOLUME: "pivol7" };
     const { lines } = await started(env, { stateDir: home, config: { context: "missing" } });
     expect(env[SP_VARS.url]).toBeUndefined();
     expect(lines.filter((l) => l.level === "warn").map((l) => l.message)).toEqual([
@@ -144,7 +144,7 @@ describe("at start", () => {
 
 describe("per served prompt", () => {
   const configured = (): Record<string, string | undefined> => ({
-    SCRATCHPAD_VOLUME: "pi-vol",
+    SCRATCHPAD_VOLUME: "pivol7",
     NATS_URL: "nats://127.0.0.1:4222",
     NATS_CREDS: "/keys/pi.creds",
   });
@@ -165,7 +165,7 @@ describe("per served prompt", () => {
     for (const v of [SP_VARS.threadId, SP_VARS.rootId, SP_VARS.callerAccount, SP_VARS.callerUser]) {
       expect(env[v]).toBeUndefined();
     }
-    expect(env[SP_VARS.volume]).toBe("pi-vol");
+    expect(env[SP_VARS.volume]).toBe("pivol7");
   });
 
   it("gives a minted root when the prompt carried no lineage", async () => {
@@ -219,7 +219,7 @@ describe("per served prompt", () => {
 
 describe("references: the registration and the tool extension", () => {
   const configured = (): Record<string, string | undefined> => ({
-    SCRATCHPAD_VOLUME: "pi-vol",
+    SCRATCHPAD_VOLUME: "pivol7",
     NATS_URL: "nats://127.0.0.1:4222",
     NATS_CREDS: "/keys/pi.creds",
   });
