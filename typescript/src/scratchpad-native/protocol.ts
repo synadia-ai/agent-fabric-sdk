@@ -18,6 +18,7 @@ export const MAX_READ_BYTES = CHUNK_SIZE;
 export const MAX_PREPARE_OBJECTS = 64;
 export const MAX_VOLUME_OBJECTS = 65536;
 export const MAX_VOLUME_BYTES = 8 * 2 ** 30;
+export const MAX_ADMISSION_SLOT = 0xffffffff;
 export const WRITER_SLOTS = 8;
 export const RETENTION_SLOTS = 8;
 export const GRANT_SLOTS = 16;
@@ -740,7 +741,7 @@ export function validateContentObject(value: unknown): asserts value is ContentO
 }
 export function validateAdmissionBinding(value: unknown): asserts value is AdmissionBinding {
   const v = record(value, ["slot", "generation", "operation_id"]);
-  uint(v.slot, 255);
+  uint(v.slot, MAX_ADMISSION_SLOT);
   uint(v.generation, undefined, 1);
   validateAction({ operation_id: v.operation_id, trace: {} });
 }
@@ -806,7 +807,7 @@ export function validateRemovalPlan(value: unknown): asserts value is RemovalPla
     "added_bytes",
   ]);
   validateRemovalRequest({ target: v.target, command: v.command });
-  uint(v.slot, 255);
+  uint(v.slot, MAX_ADMISSION_SLOT);
   uint(v.generation, undefined, 1);
   uint(v.sequence, undefined, 1);
   uint(v.added_objects, 128);
@@ -833,7 +834,7 @@ export function validateVolumeReleasePlan(value: unknown): asserts value is Volu
   validateVolumeReleaseRequest(v.request);
   text(v.incarnation, 64, 64);
   check(/^[0-9a-f]{64}$/.test(v.incarnation), "invalid release incarnation");
-  uint(v.slot, 255);
+  uint(v.slot, MAX_ADMISSION_SLOT);
   uint(v.generation, undefined, 1);
   uint(v.sequence, undefined, 1);
   validateHead(v.head);
@@ -862,7 +863,7 @@ export function validateVolumeReleaseResult(value: unknown): asserts value is Vo
     "capacity_returned",
   ]);
   validateTarget(v.target);
-  uint(v.slot, 255);
+  uint(v.slot, MAX_ADMISSION_SLOT);
   uint(v.generation, undefined, 1);
   validateAction({ operation_id: v.operation_id, trace: {} });
   bool(v.disposed);

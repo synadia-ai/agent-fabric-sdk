@@ -35,6 +35,7 @@ MAX_READ_BYTES = CHUNK_SIZE
 MAX_PREPARE_OBJECTS = 64
 MAX_VOLUME_OBJECTS = 65536
 MAX_VOLUME_BYTES = 8 * 2**30
+MAX_ADMISSION_SLOT = 2**32 - 1
 WRITER_SLOTS = 8
 RETENTION_SLOTS = 8
 GRANT_SLOTS = 16
@@ -461,7 +462,7 @@ def validate_info(value: object) -> Wire:
 
 def validate_admission_binding(value: object) -> Wire:
     v = record(value, ("slot", "generation", "operation_id"))
-    uint(v["slot"], 255)
+    uint(v["slot"], MAX_ADMISSION_SLOT)
     uint(v["generation"], minimum=1)
     validate_action({"operation_id": v["operation_id"], "trace": {}})
     return v
@@ -529,7 +530,7 @@ def validate_removal_plan(value: object) -> Wire:
         ("target", "slot", "generation", "sequence", "command", "added_objects", "added_bytes"),
     )
     validate_removal_request({"target": v["target"], "command": v["command"]})
-    uint(v["slot"], 255)
+    uint(v["slot"], MAX_ADMISSION_SLOT)
     uint(v["generation"], minimum=1)
     uint(v["sequence"], minimum=1)
     uint(v["added_objects"], 128)
@@ -552,7 +553,7 @@ def validate_volume_release_plan(value: object) -> Wire:
     validate_volume_release_request(v["request"])
     text(v["incarnation"], 64, 64)
     check(re.fullmatch(r"[0-9a-f]{64}", v["incarnation"]), "invalid release incarnation")
-    uint(v["slot"], 255)
+    uint(v["slot"], MAX_ADMISSION_SLOT)
     uint(v["generation"], minimum=1)
     uint(v["sequence"], minimum=1)
     validate_head(v["head"])
@@ -577,7 +578,7 @@ def validate_volume_release_result(value: object) -> Wire:
         value, ("target", "slot", "generation", "operation_id", "disposed", "capacity_returned")
     )
     validate_target(v["target"])
-    uint(v["slot"], 255)
+    uint(v["slot"], MAX_ADMISSION_SLOT)
     uint(v["generation"], minimum=1)
     validate_action({"operation_id": v["operation_id"], "trace": {}})
     boolean(v["disposed"])

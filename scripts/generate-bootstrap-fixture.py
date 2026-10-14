@@ -26,13 +26,22 @@ def main():
     traced["creation"]["trace"] = {
         "thread_id": "1" * 32, "root_id": "2" * 32, "tool_call_id": "bootstrap <&> café"
     }
+    valid_slots = []
+    for slot in (256, 1000, 10000, 100000, 2**32 - 1):
+        descriptor = deepcopy(traced)
+        descriptor["admission"]["slot"] = slot
+        valid_slots.append({"name": f"admission-slot-{slot}", "descriptor": descriptor})
     malformed = []
     for name, path, replacement in [
         ("unsupported-version", ("version",), 2),
         ("bad-account-checksum", ("principal", "account"), valid["principal"]["account"][:-1] + "T"),
         ("invalid-volume", ("volume",), "../Replies"),
         ("zero-generation", ("admission", "generation"), 0),
-        ("slot-outside-ceiling", ("admission", "slot"), 256),
+        ("slot-overflow", ("admission", "slot"), 2**32),
+        ("negative-slot", ("admission", "slot"), -1),
+        ("fractional-slot", ("admission", "slot"), 0.5),
+        ("string-slot", ("admission", "slot"), "256"),
+        ("boolean-slot", ("admission", "slot"), True),
         ("empty-operation", ("creation", "operation_id"), ""),
         ("partial-trace", ("creation", "trace"), {"thread_id": "1" * 32}),
     ]:
@@ -62,11 +71,12 @@ def main():
     precision["admission"]["generation"] = 2**53
     fixture = {"source": "scratchpad-bootstrap-v1", "max_bytes": 4096,
                "valid": valid, "valid_json": raw, "valid_trace": traced,
+               "valid_slots": valid_slots,
                "malformed": malformed,
                "sdk_refusals": [{"name": "unsupported-counter-precision", "json": encoded(precision)}]}
     path = ROOT / "test-fixtures/scratchpad/bootstrap-v1.json"
     path.write_text(json.dumps(fixture, ensure_ascii=False, indent=2) + "\n")
-    print(f"BOOTSTRAP_FIXTURE valid=2 malformed={len(malformed)} sdk_refusals=1 max_bytes=4096")
+    print(f"BOOTSTRAP_FIXTURE valid={2 + len(valid_slots)} malformed={len(malformed)} sdk_refusals=1 max_bytes=4096")
 
 
 if __name__ == "__main__":

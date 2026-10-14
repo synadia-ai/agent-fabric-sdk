@@ -21,6 +21,9 @@ TEXT_KEYS = {"description", "$comment", "title"}
 NAMED_MAPS = {"properties", "patternProperties", "$defs", "definitions", "dependentSchemas"}
 
 CONSTRAINTS_SHA256 = {
+    "scratchpad-bootstrap-v1.json": (
+        "49bcb5244c5c3052bea24c733d8488aadb9ff1a3fb8035186505f5e0160f54a8"
+    ),
     "edge.json": "be35efc3036d07529375c1284c79b47abe60317bd9af480cdb30bd7ac9a617e6",
     "served.json": "8292743bc850b9fb3dceb0c335c22a2e8d2eb751ca28929fa741f6d9f612e6a2",
     "sp-grant-request.json": "340ed503c22eb9f7da9af88cdceca82ff8765c24e6677f9482c91dc0a85e29c1",

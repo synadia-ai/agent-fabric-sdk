@@ -20,7 +20,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["slot", "generation", "operation_id"],
       "properties": {
-        "slot": {"type": "integer", "minimum": 0, "maximum": 255},
+        "slot": {"type": "integer", "minimum": 0, "maximum": 4294967295},
         "generation": {"type": "integer", "minimum": 1, "description": "Unsigned 64-bit on the service. Native SDK consumers additionally refuse values above 9007199254740991."},
         "operation_id": {"type": "string", "minLength": 1, "maxLength": 64}
       }
