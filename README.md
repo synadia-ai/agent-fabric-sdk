@@ -60,6 +60,10 @@ knows nothing of the fabric; the dependency goes one way.
 Until the SDK with the hooks is published, both packages resolve it from a
 local checkout on `main` (see [CLAUDE.md](CLAUDE.md)).
 
+The [Python publication procedure](docs/python-publication.md) defines the
+package order, trusted publisher, artifact checks and external dependency
+hold-off. Publication is separate from source delivery and binary bundles.
+
 ## Usage — TypeScript
 
 ```ts
