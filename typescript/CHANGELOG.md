@@ -4,6 +4,16 @@ All notable changes to `@synadia-ai/agent-fabric` are recorded here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `NativeScratchPad.diagnostics()` reads the configured allowance and charged
+  volume usage without initialization, recovery or other mutations. Unbound
+  workspaces report unknown usage. The reference agents expose it as
+  `scratchpad_usage` when model tools are enabled. Reply delivery keeps the
+  existing handoff and bounded inline fallback policy.
+
 ## [0.1.0] — 2026-10-06
 
 ### Added

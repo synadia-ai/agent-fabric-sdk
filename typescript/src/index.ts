@@ -185,6 +185,7 @@ export {
   type PublishOptions,
   type PublishResult,
   type RecoveryResult,
+  type ScratchPadDiagnostics,
   type VolumeReleaseOutcome,
   type ScratchPadReaderOptions,
   type ReadBytesOptions,

@@ -35,6 +35,7 @@ class Recorded:
 @dataclass
 class FakeModel:
     requests: list[Recorded] = field(default_factory=list)
+    usage_mode: bool = False
     _server: ThreadingHTTPServer | None = None
     _thread: threading.Thread | None = None
 
@@ -68,7 +69,14 @@ class FakeModel:
                 )
                 silent = m.group(1) if (m := _SILENT.match(served)) else None
                 message: dict[str, Any]
-                if last["role"] == "user" and content.startswith(_TOLD):
+                if fake.usage_mode and last["role"] != "tool":
+                    message = {
+                        "role": "assistant", "content": "",
+                        "tool_calls": [{"id": "usage_1", "type": "function", "function": {"name": "scratchpad_usage", "arguments": "{}"}}],
+                    }
+                elif fake.usage_mode:
+                    message = {"role": "assistant", "content": "storage: " + content}
+                elif last["role"] == "user" and content.startswith(_TOLD):
                     # Told that a call waits: "hush" answers it now, "mute" stays silent.
                     waiting = next(
                         (

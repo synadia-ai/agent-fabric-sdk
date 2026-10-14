@@ -2,6 +2,23 @@
 
 The worked example of this repository's package, `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric`: two agents for the Synadia Agent Fabric, one in TypeScript and one in Python, built on the protocol SDK and this package and nothing else. Each does the four things a participant of the fabric does: it takes prompts under a signed identity, calls its model through the fabric's model proxy, finds and prompts other agents, and hands work over by ScratchPad reference. A fifth is optional: it runs durable work, a workflow its model starts, joined to the task that started it. With them comes a caller that prompts an agent from outside. Copy one agent and adapt it to your fabric.
 
+## Asking about ScratchPad usage (unreleased)
+
+With a native client that supports `diagnostics()`, both agents offer the
+model `scratchpad_usage`. Ask, for example, “How much of your ScratchPad
+allowance is charged, and is any work pending?” The tool reads only the
+configured volume. The model cannot select another identity or supply
+credentials. It reports encoded content and metadata, including retained
+history; an object is not a file.
+
+The query itself writes nothing. Replies keep the usual artifact handoff
+policy; a small answer still travels inline when that handoff fails.
+Ordinary allowance, removal reserve and unknown observations remain
+distinct. Existing artifact handoffs and short references keep their rules.
+`AGENT_TOOLS=none` retains its existing behavior and does not offer the usage
+tool. Older client packages and CLI adapters do not offer this tool either.
+See [the client contract](../docs/scratchpad-native.md#read-only-usage-diagnostics-unreleased).
+
 ## With Claude Code
 
 Start Claude Code in this checkout, here or at the repository's root, and ask it for the agent you want: *"make me a research agent for the fabric, connect it and run it"*. The [`fabric-agent` skill](../.claude/skills/fabric-agent/SKILL.md) takes it through the steps: it copies the TypeScript agent, sets the persona and the tools, connects the agent with `fabric connect`, and starts it.

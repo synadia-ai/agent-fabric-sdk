@@ -147,7 +147,7 @@ export const NOT_SERVING: OwnToolContext = {
  * or not, and `start_workflow` (`durable.ts`). A call goes by name, so two
  * tools with one name cannot both be reached.
  */
-export const RESERVED_TOOL_NAMES: ReadonlyArray<string> = [...AGENT_TOOL_NAMES, "start_workflow"];
+export const RESERVED_TOOL_NAMES: ReadonlyArray<string> = [...AGENT_TOOL_NAMES, "start_workflow", "scratchpad_usage"];
 
 /**
  * Throws, naming the tool, when an own tool takes a reserved name or two

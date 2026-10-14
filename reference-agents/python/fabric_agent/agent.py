@@ -68,6 +68,7 @@ from .durable import DurableTasks, start_durable_tasks, with_durable_tasks
 from .history import Histories, with_tool_note
 from .model import ChatMessage, EmptyReplyError, ModelClient, converse
 from .reply import delivered_reply
+from .scratchpad_usage import ScratchPadUsage
 from .tools import NO_TOOLS, offered_tools, tool_runner
 
 #: How many prompts one agent serves at once. The Python host serves one at a
@@ -288,9 +289,10 @@ async def start_agent(
         ]
         turn_start = len(messages)
         try:
+            usage = ScratchPadUsage(offered, None if cfg.agent.tools == "none" else scratchpad)
             result = await converse(
                 model=model,
-                tools=offered,
+                tools=usage,
                 messages=messages,
                 trace_headers=trace_headers,
                 log=lambda line: log(f"{tag} {line}"),

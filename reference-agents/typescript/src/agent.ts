@@ -55,6 +55,7 @@ import { Histories, withToolNote } from "./history.js";
 import { converse, createModelClient, EmptyReplyError, type ChatMessage, type ToolRunner } from "./model.js";
 import { startDurableTasks, withDurableTasks, type DurableTasks } from "./durable.js";
 import { deliveredReply } from "./reply.js";
+import { ScratchPadUsage } from "./scratchpad-usage.js";
 import {
   checkOwnTools,
   NO_TOOLS,
@@ -288,7 +289,7 @@ export async function startAgent(
     // An own tool's question goes to this prompt's caller, with the time a
     // prompt to another agent may take. A caller that does not answer is a
     // throw, which the model reads as `{"error": ...}`.
-    const offered = offeredFor({
+    const offered = new ScratchPadUsage(offeredFor({
       ask: async (question) => {
         log(`${tag} asks the caller: ${question.slice(0, 80)}`);
         try {
@@ -297,7 +298,7 @@ export async function startAgent(
           throw new Error(`the caller did not answer: ${err instanceof Error ? err.message : String(err)}`);
         }
       },
-    });
+    }), cfg.agent.tools === "none" ? undefined : scratchpad);
     let result: Awaited<ReturnType<typeof converse>>;
     try {
       result = await converse({

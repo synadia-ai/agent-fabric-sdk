@@ -220,6 +220,123 @@ class Service {
     return nativeScratchPad({ nc: this.nc, volume: target.volume, creator: "agents.writer", dir });
   }
 }
+
+describe("read-only volume diagnostics", () => {
+  it("does not change the persistent workspace", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sp-diagnostics-"));
+    const service = new Service();
+    const options = {
+      nc: service.nc,
+      dir: directory,
+      volume: target.volume,
+      creator: "agents.prompt.test.agent.owner",
+    };
+    let client = await nativeScratchPad(options);
+    try {
+      await client.describe();
+      await client.close();
+      let store = await WorkspaceStore.open(directory);
+      const before = store.load();
+      store.close();
+      client = await nativeScratchPad(options);
+      const requests = service.calls.length;
+      await client.diagnostics();
+      await client.close();
+      store = await WorkspaceStore.open(directory);
+      expect(store.load()).toEqual(before);
+      store.close();
+      expect(service.calls.slice(requests).map((call) => call.verb)).toEqual([
+        "info",
+        "volume.get",
+      ]);
+    } finally {
+      await client.close();
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it("does not create an unbound volume or claim zero usage", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sp-diagnostics-"));
+    const service = new Service();
+    const client = await nativeScratchPad({
+      nc: service.nc,
+      dir: directory,
+      volume: target.volume,
+      creator: "agents.prompt.test.agent.owner",
+    });
+    try {
+      const before = service.calls.length;
+      const result = await client.diagnostics();
+      expect(result.status).toBe("unbound");
+      expect(result.allowance).toEqual({ bytes: 1 << 20, objects: 100 });
+      expect(result.charged).toBeUndefined();
+      expect(result.ordinary_headroom).toBeUndefined();
+      expect(service.calls.slice(before).map((call) => call.verb)).toEqual(["info"]);
+      expect(service.calls.filter((call) => call.verb !== "info")).toHaveLength(0);
+    } finally {
+      await client.close();
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it("reports charged history and exhausted ordinary capacity without spending removal reserve", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sp-diagnostics-"));
+    const service = new Service();
+    const client = await nativeScratchPad({
+      nc: service.nc,
+      dir: directory,
+      volume: target.volume,
+      creator: "agents.prompt.test.agent.owner",
+    });
+    try {
+      await client.describe();
+      service.view.bytes = (1 << 20) + 16;
+      service.view.objects = 101;
+      const before = service.calls.length;
+      const result = await client.diagnostics();
+      expect(result.status).toBe("observed");
+      expect(result.charged).toEqual({ bytes: (1 << 20) + 16, objects: 101 });
+      expect(result.ordinary_headroom).toEqual({ bytes: 0, objects: 0 });
+      expect(result.revision).toBe(service.view.revision);
+      expect(result.lifetime?.reserve_bytes).toBe(8 * 2 ** 20);
+      expect(service.calls.slice(before).map((call) => call.verb)).toEqual(["info", "volume.get"]);
+    } finally {
+      await client.close();
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it("keeps pending renewal and refuses changed authority or unavailable reads", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sp-diagnostics-"));
+    const service = new Service();
+    const client = await nativeScratchPad({
+      nc: service.nc,
+      dir: directory,
+      volume: target.volume,
+      creator: "agents.prompt.test.agent.owner",
+    });
+    try {
+      await client.describe();
+      service.block = "volume.renew";
+      await expect(client.renewLease(service.view.lifetime!.expires_at + 1)).rejects.toThrow();
+      service.block = "";
+      const before = service.calls.length;
+      expect((await client.diagnostics()).pending).toBe("renew");
+      expect(service.calls.slice(before).map((call) => call.verb)).toEqual(["info", "volume.get"]);
+      service.scope!.admission = { ...admission, generation: admission.generation + 1 };
+      await expect(client.diagnostics()).rejects.toMatchObject({ code: "fenced" });
+      service.scope = undefined;
+      await expect(client.diagnostics()).rejects.toMatchObject({ code: "denied" });
+      service.block = "info";
+      await expect(client.diagnostics()).rejects.toThrow();
+      const sent = service.calls.slice(before).map((call) => call.verb);
+      expect(sent.every((verb) => verb === "info" || verb === "volume.get")).toBe(true);
+    } finally {
+      await client.close();
+      await rm(directory, { recursive: true });
+    }
+  });
+});
 const directories: string[] = [];
 async function directory(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "sp-lifetime-"));

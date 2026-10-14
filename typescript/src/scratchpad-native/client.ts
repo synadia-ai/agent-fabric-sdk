@@ -100,6 +100,21 @@ export interface RecoveryResult {
   volume?: VolumeView;
   release?: VolumeReleaseOutcome;
 }
+/** Charged encoded content includes chunks, metadata, retained history and reservations. */
+export interface ScratchPadDiagnostics {
+  volume: string;
+  status: "unbound" | "observed";
+  allowance: { bytes: number; objects: number };
+  pending?: string;
+  target?: Target;
+  revision?: number;
+  head_generation?: number;
+  closed?: boolean;
+  charged?: { bytes: number; objects: number };
+  /** Current counters only. Metadata, control slots and concurrent work can still refuse a write. */
+  ordinary_headroom?: { bytes: number; objects: number };
+  lifetime?: VolumeView["lifetime"];
+}
 interface Publication {
   kind: "publish";
   command: Command;
@@ -515,6 +530,51 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
         refuse("busy", "recover the pending control request before resetting the writer");
       return this.reset({ slot: 0, generation: options.expectedGeneration });
     });
+  }
+
+  /** Observe allowances and charged usage without creating or changing a volume. */
+  diagnostics(): Promise<ScratchPadDiagnostics> {
+    return this.run(
+      async () => {
+        const info = await this.transport.info();
+        if (!sameValue(info.principal, this.principal))
+          throw new NativeScratchPadError("unauthenticated", "authenticated principal changed", { local: true });
+        const scope = info.scopes.find((entry) => entry.volume === this.state.volume);
+        if (!scope) refuse("denied", "configured volume has no current allowance");
+        if (!sameValue(scope.admission, this.state.admission))
+          refuse("fenced", "configured volume belongs to another lifetime");
+        const pending = this.state.pending?.kind ?? (this.state.renewal ? "renew" : undefined);
+        const result: ScratchPadDiagnostics = {
+          volume: this.state.volume,
+          status: "unbound",
+          allowance: { bytes: scope.bytes, objects: scope.objects },
+          ...(pending ? { pending } : {}),
+        };
+        // A creation may have succeeded before its reply was saved. An unbound
+        // workspace cannot prove remote absence or zero usage with a read.
+        if (!this.state.target) return result;
+        const view = await this.transport.getVolume(this.state.target);
+        if (!sameValue(view.owner, this.principal)) refuse("denied", "volume owner differs");
+        if (!sameValue(view.lifetime?.admission, this.state.admission))
+          refuse("fenced", "volume lifetime differs");
+        return {
+          ...result,
+          status: "observed",
+          target: view.target,
+          revision: view.revision,
+          head_generation: view.head.generation,
+          closed: view.closed,
+          charged: { bytes: view.bytes, objects: view.objects },
+          ordinary_headroom: {
+            bytes: Math.max(0, scope.bytes - view.bytes),
+            objects: Math.max(0, scope.objects - view.objects),
+          },
+          ...(view.lifetime ? { lifetime: view.lifetime } : {}),
+        };
+      },
+      true,
+      true,
+    );
   }
 
   describe(): Promise<{ volume: VolumeView; pending?: string }> {

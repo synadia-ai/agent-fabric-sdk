@@ -869,3 +869,91 @@ async def test_private_collection_observes_exact_saved_epoch(
     state = store.load()
     assert "pending" not in state
     store.close()
+
+
+async def test_diagnostics_never_creates_unbound_volume(tmp_path: Path) -> None:
+    service = Service()
+    client = await service.open(tmp_path)
+    try:
+        before = len(service.calls)
+        result = await client.diagnostics()
+        assert result["status"] == "unbound"
+        assert result["allowance"] == {"bytes": 1 << 20, "objects": 100}
+        assert "charged" not in result and "ordinary_headroom" not in result
+        assert [verb for verb, _ in service.calls[before:]] == ["info"]
+        assert not [verb for verb, _ in service.calls if verb != "info"]
+    finally:
+        await client.close()
+
+
+async def test_diagnostics_does_not_change_persistent_workspace(tmp_path: Path) -> None:
+    service = Service()
+    client = await service.open(tmp_path)
+    try:
+        await client.describe()
+        await client.close()
+        store = WorkspaceStore.open(tmp_path)
+        before = store.load()
+        store.close()
+        client = await service.open(tmp_path)
+        requests = len(service.calls)
+        await client.diagnostics()
+        await client.close()
+        store = WorkspaceStore.open(tmp_path)
+        assert store.load() == before
+        store.close()
+        assert [verb for verb, _ in service.calls[requests:]] == ["info", "volume.get"]
+    finally:
+        await client.close()
+
+
+async def test_diagnostics_reports_charged_history_and_exhausted_ordinary_capacity(
+    tmp_path: Path,
+) -> None:
+    service = Service()
+    client = await service.open(tmp_path)
+    try:
+        await client.describe()
+        service.view["bytes"] = (1 << 20) + 16
+        service.view["objects"] = 101
+        before = len(service.calls)
+        result = await client.diagnostics()
+        assert result["status"] == "observed"
+        assert result["charged"] == {"bytes": (1 << 20) + 16, "objects": 101}
+        assert result["ordinary_headroom"] == {"bytes": 0, "objects": 0}
+        assert result["revision"] == service.view["revision"]
+        assert result["lifetime"]["reserve_bytes"] == 8 * 2**20
+        assert [verb for verb, _ in service.calls[before:]] == ["info", "volume.get"]
+    finally:
+        await client.close()
+
+
+async def test_diagnostics_preserves_pending_renewal_and_refuses_bad_observations(
+    tmp_path: Path,
+) -> None:
+    service = Service()
+    client = await service.open(tmp_path)
+    try:
+        await client.describe()
+        service.block = "volume.renew"
+        with pytest.raises(NativeScratchPadError):
+            await client.renew_lease(service.view["lifetime"]["expires_at"] + 1)
+        service.block = ""
+        before = len(service.calls)
+        assert (await client.diagnostics())["pending"] == "renew"
+        assert [verb for verb, _ in service.calls[before:]] == ["info", "volume.get"]
+        assert service.scope is not None
+        service.scope["admission"] = {**ADMISSION, "generation": ADMISSION["generation"] + 1}
+        with pytest.raises(NativeScratchPadError) as fenced:
+            await client.diagnostics()
+        assert fenced.value.code == "fenced"
+        service.scope = None
+        with pytest.raises(NativeScratchPadError) as denied:
+            await client.diagnostics()
+        assert denied.value.code == "denied"
+        service.block = "info"
+        with pytest.raises(NativeScratchPadError):
+            await client.diagnostics()
+        assert all(verb in ("info", "volume.get") for verb, _ in service.calls[before:])
+    finally:
+        await client.close()

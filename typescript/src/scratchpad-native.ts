@@ -6,6 +6,7 @@ export {
   type PublishOptions,
   type PublishResult,
   type RecoveryResult,
+  type ScratchPadDiagnostics,
   type VolumeReleaseOutcome,
 } from "./scratchpad-native/client";
 export {

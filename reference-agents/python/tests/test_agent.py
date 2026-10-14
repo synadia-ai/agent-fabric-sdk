@@ -389,6 +389,27 @@ async def test_the_agent_against_a_fake_model_behind_a_fake_proxy(tmp_path: Path
             assert len(pad.commits) == 1 and pad.grants == []
             # And no history: an unsigned claim names no caller to keep one for.
             assert [m["role"] for m in fake.requests[0].body["messages"]] == ["system", "user"]
+            # Usage runs through the model and real signed agent handler, but
+            # its bounded reply can still go out if its normal handoff is refused.
+            inspections: list[str] = []
+
+            async def diagnostics():
+                inspections.append("diagnostics")
+                return {"volume": "Replies", "status": "observed", "allowance": {"bytes": 1024, "objects": 100},
+                        "charged": {"bytes": 1024, "objects": 100}, "ordinary_headroom": {"bytes": 0, "objects": 0}}
+
+            pad.diagnostics = diagnostics  # type: ignore[attr-defined] — external service fixture
+            async def full_commit(text, path, trace):
+                pad.commits.append((text, path, trace))
+                raise RuntimeError("full volume")
+
+            pad.commit = full_commit  # type: ignore[method-assign] — external service fixture
+            pad.commits.clear(); pad.grants.clear(); fake.requests.clear()
+            fake.usage_mode = True
+            answer = await prompt("inspect storage")
+            assert json.loads(answer.removeprefix("storage: "))["ordinary_headroom"] == {"bytes": 0, "objects": 0}
+            assert inspections == ["diagnostics"] and len(pad.commits) == 1
+            assert len(fake.requests) == 2
         finally:
             await caller.close()
             await agent.stop()

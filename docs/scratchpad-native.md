@@ -1,5 +1,45 @@
 # Native ScratchPad clients
 
+## Read-only usage diagnostics (unreleased)
+
+Both native clients provide `diagnostics()`. It accepts no target, identity
+or credentials from the model. It reads the authenticated allowance for the
+configured volume and, when the workspace has a saved creation identity,
+the current volume counters. It does not initialize a volume or writer,
+renew a lease, recover pending work, collect content, or change the workspace.
+
+- `allowance` is the ordinary encoded-byte and object allowance.
+- `charged` includes encoded chunks, file and tree metadata, retained
+  history, content not yet collected, and prepared allocations. These are
+  not current file sizes, file counts, or physical broker disk usage.
+- `ordinary_headroom` subtracts charged counters from the ordinary allowance
+  and clamps at zero. It is an observation, not a promise that another
+  checkpoint fits: metadata, available control slots, lifetime state and
+  concurrent work still matter. A removal reserve is separate and appears
+  in `lifetime`; it is not ordinary upload space.
+- `revision`, `head_generation`, `closed`, `lifetime` and local `pending`
+  explain the observed state. Allowance and volume reads are separate;
+  their combination is not an atomic cross-service snapshot.
+
+An `unbound` workspace has no saved creation identity. The method reports
+the allowance but omits usage and headroom. It cannot prove zero remote
+usage: an earlier creation could have succeeded before its reply was saved.
+Changed authority, a retired generation, access refusal and an unavailable
+service produce an explicit error, never a zero-usage substitute.
+
+The reference agents expose `scratchpad_usage` when their configured client
+supports this method and `AGENT_TOOLS` is not `none`. The tool itself writes
+nothing. The agent retains its normal policy of publishing its final reply;
+if that handoff fails, a small reply still goes out inline. Reporting usage
+therefore does not require a successful artifact upload. Successful diagnostics
+include local pending work; a failed query reports its error code rather than
+cached usage or recovery state. An older client or CLI adapter offers no native usage tool; the
+harness skill can still use `scripts/sp info` and `scripts/sp describe`.
+
+This addition needs an updated Fabric client package and reference-agent
+source. It needs no server, `sp`, credential or workspace-format change.
+It is separate from the published Python Fabric 0.1.0 release.
+
 ## Client contract
 
 The native clients use ScratchPad's current `api/v2` over the tenant's existing NATS import.

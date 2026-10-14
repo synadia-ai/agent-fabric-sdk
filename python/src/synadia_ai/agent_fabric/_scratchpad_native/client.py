@@ -414,6 +414,52 @@ class NativeScratchPad(ScratchPadReader):
                 refuse("busy", "recover the pending control request before resetting the writer")
             return await self._reset({"slot": 0, "generation": expected_generation})
 
+    async def diagnostics(self) -> dict[str, Any]:
+        """Observe allowances and charged usage without creating or changing a volume."""
+        async with self._mutation(allow_renewal=True, allow_disposed=True):
+            info = await self._transport.info()
+            if info["principal"] != self._principal:
+                refuse("unauthenticated", "authenticated principal changed")
+            scope = next(
+                (entry for entry in info["scopes"] if entry["volume"] == self._state["volume"]),
+                None,
+            )
+            if scope is None:
+                refuse("denied", "configured volume has no current allowance")
+            if scope.get("admission") != self._state.get("admission"):
+                refuse("fenced", "configured volume belongs to another lifetime")
+            pending = self._state.get("pending")
+            kind = pending["kind"] if pending else "renew" if self._state.get("renewal") else None
+            result: dict[str, Any] = {
+                "volume": self._state["volume"],
+                "status": "unbound",
+                "allowance": {"bytes": scope["bytes"], "objects": scope["objects"]},
+                **({"pending": kind} if kind else {}),
+            }
+            # A creation may have succeeded before its reply was saved. An unbound
+            # workspace cannot prove remote absence or zero usage with a read.
+            if "target" not in self._state:
+                return result
+            view = await self._transport.get_volume(self._target())
+            if view["owner"] != self._principal:
+                refuse("denied", "volume owner differs")
+            if view.get("lifetime", {}).get("admission") != self._state.get("admission"):
+                refuse("fenced", "volume lifetime differs")
+            return {
+                **result,
+                "status": "observed",
+                "target": view["target"],
+                "revision": view["revision"],
+                "head_generation": view["head"]["generation"],
+                "closed": view["closed"],
+                "charged": {"bytes": view["bytes"], "objects": view["objects"]},
+                "ordinary_headroom": {
+                    "bytes": max(0, scope["bytes"] - view["bytes"]),
+                    "objects": max(0, scope["objects"] - view["objects"]),
+                },
+                **({"lifetime": view["lifetime"]} if "lifetime" in view else {}),
+            }
+
     async def describe(self) -> dict[str, Any]:
         async with self._mutation(allow_renewal=True, allow_disposed=True):
             view = await self._ensure_target()

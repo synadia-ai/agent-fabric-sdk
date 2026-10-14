@@ -21,7 +21,8 @@ describe("bounded reply through actual agent", () => {
   const callerUser = newUser(), agentUser = newUser();
   let server: TestNatsServer, model: Server, nc: NatsConnection, dir: string, creds: string, modelURL: string;
   let modelReply = "";
-  const requests: { messages: { role: string; content: string }[] }[] = [];
+  let usageMode = false;
+  const requests: { messages: { role: string; content: string }[]; tools?: unknown[] }[] = [];
   let signed: Agents, unsigned: Agents;
 
   beforeAll(async () => {
@@ -37,10 +38,14 @@ describe("bounded reply through actual agent", () => {
       const chunks: Buffer[] = [];
       req.on("data", (chunk: Buffer) => chunks.push(chunk));
       req.on("end", () => {
-        requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        requests.push(body);
+        const message = usageMode && body.messages.at(-1).role !== "tool"
+          ? { role: "assistant", content: "", tool_calls: [{ id: "usage_1", type: "function", function: { name: "scratchpad_usage", arguments: "{}" } }] }
+          : { role: "assistant", content: modelReply };
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify({ id: "bounded-model", object: "chat.completion", model: "fixture",
-          choices: [{ index: 0, message: { role: "assistant", content: modelReply }, finish_reason: "stop" }],
+          choices: [{ index: 0, message, finish_reason: "tool_calls" in message ? "tool_calls" : "stop" }],
           usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }));
       });
     });
@@ -56,12 +61,44 @@ describe("bounded reply through actual agent", () => {
     await server?.stop(); await rm(dir, { recursive: true, force: true });
   });
 
+  it("offers usage and delivers a full-volume answer without requiring an artifact write", async () => {
+    const calls: string[] = [];
+    const pad = {
+      async diagnostics() { calls.push("diagnostics"); return { volume: "Replies", status: "observed" as const, allowance: { bytes: 1024, objects: 100 }, charged: { bytes: 1024, objects: 100 }, ordinary_headroom: { bytes: 0, objects: 0 } }; },
+      async commit() { calls.push("commit"); throw new Error("full volume"); },
+      async read() { calls.push("read"); throw new Error("unexpected read"); },
+      async owns() { return true; },
+      async grantRead() { calls.push("grant"); },
+      granted(): GrantKind | undefined { return undefined; },
+    };
+    const agent = await startAgent({ nats: { url: server.url, nkey: creds },
+      agent: { kind: "delivery", owner: "test", name: "usage", description: "usage test",
+        systemPrompt: "test", minSenderTrust: "any", tools: "blocking", heartbeatIntervalS: undefined,
+        maxHistoryExchanges: 0, readyFile: undefined },
+      model: { proxyUrl: modelURL, virtualKey: "fixture", model: "fixture", timeoutMs: 5000 },
+      tools: { replyTimeoutMs: 5000 } }, () => {}, { env: {}, scratchpad: pad });
+    try {
+      usageMode = true;
+      modelReply = "Your ordinary quota is full.";
+      requests.length = 0;
+      const [found] = await signed.discover({ filter: { agent: "delivery" }, timeoutMs: 200 });
+      let reply = "";
+      for await (const message of await found!.prompt("inspect storage", { maxWaitMs: 5000 }))
+        if (message.type === "response") reply += message.text;
+      expect(reply).toBe(modelReply);
+      expect(calls).toEqual(["diagnostics", "commit"]);
+      expect(requests).toHaveLength(2);
+      expect(JSON.parse(requests[1]!.messages.at(-1)!.content).ordinary_headroom).toEqual({ bytes: 0, objects: 0 });
+    } finally { usageMode = false; await agent.stop(); }
+  });
+
   for (const item of cases) {
     it(item.name, async () => {
       const text = item.unit.repeat(item.repeat) + item.suffix;
       const commits: string[] = [], grants: Grantee[] = [];
       const failure = "PRIVATE_PROVIDER_ERROR" + "e".repeat(100000);
-      const pad: ScratchPadClient = {
+      const pad: ScratchPadClient & { diagnostics(): Promise<unknown> } = {
+        async diagnostics() { throw new Error("usage must not run with AGENT_TOOLS=none"); },
         async commit(value) { commits.push(value); if (item.mode === "publish-failure") throw new Error(failure); return reference; },
         async read() { throw new Error("unexpected read"); },
         async owns() { return true; },
@@ -87,6 +124,7 @@ describe("bounded reply through actual agent", () => {
         }
         requests.length = 0; modelReply = text;
         const reply = await prompt();
+        expect(requests[0]!.tools).toBeUndefined();
         expect(commits).toEqual(item.mode === "absent" ? [] : [text]);
         expect(grants).toHaveLength(item.mode === "granted" ? 1 : 0);
         if (grants.length) expect(grants[0]!.user).toBe(callerUser.publicKey);
