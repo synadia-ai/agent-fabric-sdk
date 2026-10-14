@@ -16,8 +16,14 @@ The PyPI project owner creates a pending GitHub trusted publisher for:
 - Environment: `pypi`
 
 The workflow uses short-lived GitHub OIDC credentials. No permanent PyPI
-token belongs in this repository. A repository admin can restrict the
-`pypi` environment to `python-v*` tags.
+token belongs in this repository. Before the publisher is enabled, a
+repository admin must restrict the `pypi` environment to `python-v*` tags.
+It must not accept branch or pull-request deployments. Tag protection is
+recommended so only authorized release maintainers can create those tags.
+
+Repository visibility remains an owner decision. Package installation
+requires PyPI only. The package's SDK repository links need repository
+access until the owner makes that SDK repository public.
 
 ## Qualification and publication
 
