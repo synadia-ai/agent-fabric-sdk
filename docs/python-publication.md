@@ -2,7 +2,7 @@
 
 Publish the protocol caller and service first, in that order. The Fabric
 release is `synadia-ai-agent-fabric` 0.1.0 and uses exact protocol versions
-0.8.0 and 0.5.0 in its publication artifacts. Those versions must already
+0.8.1 and 0.5.0 in its publication artifacts. Those versions must already
 be available on PyPI before the Fabric installation gate can pass.
 
 ## Trusted publisher

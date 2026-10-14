@@ -42,11 +42,11 @@ class PythonReleaseTests(unittest.TestCase):
         with zipfile.ZipFile(wheel, "w") as archive:
             archive.writestr(
                 "package.dist-info/METADATA",
-                "Name: synadia-ai-agent-fabric\nVersion: 0.1.0\nRequires-Dist: synadia-ai-agents==0.8.0\nRequires-Dist: synadia-ai-agent-service==0.5.0\n",
+                "Name: synadia-ai-agent-fabric\nVersion: 0.1.0\nRequires-Dist: synadia-ai-agents==0.8.1\nRequires-Dist: synadia-ai-agent-service==0.5.0\n",
             )
             archive.writestr("package.dist-info/licenses/LICENSE", "license")
             archive.writestr("synadia_ai/agent_fabric/THIRD_PARTY_NOTICES", "notices")
-        project = '[project]\nname = "synadia-ai-agent-fabric"\nversion = "0.1.0"\ndependencies = ["synadia-ai-agents==0.8.0", "synadia-ai-agent-service==0.5.0"]\n'
+        project = '[project]\nname = "synadia-ai-agent-fabric"\nversion = "0.1.0"\ndependencies = ["synadia-ai-agents==0.8.1", "synadia-ai-agent-service==0.5.0"]\n'
         with tarfile.open(sdist, "w:gz") as archive:
             for name, value in {
                 "pyproject.toml": project,
@@ -63,7 +63,7 @@ class PythonReleaseTests(unittest.TestCase):
         source = '[project]\nname = "synadia-ai-agent-fabric"\nversion = "0.1.0"\ndependencies = [\n"synadia-ai-agents>=0.8",\n"synadia-ai-agent-service>=0.5",\n"nats-py>=2.16",\n]\n[tool.uv.sources]\nsynadia-ai-agents = { path = "../source" }\n[build-system]\nrequires = ["hatchling"]\n'
         staged = release.stage_project(source)
         self.assertNotIn("../source", staged)
-        self.assertIn('"synadia-ai-agents==0.8.0"', staged)
+        self.assertIn('"synadia-ai-agents==0.8.1"', staged)
         self.assertIn('"synadia-ai-agent-service==0.5.0"', staged)
         self.assertIn('"hatchling==1.32.0"', staged)
         self.assertIn('"nats-py>=2.16"', staged)

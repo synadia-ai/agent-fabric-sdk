@@ -21,7 +21,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "synadia-ai-agent-fabric"
-DEPENDENCIES = {"synadia-ai-agents": "0.8.0", "synadia-ai-agent-service": "0.5.0"}
+DEPENDENCIES = {"synadia-ai-agents": "0.8.1", "synadia-ai-agent-service": "0.5.0"}
 CUTOFF = "2026-10-07T00:00:00Z"
 
 
