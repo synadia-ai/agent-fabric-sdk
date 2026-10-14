@@ -149,6 +149,17 @@ def stage_project(text: str) -> str:
     return result
 
 
+def clean_uv_output(directory: Path) -> None:
+    ignore = directory / ".gitignore"
+    if ignore.exists():
+        require(
+            ignore.is_file() and not ignore.is_symlink(),
+            "unexpected generated ignore file",
+        )
+        require(ignore.read_bytes() == b"*", "unexpected generated ignore contents")
+        ignore.unlink()
+
+
 def build(directory: Path, version: str) -> None:
     require(not directory.exists(), "artifact output already exists")
     require(
@@ -201,6 +212,7 @@ def build(directory: Path, version: str) -> None:
             ["uv", "build", "--wheel", "--out-dir", str(directory), str(project_root)],
             env=env,
         )
+    clean_uv_output(directory)
     artifacts = inspect(directory, version)
     record = {
         "schema": 1,

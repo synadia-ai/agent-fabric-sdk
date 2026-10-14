@@ -19,6 +19,23 @@ SPEC.loader.exec_module(release)
 
 
 class PythonReleaseTests(unittest.TestCase):
+    def test_only_uv_generated_ignore_file_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            ignore = root / ".gitignore"
+            ignore.write_bytes(b"*")
+            wheel = root / "keep.whl"
+            wheel.write_bytes(b"keep artifact bytes")
+            release.clean_uv_output(root)
+            self.assertFalse(ignore.exists())
+            self.assertEqual(wheel.read_bytes(), b"keep artifact bytes")
+            ignore.write_bytes(b"unexpected")
+            with self.assertRaisesRegex(
+                ValueError, "unexpected generated ignore contents"
+            ):
+                release.clean_uv_output(root)
+            self.assertEqual(ignore.read_bytes(), b"unexpected")
+
     def artifacts(self, root: Path) -> tuple[Path, Path]:
         wheel = root / "package.whl"
         sdist = root / "package.tar.gz"
