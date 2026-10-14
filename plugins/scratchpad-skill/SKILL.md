@@ -38,8 +38,8 @@ The workspace is private to this agent and persists across restarts.
 Each successful command prints JSON.
 Read the returned receipt before reporting that publication succeeded.
 An upload alone does not publish a checkpoint.
-Retention preserves the root until explicit release.
-Its deadline permits later client cleanup.
+Retention preserves the root for its recorded promise.
+A finite deadline permits later cleanup by the client or the private lifecycle worker.
 A grant separately permits one authenticated principal to read that root and path.
 Do not print credential contents.
 
@@ -82,6 +82,10 @@ If `info` reports an unknown command, an older binary was selected; continue wit
 Rerun the saved creation action after an unknown outcome.
 An established writer whose journal disappeared requires an explicit reset.
 Initialization cannot silently reset that writer.
+For a reusable lifetime, `info` also returns its admission binding.
+`init` saves that binding before its first creation request and reuses it after a restart.
+A saved creation cannot adopt a later admission with the same volume name.
+Preserve the workspace after a refusal; do not erase it to bypass lifetime fencing.
 
 ## Publish a file and share it with the agent that prompted you
 
@@ -193,9 +197,12 @@ scripts/sp maintain --apply
 ```
 
 The first command reports the proposed maintenance.
-The second releases unprotected expired pins, closes the volume, traces retained dependencies, collects unreachable objects, and reopens it.
+The second releases unprotected expired pins and closes a collection interval.
+On a reusable deployment, private maintenance traces retained dependencies,
+collects unreachable objects and reopens that interval. The client observes its completion.
+On an existing deployment, the client performs that collection.
 Maintenance does not scrub retained file payloads.
-If interrupted, recover the saved request or repeat maintenance against the durable closed state.
+If interrupted, recover the saved request. A newer collection interval fences that request.
 Capacity refusal requires maintenance or an explicit operator decision; it never permits eviction of retained content.
 
 ## Capacity
@@ -206,3 +213,63 @@ Objects include chunks, file metadata, and directories.
 Retained results and unfinished uploads consume the same allowance.
 Replacing unique content needs room for both versions until old retention is released and collection completes.
 Local spools also need enough private disk space for the prepared artifact.
+
+### Choose what to remove at capacity
+
+On a reusable volume, `describe` includes `lifetime` with the lease, grace period,
+recovery-read state and reserved metadata allowance.
+Choose a path from the current head to remove. The service never chooses a live
+file to evict because the volume is full.
+
+```sh
+scripts/sp remove --path "$ARTIFACT_PATH" --operation-id "$REMOVE_ID"
+scripts/sp remove --path "$ARTIFACT_PATH" --operation-id "$REMOVE_ID" --apply
+```
+
+The first command reports a plan without changing the head.
+Applying saves the exact command and uses reserved metadata space within the reported bounds.
+The receipt confirms the new head. Retention or grants can still protect the removed content.
+Private maintenance returns space after that content is no longer protected.
+After an unknown result, use `recover`; do not change the saved path or operation identifier.
+Older binaries or deployments can refuse this command; that refusal does not permit eviction.
+
+### Keep or end a reusable lifetime
+
+A volume with `lifetime.expires_at` equal to zero is durable.
+For a managed lease, request one absolute Unix deadline in seconds:
+
+```sh
+scripts/sp renew --until "$UNTIL"
+```
+
+Save and retry the same deadline. Renewal must win before retirement begins.
+An already achieved renewal can still recover after that deadline passes.
+If recovery reports definite `expired` for an unachieved saved deadline, only the
+renewal intent is cleared. Request a new absolute deadline if the same lifetime is
+still renewable, then recover the unchanged ordinary pending operation.
+An unknown result keeps the saved renewal pending; do not replace its deadline.
+During recorded grace, recovery reads can remain available while ordinary writes are closed.
+Do not infer disposal authority from an agent disconnect, an idle volume, or full quota.
+
+Whole-volume retirement ends all head, retention, grant and access promises in its plan.
+It can permanently delete every artifact. Use it only when the user has authorized
+ending those promises and any required export has been restored and checked.
+
+```sh
+scripts/sp retire --operation-id "$RETIRE_ID"
+scripts/sp retire --operation-id "$RETIRE_ID" --end-promises --apply
+```
+
+Review the first result before applying. The exact terminal operation persists for recovery.
+If recovery proves a strictly newer nonterminal plan for the same incarnation,
+slot, generation, target, and saved request, it clears only the old release intent
+and reports `fenced`. The lifetime remains nonterminal. Inspect the reported
+lifetime and renew before ordinary work if needed. Review a new plan before
+applying again; this refusal does not mean that artifacts were disposed or capacity returned.
+Unknown or mismatched evidence and an already accepted terminal fence stay pending.
+`disposed` reports physical disposal; only `capacity_returned` confirms admission capacity is free.
+If a successor generation proves the old lifetime ended but this workspace never
+observed its own release fence, recovery also reports `acceptance_unknown: true`.
+That result confirms capacity return while leaving the original operation's acceptance unknown.
+Preserve the old workspace through completion. A later admission is a different lifetime,
+and old references and receipts do not select it.

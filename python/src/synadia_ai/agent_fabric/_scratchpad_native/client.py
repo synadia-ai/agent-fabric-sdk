@@ -34,13 +34,18 @@ from .protocol import (
     text,
     uint,
     validate_action,
+    validate_admission_binding,
     validate_command,
     validate_path,
     validate_principal,
     validate_receipt,
+    validate_removal_plan,
+    validate_renew_request,
     validate_retention_handle,
     validate_target,
     validate_volume,
+    validate_volume_release_plan,
+    validate_volume_release_result,
     validate_writer,
 )
 from .reader import ScratchPadReader, wire_trace
@@ -97,13 +102,59 @@ def validate_state(value: Any) -> None:  # noqa: PLR0912, PLR0915 -- one case pe
     state = record(
         value,
         ["version", "principal", "volume", "creator", "creation", "next", "grants"],
-        ["target", "writer", "pending", "last"],
+        [
+            "target",
+            "writer",
+            "pending",
+            "last",
+            "admission",
+            "removal",
+            "disposal",
+            "renewal",
+            "disposal_plan",
+            "release_acceptance_unknown",
+        ],
     )
     check(state["version"] == 1, "unsupported workspace version")
     validate_principal(state["principal"])
     validate_volume(state["volume"])
     text(state["creator"], 512, 1)
     validate_action(state["creation"])
+    if "admission" in state:
+        validate_admission_binding(state["admission"])
+    if "removal" in state:
+        removal = validate_receipt(state["removal"])
+        check(
+            removal["command"].get("remove_path")
+            and removal["volume"] == state["volume"]
+            and removal["principal"] == state["principal"]
+            and removal["command"]["creation_id"] == state.get("target", {}).get("creation_id"),
+            "saved removal differs from workspace",
+        )
+    if "disposal" in state:
+        disposal = validate_volume_release_result(state["disposal"])
+        check(
+            disposal["capacity_returned"]
+            and "pending" not in state
+            and disposal["target"] == state.get("target")
+            and disposal["slot"] == state.get("admission", {}).get("slot")
+            and disposal["generation"] == state.get("admission", {}).get("generation"),
+            "unfinished or foreign disposal",
+        )
+    if "disposal_plan" in state:
+        plan = validate_volume_release_plan(state["disposal_plan"])
+        disposal = state.get("disposal", {})
+        check(
+            plan["request"]["target"] == disposal.get("target")
+            and all(plan[key] == disposal.get(key) for key in ("slot", "generation"))
+            and plan["request"]["operation_id"] == disposal.get("operation_id"),
+            "completed release plan differs from disposal",
+        )
+    if "release_acceptance_unknown" in state:
+        check(
+            state["release_acceptance_unknown"] is True and "disposal" in state,
+            "invalid release acceptance marker",
+        )
     uint(state["next"], minimum=1)
     if "target" in state:
         validate_target(state["target"])
@@ -111,6 +162,15 @@ def validate_state(value: Any) -> None:  # noqa: PLR0912, PLR0915 -- one case pe
     if "writer" in state:
         validate_writer(state["writer"])
         check(state["writer"]["slot"] == 0 and "target" in state, "invalid workspace writer")
+    if "renewal" in state:
+        validate_renew_request(state["renewal"])
+        check(
+            state.get("admission")
+            and state["renewal"]["target"] == state.get("target")
+            and "disposal" not in state
+            and state.get("pending", {}).get("kind") not in ("renew", "volume_release"),
+            "saved renewal conflicts with the workspace lifetime",
+        )
     check(
         isinstance(state["grants"], list) and len(state["grants"]) <= GRANT_SLOTS,
         "workspace grant ledger exceeds bound",
@@ -150,7 +210,25 @@ def validate_state(value: Any) -> None:  # noqa: PLR0912, PLR0915 -- one case pe
     pending = state["pending"]
     check(isinstance(pending, dict), "invalid pending operation")
     kind = pending.get("kind")
-    if kind == "publish":
+    if kind == "renew":
+        record(pending, ["kind", "request"])
+        validate_renew_request(pending["request"])
+    elif kind == "remove":
+        record(pending, ["kind", "plan"])
+        plan = validate_removal_plan(pending["plan"])
+        check(
+            plan["target"] == state["target"]
+            and plan["command"]["writer"] == state.get("writer")
+            and plan["command"]["number"] == state["next"],
+            "saved removal writer differs",
+        )
+    elif kind == "volume_release":
+        record(pending, ["kind", "plan"], ["fence_accepted"])
+        if "fence_accepted" in pending:
+            check(pending["fence_accepted"] is True, "invalid release fence marker")
+        plan = validate_volume_release_plan(pending["plan"])
+        check(plan["request"]["target"] == state["target"], "saved disposal names another target")
+    elif kind == "publish":
         record(pending, ["kind", "command", "path", "ttl"], ["expiry_revision", "reference"])
         if "reference" in pending:
             spec = validate_reference_spec(pending["reference"])
@@ -190,6 +268,14 @@ def validate_state(value: Any) -> None:  # noqa: PLR0912, PLR0915 -- one case pe
         check(False, "unknown workspace pending operation")
     if "request" in pending:
         check(pending["request"]["target"] == state["target"], "pending target differs")
+    if kind in ("remove", "volume_release"):
+        check(
+            state.get("admission")
+            and all(
+                pending["plan"][key] == state["admission"][key] for key in ("slot", "generation")
+            ),
+            "saved plan names another lifetime",
+        )
 
 
 class NativeScratchPad(ScratchPadReader):
@@ -200,7 +286,7 @@ class NativeScratchPad(ScratchPadReader):
         transport: ScratchPadTransport,
         store: WorkspaceStore,
         state: dict[str, Any],
-        scope: dict[str, Any],
+        scope: dict[str, Any] | None,
         ttl: int,
     ) -> None:
         super().__init__(transport, state["principal"])
@@ -212,10 +298,16 @@ class NativeScratchPad(ScratchPadReader):
         self._closing = False
 
     @asynccontextmanager
-    async def _mutation(self) -> AsyncIterator[None]:
+    async def _mutation(
+        self, *, allow_renewal: bool = False, allow_disposed: bool = False
+    ) -> AsyncIterator[None]:
         if self._closing:
             refuse("closed", "native client is closed")
         async with self._lock:
+            if self._state.get("renewal") and not allow_renewal:
+                refuse("busy", "recover the saved renewal before another mutation")
+            if self._state.get("disposal") and not allow_disposed:
+                refuse("fenced", "this workspace lifetime has been released")
             yield
 
     def _save(
@@ -243,7 +335,15 @@ class NativeScratchPad(ScratchPadReader):
     async def _ensure_target(self) -> dict[str, Any]:
         if "target" not in self._state:
             view = await self._transport.create_volume(
-                {"volume": self._state["volume"], "action": self._state["creation"]}
+                {
+                    "volume": self._state["volume"],
+                    "action": self._state["creation"],
+                    **(
+                        {"admission": self._state["admission"]}
+                        if "admission" in self._state
+                        else {}
+                    ),
+                }
             )
             if view["owner"] != self._principal:
                 raise unknown(None, "volume creation names another owner")
@@ -251,6 +351,10 @@ class NativeScratchPad(ScratchPadReader):
             return view
         view = await self._transport.get_volume(self._target())
         check(view["owner"] == self._principal, "workspace principal is no longer the volume owner")
+        check(
+            view.get("lifetime", {}).get("admission") == self._state.get("admission"),
+            "workspace lifetime differs from volume",
+        )
         return view
 
     async def _initialize(self) -> None:
@@ -281,6 +385,7 @@ class NativeScratchPad(ScratchPadReader):
         state = {**self._state, "writer": result, "next": 1}
         state.pop("pending", None)
         state.pop("last", None)
+        state.pop("removal", None)
         self._save(state, remote=True, clear_objects=True)
         return deepcopy(result)
 
@@ -309,16 +414,274 @@ class NativeScratchPad(ScratchPadReader):
             return await self._reset({"slot": 0, "generation": expected_generation})
 
     async def describe(self) -> dict[str, Any]:
-        async with self._mutation():
+        async with self._mutation(allow_renewal=True, allow_disposed=True):
             view = await self._ensure_target()
             pending = self._state.get("pending")
-            return {"volume": view, **({"pending": pending["kind"]} if pending else {})}
+            kind = pending["kind"] if pending else "renew" if self._state.get("renewal") else None
+            return {"volume": view, **({"pending": kind} if kind else {})}
+
+    async def renew_lease(self, until: int) -> dict[str, Any]:
+        """Persist one absolute deadline; retries never extend it implicitly."""
+        async with self._mutation(allow_renewal=True):
+            request = {"target": self._target(), "until": until}
+            validate_renew_request(request)
+            if "disposal" in self._state:
+                refuse("fenced", "this workspace lifetime has been released")
+            pending = self._state.get("pending", {})
+            if pending.get("kind") == "volume_release":
+                refuse("busy", "the saved volume release must settle before renewal")
+            # Keep exact replay of workspaces with the former pending renewal shape.
+            if pending.get("kind") == "renew":
+                if pending["request"] != request:
+                    refuse("busy", "recover the saved renewal before changing its deadline")
+                volume: dict[str, Any] = (await self._lifecycle(pending, fresh=False))["volume"]
+                return volume
+            saved = self._state.get("renewal")
+            if saved and saved != request:
+                refuse("busy", "recover the saved renewal before changing its deadline")
+            if not saved:
+                self._save({**self._state, "renewal": request})
+            return await self._resume_renewal(request, fresh=not saved)
+
+    async def _resume_renewal(self, request: dict[str, Any], *, fresh: bool) -> dict[str, Any]:
+        try:
+            volume = await self._transport.renew_lease(request)
+            if volume.get("lifetime", {}).get("admission") != self._state.get("admission"):
+                raise unknown(None, "renewal names another lifetime")
+        except Exception as error:
+            if (
+                isinstance(error, NativeScratchPadError)
+                and not error.unknown
+                and (fresh or error.code == "expired")
+            ):
+                state = dict(self._state)
+                state.pop("renewal", None)
+                self._save(state, remote=True)
+                raise
+            raise unknown(error, "the saved renewal stays pending; call recover()") from error
+        state = dict(self._state)
+        state.pop("renewal", None)
+        self._save(state, remote=True)
+        return deepcopy(volume)
+
+    async def plan_removal(
+        self, path: str, *, operation_id: str, trace: TraceIds | None = None
+    ) -> dict[str, Any]:
+        """Read-only plan for the caller's chosen path on an initialized writer."""
+        async with self._mutation():
+            if self._state.get("pending"):
+                refuse("busy", "recover the pending operation before planning removal")
+            check(
+                self._state.get("writer") and self._state.get("admission"),
+                "removal requires an initialized reusable writer",
+            )
+            view = await self._ensure_target()
+            return await self._transport.plan_removal(
+                {
+                    "target": self._target(),
+                    "command": {
+                        "creation_id": self._target()["creation_id"],
+                        "writer": self._state["writer"],
+                        "number": self._state["next"],
+                        "operation_id": operation_id,
+                        "base": view["head"],
+                        "root": view["head"]["root"],
+                        "trace": wire_trace(trace),
+                        "remove_path": path,
+                        "retention": {"enabled": False, "slot": 0, "generation": 0, "until": 0},
+                    },
+                }
+            )
+
+    async def apply_removal(self, plan: dict[str, Any]) -> dict[str, Any]:
+        saved = deepcopy(plan)
+        async with self._mutation():
+            validate_removal_plan(saved)
+            check(
+                saved["target"] == self._target()
+                and all(
+                    saved[key] == self._state.get("admission", {}).get(key)
+                    for key in ("slot", "generation")
+                ),
+                "removal plan names another lifetime",
+            )
+            if (
+                not self._state.get("pending")
+                and self._state.get("removal", {}).get("command") == saved["command"]
+            ):
+                result: dict[str, Any] = deepcopy(self._state["removal"])
+                return result
+            result = (await self._begin_lifecycle({"kind": "remove", "plan": saved}))["receipt"]
+            return result
+
+    async def plan_volume_release(
+        self, *, operation_id: str, end_promises: bool = False
+    ) -> dict[str, Any]:
+        """List affected promises. Ending them requires explicit end_promises=True."""
+        async with self._mutation():
+            if self._state.get("pending"):
+                refuse("busy", "recover the pending operation before planning release")
+            check(self._state.get("admission"), "volume release requires a reusable lifetime")
+            return await self._transport.plan_volume_release(
+                {
+                    "target": self._target(),
+                    "operation_id": operation_id,
+                    "end_promises": end_promises,
+                }
+            )
+
+    async def apply_volume_release(self, plan: dict[str, Any]) -> dict[str, Any]:
+        saved = deepcopy(plan)
+        async with self._mutation(allow_disposed=True):
+            validate_volume_release_plan(saved)
+            if not self._state.get("pending") and "disposal" in self._state:
+                check(
+                    self._state.get("disposal_plan") == saved,
+                    "completed release differs from plan",
+                )
+                return self._release_outcome()
+            result: dict[str, Any] = (
+                await self._begin_lifecycle({"kind": "volume_release", "plan": saved})
+            )["release"]
+            return result
+
+    async def _begin_lifecycle(self, pending: dict[str, Any]) -> dict[str, Any]:
+        if "disposal" in self._state:
+            refuse("fenced", "this workspace lifetime has been released")
+        if self._state.get("pending"):
+            saved = self._state["pending"]
+            intent = {key: value for key, value in saved.items() if key != "fence_accepted"}
+            if intent != pending:
+                refuse("busy", "recover the saved operation before changing intent")
+            return await self._lifecycle(saved, fresh=False)
+        self._change(pending)
+        return await self._lifecycle(pending, fresh=True)
+
+    async def _lifecycle(self, pending: dict[str, Any], *, fresh: bool) -> dict[str, Any]:
+        kind = pending["kind"]
+        try:
+            if kind == "renew":
+                volume = await self._transport.renew_lease(pending["request"])
+                if volume.get("lifetime", {}).get("admission") != self._state.get("admission"):
+                    raise unknown(None, "renewal names another lifetime")
+                result = {"kind": kind, "volume": volume}
+            elif kind == "remove":
+                receipt = await self._transport.apply_removal(pending["plan"])
+                if receipt["principal"] != self._principal:
+                    raise unknown(None, "removal names another principal")
+                result = {"kind": kind, "receipt": receipt}
+            else:
+                result = {
+                    "kind": kind,
+                    "release": await self._transport.apply_volume_release(pending["plan"]),
+                }
+        except Exception as error:
+            if (
+                kind == "volume_release"
+                and isinstance(error, NativeScratchPadError)
+                and error.code == "generation_retired"
+                and not error.unknown
+            ):
+                plan = pending["plan"]
+                release = {
+                    "target": plan["request"]["target"],
+                    "slot": plan["slot"],
+                    "generation": plan["generation"],
+                    "operation_id": plan["request"]["operation_id"],
+                    "disposed": True,
+                    "capacity_returned": True,
+                }
+                return self._finish_release(
+                    plan, release, acceptance_unknown=not pending.get("fence_accepted", False)
+                )
+            if (
+                kind == "volume_release"
+                and not fresh
+                and not pending.get("fence_accepted", False)
+                and isinstance(error, NativeScratchPadError)
+                and not error.unknown
+                and error.code == "conflict"
+                and await self._release_fenced(pending["plan"])
+            ):
+                state = dict(self._state)
+                state.pop("pending", None)
+                self._save(state, remote=True)
+                refuse("fenced", "the saved release cannot take effect; review a new release plan")
+            if (
+                isinstance(error, NativeScratchPadError)
+                and not error.unknown
+                and (fresh or (kind == "renew" and error.code == "expired"))
+            ):
+                state = dict(self._state)
+                state.pop("pending", None)
+                self._save(state, remote=True)
+                raise
+            raise unknown(
+                error, f"the saved {kind} request stays pending; call recover()"
+            ) from error
+        if kind == "volume_release" and "release" in result:
+            if result["release"]["capacity_returned"]:
+                return self._finish_release(
+                    pending["plan"], result["release"], acceptance_unknown=False
+                )
+            self._save({**self._state, "pending": {**pending, "fence_accepted": True}}, remote=True)
+            return deepcopy(result)
+        state = dict(self._state)
+        state.pop("pending", None)
+        if "receipt" in result:
+            state["removal"] = result["receipt"]
+            state["next"] = result["receipt"]["command"]["number"] + 1
+        self._save(state, remote=True)
+        return deepcopy(result)
+
+    async def _release_fenced(self, plan: dict[str, Any]) -> bool:
+        try:
+            current = await self._transport.plan_volume_release(plan["request"])
+        except Exception:
+            # A failed read supplies no evidence about the saved fence.
+            return False
+        # A plan describes an ordinary, nonterminal lifetime. A greater native
+        # position for that same lifetime stops every delayed old CAS.
+        return bool(
+            current["request"] == plan["request"]
+            and current["incarnation"] == plan["incarnation"]
+            and current["slot"] == plan["slot"]
+            and current["generation"] == plan["generation"]
+            and current["sequence"] > plan["sequence"]
+        )
+
+    def _release_outcome(self) -> dict[str, Any]:
+        check(self._state.get("disposal"), "workspace has no completed release")
+        result: dict[str, Any] = deepcopy(self._state["disposal"])
+        if self._state.get("release_acceptance_unknown"):
+            result["acceptance_unknown"] = True
+        return result
+
+    def _finish_release(
+        self, plan: dict[str, Any], disposal: dict[str, Any], *, acceptance_unknown: bool
+    ) -> dict[str, Any]:
+        state = {**self._state, "disposal": disposal, "disposal_plan": plan}
+        state.pop("pending", None)
+        if acceptance_unknown:
+            state["release_acceptance_unknown"] = True
+        self._save(state, remote=True)
+        return {"kind": "volume_release", "release": self._release_outcome()}
 
     async def recover(self) -> dict[str, Any]:
-        async with self._mutation():
+        async with self._mutation(allow_renewal=True, allow_disposed=True):
             return await self._recover_pending()
 
-    async def _recover_pending(self) -> dict[str, Any]:
+    async def _recover_pending(self) -> dict[str, Any]:  # noqa: PLR0911 -- one result per durable continuation
+        if self._state.get("renewal"):
+            return {
+                "kind": "renew",
+                "volume": await self._resume_renewal(self._state["renewal"], fresh=False),
+            }
+        lifecycle = self._state.get("pending")
+        if lifecycle and lifecycle["kind"] in ("renew", "remove", "volume_release"):
+            return await self._lifecycle(lifecycle, fresh=False)
+        if "disposal" in self._state:
+            return {"kind": "volume_release", "release": self._release_outcome()}
         if self._state.get("pending", {}).get("kind") == "reset":
             refuse(
                 "fenced",
@@ -391,6 +754,13 @@ class NativeScratchPad(ScratchPadReader):
             if recover:
                 await self._recover_pending()
             await self._initialize()
+            scope = self._scope
+            if (
+                scope is None
+                or scope.get("admission") != self._state.get("admission")
+                or "disposal" in self._state
+            ):
+                refuse("fenced", "workspace has no matching current reservation")
             pending = self._state.get("pending")
             if pending:
                 if (
@@ -427,7 +797,7 @@ class NativeScratchPad(ScratchPadReader):
             def put(content: dict[str, Any], data: bytes) -> None:
                 nonlocal ordinal, total_bytes
                 total_bytes += len(data)
-                if total_bytes > self._scope["bytes"] or ordinal + 1 > self._scope["objects"]:
+                if total_bytes > scope["bytes"] or ordinal + 1 > scope["objects"]:
                     refuse("capacity", "artifact exceeds this volume's configured capacity")
                 self._store.put_object(ordinal, content, data)
                 ordinal += 1
@@ -468,8 +838,8 @@ class NativeScratchPad(ScratchPadReader):
                 artifact_bytes = sum(item["length"] for item in objects)
                 if (
                     full
-                    or view["objects"] + len(objects) > self._scope["objects"]
-                    or view["bytes"] + artifact_bytes > self._scope["bytes"]
+                    or view["objects"] + len(objects) > scope["objects"]
+                    or view["bytes"] + artifact_bytes > scope["bytes"]
                 ):
                     view = await self._maintain_internal()
                 slot = next(
@@ -486,8 +856,8 @@ class NativeScratchPad(ScratchPadReader):
                         "all retention slots are occupied; release handoffs or wait for expiry",
                     )
                 if (
-                    view["objects"] + len(objects) > self._scope["objects"]
-                    or view["bytes"] + artifact_bytes > self._scope["bytes"]
+                    view["objects"] + len(objects) > scope["objects"]
+                    or view["bytes"] + artifact_bytes > scope["bytes"]
                 ):
                     refuse("capacity", "live roots and this artifact exceed the volume's capacity")
                 writer = self._state["writer"]
@@ -499,6 +869,13 @@ class NativeScratchPad(ScratchPadReader):
                     refuse("fenced", "remote writer position differs from the durable workspace")
                 if view["closed"]:
                     refuse("closed", "volume is closed by another maintenance interval")
+                deadline_clock = now()
+                until = min(
+                    deadline_clock + ttl,
+                    view.get("lifetime", {}).get("expires_at") or deadline_clock + ttl,
+                )
+                if until <= deadline_clock:
+                    refuse("expired", "the observed lifetime has no remaining retention window")
                 command = {
                     "creation_id": self._target()["creation_id"],
                     "writer": writer,
@@ -511,7 +888,7 @@ class NativeScratchPad(ScratchPadReader):
                         "enabled": True,
                         "slot": slot,
                         "generation": view["retentions"][slot]["generation"],
-                        "until": now() + ttl,
+                        "until": until,
                     },
                 }
                 publication = {"kind": "publish", "command": command, "path": path, "ttl": ttl}
@@ -941,6 +1318,26 @@ class NativeScratchPad(ScratchPadReader):
         return await self._transport.get_volume(self._target())
 
     async def _control(self, control: dict[str, Any], *, fresh: bool) -> None:  # noqa: PLR0912, PLR0915
+        if control["kind"] == "apply" and self._state.get("admission"):
+            try:
+                observed = await self._transport.get_volume(control["request"]["target"])
+            except Exception as error:
+                raise unknown(
+                    error, "private collection completion has not been observed"
+                ) from error
+            if observed["epoch"] > control["request"]["revision"]:
+                state = dict(self._state)
+                state.pop("pending", None)
+                self._save(state, remote=True)
+                refuse("fenced", "a later collection epoch superseded the saved interval")
+            if observed["epoch"] < control["request"]["revision"]:
+                raise unknown(None, "saved collection epoch has not been observed")
+            if observed["closed"]:
+                refuse("closed", "the private worker has not reopened the saved interval")
+            state = dict(self._state)
+            state.pop("pending", None)
+            self._save(state, remote=True)
+            return
         failure: BaseException | None = None
         view = None
         handle = None
@@ -975,12 +1372,18 @@ class NativeScratchPad(ScratchPadReader):
                             handle = {"slot": request["slot"], "generation": observed["generation"]}
                             failure, settled = None, True
                     elif kind == "close":
-                        if view["closed"] and view["revision"] == request["revision"] + 1:
+                        exact = (
+                            view["epoch"] == request["revision"] + 1
+                            if self._state.get("admission")
+                            else view["closed"] and view["revision"] == request["revision"] + 1
+                        )
+                        if exact:
                             failure, settled = None, True
                         elif view["revision"] != request["revision"]:
                             settled = True
                             failure = NativeScratchPadError(
-                                "conflict", "saved close is fenced by another revision"
+                                "fenced" if self._state.get("admission") else "conflict",
+                                "saved close is fenced by another revision",
                             )
                     elif not view["closed"]:
                         failure, settled = None, True
@@ -993,12 +1396,29 @@ class NativeScratchPad(ScratchPadReader):
                 and (fresh or kind == "release" or (kind == "grant" and error.code == "expired"))
             ):
                 settled = True
+        if (
+            kind == "close"
+            and self._state.get("admission")
+            and view
+            and view["epoch"] > request["revision"] + 1
+        ):
+            state = dict(self._state)
+            state.pop("pending", None)
+            self._save(state, remote=True)
+            refuse("fenced", "a later collection epoch superseded the saved close")
         if not settled:
             raise unknown(failure, f"the saved {kind} request stays pending; call recover()")
         if (
             not failure
             and kind == "close"
-            and (not view or not view["closed"] or view["revision"] != request["revision"] + 1)
+            and (
+                not view
+                or (
+                    view["epoch"] != request["revision"] + 1
+                    if self._state.get("admission")
+                    else not view["closed"] or view["revision"] != request["revision"] + 1
+                )
+            )
         ):
             raise unknown(None, "close returned another maintenance interval")
         state = dict(self._state)
@@ -1014,11 +1434,20 @@ class NativeScratchPad(ScratchPadReader):
             state["grants"].append(
                 {"request": request, "handle": handle, "kind": control["provenance"]}
             )
-        if not failure and kind == "close":
+        if (
+            not failure
+            and kind == "close"
+            and (not self._state.get("admission") or (view and view["closed"]))
+        ):
             assert view is not None
             state["pending"] = {
                 "kind": "apply",
-                "request": {"target": self._target(), "revision": view["revision"]},
+                "request": {
+                    "target": self._target(),
+                    "revision": request["revision"] + 1
+                    if self._state.get("admission")
+                    else view["revision"],
+                },
             }
         self._save(state, remote=True)
         if failure:
@@ -1049,23 +1478,30 @@ async def native_scratchpad(
     transport = ScratchPadTransport(nc, timeout_s=timeout_s)
     info = await transport.info()
     scope = next((scope for scope in info["scopes"] if scope["volume"] == volume), None)
-    if scope is None:
-        refuse("denied", "authenticated principal owns no provisioned scope for this volume")
     store = WorkspaceStore.open(dir)
     try:
         state = store.load()
         if state is None:
+            if scope is None:
+                refuse(
+                    "denied", "authenticated principal owns no provisioned scope for this volume"
+                )
             state = {
                 "version": 1,
                 "principal": info["principal"],
                 "volume": volume,
                 "creator": creator,
                 "creation": {"operation_id": str(uuid.uuid4()), "trace": {}},
+                **({"admission": deepcopy(scope["admission"])} if "admission" in scope else {}),
                 "next": 1,
                 "grants": [],
             }
             store.save(state)
         validate_state(state)
+        if "target" not in state and (
+            scope is None or state.get("admission") != scope.get("admission")
+        ):
+            refuse("fenced", "saved creation cannot adopt a new lifetime")
         check(
             state["principal"] == info["principal"]
             and state["volume"] == volume

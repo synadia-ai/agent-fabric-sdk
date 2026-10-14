@@ -59,6 +59,7 @@ CODES = frozenset(
         "exists",
         "conflict",
         "fenced",
+        "generation_retired",
         "intent_changed",
         "capacity",
         "summary_limit",
@@ -267,6 +268,7 @@ def validate_command(value: object) -> Wire:
     v = record(
         value,
         ("creation_id", "writer", "number", "operation_id", "base", "root", "trace", "retention"),
+        ("remove_path",),
     )
     validate_target({"volume": "v", "creation_id": v["creation_id"]})
     validate_writer(v["writer"])
@@ -283,6 +285,9 @@ def validate_command(value: object) -> Wire:
         r["enabled"] or (r["slot"] == r["generation"] == r["until"] == 0),
         "disabled retention must be zero",
     )
+    if "remove_path" in v:
+        validate_path(v["remove_path"])
+        check(v["remove_path"] != "/" and not r["enabled"], "removal cannot retain or remove root")
     return v
 
 
@@ -324,15 +329,18 @@ def _writer_slots(v: Wire) -> None:
                 principal["account"] == v["owner"]["account"], "writer belongs to another account"
             )
         else:
-            check(not slot["write"] and slot["number"] == 0, "writer identity absent")
+            check(not slot["write"], "writer identity absent")
         if slot["number"] == 0:
             check("receipt" not in slot, "unused writer has a receipt")
         else:
             receipt = validate_receipt(slot.get("receipt"))
             command = receipt["command"]
             check(
-                slot["write"]
-                and receipt["principal"] == slot.get("principal")
+                (
+                    ("principal" not in slot and not slot["write"])
+                    or (slot["write"] and receipt["principal"] == slot.get("principal"))
+                )
+                and receipt["principal"]["account"] == v["owner"]["account"]
                 and receipt["volume"] == v["target"]["volume"]
                 and command["creation_id"] == v["target"]["creation_id"]
                 and command["writer"] == {"slot": index, "generation": slot["generation"]}
@@ -406,7 +414,10 @@ def validate_volume_view(value: object) -> Wire:
             "retentions",
             "grants",
         ),
+        ("lifetime",),
     )
+    if "lifetime" in v:
+        validate_lifetime_view(v["lifetime"])
     validate_target(v["target"])
     validate_principal(v["owner"])
     head = validate_head(v["head"])
@@ -437,12 +448,141 @@ def validate_info(value: object) -> Wire:
     )
     seen: set[str] = set()
     for raw in v["scopes"]:
-        scope = record(raw, ("volume", "objects", "bytes"))
+        scope = record(raw, ("volume", "objects", "bytes"), ("admission",))
+        if "admission" in scope:
+            validate_admission_binding(scope["admission"])
         name = validate_volume(scope["volume"])
         uint(scope["objects"], MAX_VOLUME_OBJECTS, 1)
         uint(scope["bytes"], MAX_VOLUME_BYTES, 4)
         check(name not in seen, "duplicate scope")
         seen.add(name)
+    return v
+
+
+def validate_admission_binding(value: object) -> Wire:
+    v = record(value, ("slot", "generation", "operation_id"))
+    uint(v["slot"], 255)
+    uint(v["generation"], minimum=1)
+    validate_action({"operation_id": v["operation_id"], "trace": {}})
+    return v
+
+
+def validate_lifetime_view(value: object) -> Wire:
+    v = record(
+        value,
+        (
+            "admission",
+            "phase",
+            "expires_at",
+            "grace_until",
+            "max_lease_seconds",
+            "grace_seconds",
+            "recovery_reads",
+            "reserve_objects",
+            "reserve_bytes",
+        ),
+    )
+    validate_admission_binding(v["admission"])
+    for key in ("expires_at", "grace_until", "max_lease_seconds", "grace_seconds"):
+        uint(v[key])
+    boolean(v["recovery_reads"])
+    uint(v["reserve_objects"], 128)
+    uint(v["reserve_bytes"], 8 * 2**20)
+    check((v["reserve_objects"] == 0) == (v["reserve_bytes"] == 0), "incomplete metadata reserve")
+    check(v["phase"] in ("active", "shrinking", "expiring"), "invalid lifetime phase")
+    if v["phase"] == "expiring":
+        check(
+            v["expires_at"] > 0 and (v["grace_until"] == 0 or v["grace_until"] >= v["expires_at"]),
+            "invalid lifetime grace",
+        )
+    else:
+        check(v["grace_until"] == 0, "invalid lifetime grace")
+    if v["expires_at"] == 0:
+        check(v["grace_seconds"] == 0, "invalid durable policy")
+    else:
+        check(v["max_lease_seconds"] > 0 and v["grace_seconds"] > 0, "invalid lease policy")
+    return v
+
+
+def validate_renew_request(value: object) -> Wire:
+    v = record(value, ("target", "until"))
+    validate_target(v["target"])
+    uint(v["until"], minimum=1)
+    return v
+
+
+def validate_removal_request(value: object) -> Wire:
+    v = record(value, ("target", "command"))
+    validate_target(v["target"])
+    validate_command(v["command"])
+    check(
+        v["command"].get("remove_path")
+        and v["command"]["creation_id"] == v["target"]["creation_id"],
+        "invalid removal command",
+    )
+    return v
+
+
+def validate_removal_plan(value: object) -> Wire:
+    v = record(
+        value,
+        ("target", "slot", "generation", "sequence", "command", "added_objects", "added_bytes"),
+    )
+    validate_removal_request({"target": v["target"], "command": v["command"]})
+    uint(v["slot"], 255)
+    uint(v["generation"], minimum=1)
+    uint(v["sequence"], minimum=1)
+    uint(v["added_objects"], 128)
+    uint(v["added_bytes"], 8 * 2**20)
+    return v
+
+
+def validate_volume_release_request(value: object) -> Wire:
+    v = record(value, ("target", "operation_id", "end_promises"))
+    validate_target(v["target"])
+    validate_action({"operation_id": v["operation_id"], "trace": {}})
+    boolean(v["end_promises"])
+    return v
+
+
+def validate_volume_release_plan(value: object) -> Wire:
+    v = record(
+        value, ("request", "incarnation", "slot", "generation", "sequence", "head", "effects")
+    )
+    validate_volume_release_request(v["request"])
+    text(v["incarnation"], 64, 64)
+    check(re.fullmatch(r"[0-9a-f]{64}", v["incarnation"]), "invalid release incarnation")
+    uint(v["slot"], 255)
+    uint(v["generation"], minimum=1)
+    uint(v["sequence"], minimum=1)
+    validate_head(v["head"])
+    effects = record(
+        v["effects"],
+        ("objects", "bytes", "retentions", "read_grants", "access_slots", "references"),
+    )
+    for key, maximum in (
+        ("objects", MAX_VOLUME_OBJECTS),
+        ("bytes", MAX_VOLUME_BYTES),
+        ("retentions", RETENTION_SLOTS),
+        ("read_grants", GRANT_SLOTS),
+        ("access_slots", WRITER_SLOTS),
+        ("references", RETENTION_SLOTS),
+    ):
+        uint(effects[key], maximum)
+    return v
+
+
+def validate_volume_release_result(value: object) -> Wire:
+    v = record(
+        value, ("target", "slot", "generation", "operation_id", "disposed", "capacity_returned")
+    )
+    validate_target(v["target"])
+    uint(v["slot"], 255)
+    uint(v["generation"], minimum=1)
+    validate_action({"operation_id": v["operation_id"], "trace": {}})
+    boolean(v["disposed"])
+    boolean(v["capacity_returned"])
+    check(not v["capacity_returned"] or v["disposed"], "capacity returned before disposal")
     return v
 
 

@@ -33,7 +33,7 @@ Clients also accept the existing `sp-ref:` v2 form. Neither form supplies authen
 An older service's explicit `invalid` reply to `reference.info`, or `enabled: false`, selects the full form.
 Transport, authentication and malformed-reply failures propagate; they do not select a fallback.
 An unsupported capability version or different advertised limits also fails without fallback.
-The existing checkpoint receipt and volume reply shapes remain unchanged.
+Existing deployments omit the optional lifetime and admission fields.
 
 ### Activate short references
 
@@ -131,7 +131,8 @@ Python's `read_stream(reference, limit_bytes=...)` is an async iterator.
 One SQLite database holds an exclusive lock for the client's lifetime.
 The directory and database use modes 0700 and 0600 on Unix.
 The database uses a deletion journal, `synchronous=EXTRA`, and `fullfsync=ON`.
-Its current records contain one pending operation, the last publication receipt, and at most 16 grant ledger entries.
+Its current records contain one pending operation, one optional lease renewal, the last publication receipt, and at most 16 grant ledger entries.
+After whole-volume release, it keeps one terminal result and its exact plan.
 The spool holds only the pending artifact. SQLite reuses freed pages; its file can retain the largest previous spool size.
 The client does not replay a growing write history.
 
@@ -161,6 +162,9 @@ that exact revision, which fences any older in-flight publication write. It then
 collection continuation, clears the expired intent and spool, and reopens through collection.
 Recovery reports `{ kind: "expired" }`; the next commit can proceed with the same writer.
 An accepted publication still recovers its exact receipt after expiry. The local clock alone never clears an intent.
+Automatic delegated-access expiry can clear a writer's current principal and write permission while preserving its receipt.
+The stored receipt still names its original principal and exact command. It grants no artifact access.
+Only that authenticated writer can recover the matching receipt until reset, reassignment, replacement, or terminal retirement ends the window.
 
 NATS JavaScript can buffer requests during reconnect. The client uses a bounded flush before each request and does not add retries.
 After transmission, loss, cancellation, or malformed replies leave mutations unknown.
@@ -180,7 +184,8 @@ If another operation closed the volume, `maintain()` refuses with `closed`, incl
 A `recover()` result of `ready` means the journal has no pending work. It does not mean the remote volume is open.
 The refusal preserves the head, writers, retained roots, and closed revision.
 
-An operator must finish that interval through the authenticated public service API:
+On an existing deployment, an operator must finish that interval through the
+authenticated public service API:
 
 1. Quiesce the volume's mutation actors. Identify its owner, volume, and incarnation from `describe()`.
 2. Read the current volume with `volume.get`. Confirm that it is closed and record its exact revision.
@@ -189,13 +194,98 @@ An operator must finish that interval through the authenticated public service A
    A changed revision requires a fresh inspection; do not silently adopt a different interval.
 5. Confirm the volume is open and retained references are readable before resuming the writer.
 
-The Go client's `GetVolume`, `PlanCollection`, and `ApplyCollection` expose these operations.
+On reusable deployments, a separate private lifecycle worker can finish this recorded
+interval while preserving the head and live protection promises. The existing format
+uses the coordinated operator procedure above.
+
+The existing service's volume getter, collection planner and collection application expose these operations.
 Do not reset a writer or discard its journal merely to reopen a closed volume.
 Do not attach a new CLI workspace to the native writer slot.
 The service fences maintenance by revision; it does not record a separate maintenance-owner identity.
-This procedure requires coordinated operators. Independent concurrent maintenance actors remain outside the qualified scope.
+This existing-format procedure requires coordinated operators. Independent concurrent
+public maintenance actors remain outside the qualified scope.
 
-### Bounds
+### Reusable lifetimes
+
+`info.scopes[].admission` selects one reusable lifetime. A new writer saves this
+binding in SQLite before its first creation request. An existing workspace keeps
+its saved binding across restarts. An older unfinished creation without a binding
+cannot adopt a newly admitted lifetime with the same volume name.
+The binding supplies no authentication; the NATS connection still identifies the caller.
+New finite publication retention is capped at the observed lease deadline.
+An elapsed deadline is refused before saving or sending the publication.
+Retries keep their saved deadline; the client never renews a lease implicitly.
+
+`describe().volume.lifetime` reports the phase, absolute expiry and grace deadline,
+recovery-read availability, lease limits, and reserved metadata allowance.
+An expiry of zero denotes a durable volume. The client invents no lease duration.
+
+| TypeScript | Python | Operation |
+| --- | --- | --- |
+| `renewLease(until)` | `renew_lease(until)` | Persist and request one absolute Unix deadline in seconds. |
+| `planRemoval(path, { operationId })` | `plan_removal(path, operation_id=...)` | Read-only removal plan for an initialized writer. |
+| `applyRemoval(plan)` | `apply_removal(plan)` | Save and apply that exact plan; return the checkpoint receipt. |
+| `planVolumeRelease({ operationId, endPromises })` | `plan_volume_release(operation_id=..., end_promises=...)` | List the head and protection promises the release would end. |
+| `applyVolumeRelease(plan)` | `apply_volume_release(plan)` | Save and apply that exact terminal decision. |
+
+The agent chooses what to remove when its quota is full. Selective removal uses
+the reported metadata reserve within its bounds. A receipt confirms the new head;
+retentions and live grants can still protect removed content until their promises end.
+The private worker collects unreachable objects. Removal does not create a handoff
+reference. `recover()` returns its exact receipt with `kind: "remove"`.
+
+Whole-volume release can irreversibly delete all artifacts and end every promise
+in its plan. `endPromises` defaults to false; select true only after reviewing and
+authorizing those effects and completing any required verified export.
+The client keeps this intent pending until `capacity_returned` is true.
+`disposed` alone does not return the admission charge. `recover()` returns the
+result under `release` with `kind: "volume_release"` and can resume through an empty
+owned-scope list. It never binds the workspace to a successor lifetime.
+Each release plan includes an opaque `incarnation` binding to the deployment's native streams.
+The client saves whether it observed acceptance of its exact release fence.
+If slot reuse occurs first, the service can return `generation_retired` after proving that the saved generation ended in the same incarnation.
+The client then records `disposed: true` and `capacity_returned: true`.
+If it never observed its own fence acceptance, the high-level result also contains `acceptance_unknown: true`.
+This marker preserves uncertainty about which terminal operation won. Capacity return and operation acceptance remain separate outcomes.
+It is a local recovery field, absent from the wire result.
+Generic `fenced`, `denied`, or missing-volume responses cannot settle a previously unknown release.
+After a saved release returns `conflict`, recovery can request a read-only plan for
+the exact saved request. Only a strictly greater native sequence for the same
+incarnation, slot, generation, and target proves the old release fence cannot win.
+The client then clears only that release intent and reports `fenced`. The lifetime
+remains nonterminal. Inspect the reported lifetime and renew before ordinary work
+if needed. This outcome claims neither disposal nor capacity return.
+Review a new plan before another release attempt. An unknown or mismatched probe,
+or a previously observed accepted fence, keeps the saved release pending.
+The completed workspace refuses new mutations. Repeated recovery returns its saved result; repeating apply requires the complete identical plan.
+
+After an unknown lifecycle mutation, call `recover()` or repeat the exact saved
+operation. A changed deadline or plan is refused while the first intent is pending.
+Lease renewal can coexist with an unknown ordinary operation. The client saves
+one absolute renewal deadline without changing the original request or its spool.
+`recover()` settles renewal first and returns `kind: "renew"`; call it again to
+recover the original operation. Other mutations wait while renewal is unresolved.
+Renewal needs a saved target and admission binding, even if writer initialization
+has not completed. It cannot coexist with volume release or completed disposal.
+An already achieved renewal still recovers after its requested deadline passes.
+If the service instead returns definite `expired` for an unachieved saved deadline,
+the client clears only that renewal and reports the refusal. The ordinary pending
+operation stays unchanged. If the same lifetime is still renewable, request a new
+absolute deadline, then recover the original operation. The local clock, `invalid`,
+and unknown outcomes do not clear a previously sent renewal.
+These optional operations require a reusable deployment. Existing deployments,
+references, and workspaces keep their existing absent-field behavior.
+
+On a reusable volume, `maintain()` saves its closure and waits for private collection.
+Recovery observes the volume open with the exact saved collection epoch. A newer
+epoch positively fences delayed work for the old interval. The client clears only
+that collection continuation and reports `fenced`; a new operation can then proceed.
+This path sends no public
+collection application and invents no collection counts from current usage.
+If the close reply was lost, the requested revision plus one identifies that
+interval even when the private worker reopened it before the next observation.
+
+### Artifact bounds
 
 Each publication replaces the head with one file at the selected path. It does not merge previous files into the new head.
 Prior references remain readable while their retention and grants remain valid.
@@ -207,7 +297,9 @@ Streamed bytes are provisional until successful completion; write to a temporary
 
 `release(reference)` releases a finished handoff only when no live grant still names it.
 An expired short token no longer resolves; use `maintain()` to release expired unprotected retention handles from the current volume view.
-`maintain()` releases expired unprotected pins, collects unreachable content, and reopens its own maintenance interval.
+`maintain()` releases expired unprotected pins and closes its own collection interval.
+On a reusable deployment, it observes private maintenance completing that interval;
+on an existing deployment, it performs the collection.
 The client checks capacity and retention before saving a new publish command.
 Admission conservatively allows space for existing content plus the new artifact, even when some objects could be shared.
 All eight occupied retention slots produce an explicit capacity refusal; live handoffs are never evicted to make space.

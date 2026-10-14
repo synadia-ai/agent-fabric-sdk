@@ -28,6 +28,11 @@ import {
   validateWriter,
   validatePath,
   validateRetentionHandle,
+  validateAdmissionBinding,
+  validateRenewRequest,
+  validateRemovalPlan,
+  validateVolumeReleasePlan,
+  validateVolumeReleaseResult,
 } from "./protocol";
 import type {
   Action,
@@ -45,6 +50,11 @@ import type {
   Trace,
   VolumeView,
   Writer,
+  AdmissionBinding,
+  RenewRequest,
+  RemovalPlan,
+  VolumeReleasePlan,
+  VolumeReleaseResult,
 } from "./protocol";
 import { ScratchPadReader, wireTrace } from "./reader";
 import type { ScratchPadReaderOptions } from "./reader";
@@ -77,10 +87,14 @@ export interface PublishResult {
   reference: string;
   receipt: Receipt;
 }
+/** Capacity returned can be known even when this release request's acceptance is unknown. */
+export type VolumeReleaseOutcome = VolumeReleaseResult & { acceptance_unknown?: true };
 export interface RecoveryResult {
   kind: string;
   reference?: string;
   receipt?: Receipt;
+  volume?: VolumeView;
+  release?: VolumeReleaseOutcome;
 }
 interface Publication {
   kind: "publish";
@@ -99,19 +113,29 @@ type Control =
   | { kind: "grant"; request: GrantIssueRequest; provenance: GrantKind }
   | { kind: "release"; request: ReleaseRequest }
   | { kind: "close" | "apply"; request: MaintenanceRequest };
-type Pending = Publication | Control | { kind: "reset"; writer: Writer };
+type Lifecycle =
+  | { kind: "renew"; request: RenewRequest }
+  | { kind: "remove"; plan: RemovalPlan }
+  | { kind: "volume_release"; plan: VolumeReleasePlan; fence_accepted?: true };
+type Pending = Publication | Control | Lifecycle | { kind: "reset"; writer: Writer };
 interface State {
   version: 1;
   principal: Principal;
   volume: string;
   creator: string;
   creation: Action;
+  admission?: AdmissionBinding;
   target?: Target;
   writer?: Writer;
   next: number;
   pending?: Pending;
+  renewal?: RenewRequest;
   last?: PublishResult & { path: string; ttl: number; resolved?: ResolvedReference };
   grants: Granted[];
+  removal?: Receipt;
+  disposal?: VolumeReleaseResult;
+  disposal_plan?: VolumeReleasePlan;
+  release_acceptance_unknown?: true;
 }
 
 function now(): number {
@@ -135,13 +159,59 @@ function validateState(value: unknown): asserts value is State {
   const s = record(
     value,
     ["version", "principal", "volume", "creator", "creation", "next", "grants"],
-    ["target", "writer", "pending", "last"],
+    [
+      "target",
+      "writer",
+      "pending",
+      "last",
+      "admission",
+      "removal",
+      "disposal",
+      "renewal",
+      "disposal_plan",
+      "release_acceptance_unknown",
+    ],
   );
   check(s.version === 1, "unsupported workspace version");
   validatePrincipal(s.principal);
   validateVolume(s.volume);
   text(s.creator, 512, 1);
   validateAction(s.creation);
+  if (s.admission !== undefined) validateAdmissionBinding(s.admission);
+  if (s.removal !== undefined) {
+    validateReceipt(s.removal);
+    check(
+      s.removal.command.remove_path &&
+        s.removal.volume === s.volume &&
+        sameValue(s.removal.principal, s.principal) &&
+        s.removal.command.creation_id === (s.target as Target | undefined)?.creation_id,
+      "saved removal differs from workspace",
+    );
+  }
+  if (s.disposal !== undefined) {
+    validateVolumeReleaseResult(s.disposal);
+    check(
+      s.disposal.capacity_returned &&
+        !s.pending &&
+        sameValue(s.disposal.target, s.target) &&
+        s.disposal.slot === s.admission?.slot &&
+        s.disposal.generation === s.admission?.generation,
+      "unfinished or foreign disposal",
+    );
+  }
+  if (s.disposal_plan !== undefined) {
+    validateVolumeReleasePlan(s.disposal_plan);
+    check(
+      s.disposal &&
+        sameValue(s.disposal_plan.request.target, s.disposal.target) &&
+        s.disposal_plan.slot === s.disposal.slot &&
+        s.disposal_plan.generation === s.disposal.generation &&
+        s.disposal_plan.request.operation_id === s.disposal.operation_id,
+      "completed release plan differs from disposal",
+    );
+  }
+  if (s.release_acceptance_unknown !== undefined)
+    check(s.release_acceptance_unknown === true && s.disposal, "invalid release acceptance marker");
   uint(s.next, undefined, 1);
   if (s.target !== undefined) {
     validateTarget(s.target);
@@ -150,6 +220,16 @@ function validateState(value: unknown): asserts value is State {
   if (s.writer !== undefined) {
     validateWriter(s.writer);
     check(s.writer.slot === 0 && s.target, "workspace writer binding is invalid");
+  }
+  if (s.renewal !== undefined) {
+    validateRenewRequest(s.renewal);
+    check(
+      s.admission &&
+        sameValue(s.renewal.target, s.target) &&
+        !s.disposal &&
+        !["renew", "volume_release"].includes((s.pending as Pending | undefined)?.kind ?? ""),
+      "saved renewal conflicts with the workspace lifetime",
+    );
   }
   check(Array.isArray(s.grants) && s.grants.length <= 16, "workspace grant ledger exceeds bound");
   for (const raw of s.grants) {
@@ -189,6 +269,27 @@ function validateState(value: unknown): asserts value is State {
     check(s.target, "pending operation has no target");
     const p = s.pending as Pending;
     switch (p.kind) {
+      case "renew":
+        record(p, ["kind", "request"]);
+        validateRenewRequest(p.request);
+        break;
+      case "remove":
+        record(p, ["kind", "plan"]);
+        validateRemovalPlan(p.plan);
+        check(
+          sameValue(p.plan.target, s.target) &&
+            sameValue(p.plan.command.writer, s.writer) &&
+            p.plan.command.number === s.next,
+          "saved removal writer differs",
+        );
+        break;
+      case "volume_release":
+        record(p, ["kind", "plan"], ["fence_accepted"]);
+        if (p.fence_accepted !== undefined)
+          check(p.fence_accepted === true, "invalid release fence marker");
+        validateVolumeReleasePlan(p.plan);
+        check(sameValue(p.plan.request.target, s.target), "saved disposal names another target");
+        break;
       case "publish":
         record(p, ["kind", "command", "path", "ttl"], ["expiry_revision", "reference"]);
         if (p.reference !== undefined) {
@@ -239,6 +340,13 @@ function validateState(value: unknown): asserts value is State {
     }
     if ("request" in p)
       check(sameValue(p.request.target, s.target), "pending operation names another target");
+    if (p.kind === "remove" || p.kind === "volume_release")
+      check(
+        s.admission &&
+          p.plan.slot === s.admission.slot &&
+          p.plan.generation === s.admission.generation,
+        "saved plan names another lifetime",
+      );
   }
 }
 function validateGrant(value: unknown): asserts value is GrantIssueRequest {
@@ -274,18 +382,24 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
     transport: ScratchPadTransport,
     private readonly store: WorkspaceStore,
     private state: State,
-    private readonly scope: ReservedScope,
+    private readonly scope: ReservedScope | undefined,
     private readonly ttl: number,
   ) {
     super(transport, state.principal);
   }
 
-  private run<T>(work: () => Promise<T>): Promise<T> {
+  private run<T>(work: () => Promise<T>, allowRenewal = false, allowDisposed = false): Promise<T> {
     if (this.closing)
       return Promise.reject(
         new NativeScratchPadError("closed", "native client is closed", { local: true }),
       );
-    const result = this.tail.then(work);
+    const result = this.tail.then(() => {
+      if (this.state.renewal && !allowRenewal)
+        refuse("busy", "recover the saved renewal before another mutation");
+      if (this.state.disposal && !allowDisposed)
+        refuse("fenced", "this workspace lifetime has been released");
+      return work();
+    });
     this.tail = result.then(
       () => {},
       () => {},
@@ -320,6 +434,7 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       const view = await this.transport.createVolume({
         volume: this.state.volume,
         action: this.state.creation,
+        ...(this.state.admission ? { admission: this.state.admission } : {}),
       });
       if (!sameValue(view.owner, this.principal))
         throw unknown(undefined, "volume creation names another owner");
@@ -330,6 +445,10 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
     check(
       sameValue(view.owner, this.principal),
       "workspace principal is no longer the volume owner",
+    );
+    check(
+      sameValue(view.lifetime?.admission, this.state.admission),
+      "workspace lifetime differs from volume",
     );
     return view;
   }
@@ -361,6 +480,7 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
     const state = { ...this.state, writer: result, next: 1 };
     delete state.pending;
     delete state.last;
+    delete state.removal;
     this.save(state, true, true);
     return result;
   }
@@ -394,17 +514,293 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
   }
 
   describe(): Promise<{ volume: VolumeView; pending?: string }> {
+    return this.run(
+      async () => {
+        const volume = await this.ensureTarget();
+        const pending = this.state.pending?.kind ?? (this.state.renewal ? "renew" : undefined);
+        return pending ? { volume, pending } : { volume };
+      },
+      true,
+      true,
+    );
+  }
+
+  /** Save an absolute deadline before sending it. Retries never extend it implicitly. */
+  renewLease(until: number): Promise<VolumeView> {
     return this.run(async () => {
-      const volume = await this.ensureTarget();
-      return this.state.pending ? { volume, pending: this.state.pending.kind } : { volume };
+      const request = { target: this.target(), until };
+      validateRenewRequest(request);
+      if (this.state.disposal) refuse("fenced", "this workspace lifetime has been released");
+      if (this.state.pending?.kind === "volume_release")
+        refuse("busy", "the saved volume release must settle before renewal");
+      // Older workspaces may already have a renewal in the original pending slot.
+      if (this.state.pending?.kind === "renew") {
+        if (!sameValue(this.state.pending.request, request))
+          refuse("busy", "recover the saved renewal before changing its deadline");
+        return (await this.lifecycle(this.state.pending, false)).volume!;
+      }
+      const saved = this.state.renewal;
+      if (saved && !sameValue(saved, request))
+        refuse("busy", "recover the saved renewal before changing its deadline");
+      if (!saved) this.save({ ...this.state, renewal: request });
+      return this.resumeRenewal(request, !saved);
+    }, true);
+  }
+
+  private async resumeRenewal(request: RenewRequest, fresh: boolean): Promise<VolumeView> {
+    let volume: VolumeView;
+    try {
+      volume = await this.transport.renewLease(request);
+      if (!sameValue(volume.lifetime?.admission, this.state.admission))
+        throw unknown(undefined, "renewal names another lifetime");
+    } catch (error) {
+      if (
+        error instanceof NativeScratchPadError &&
+        !error.unknown &&
+        (fresh || error.code === "expired")
+      ) {
+        const state = { ...this.state };
+        delete state.renewal;
+        this.save(state, true);
+        throw error;
+      }
+      throw unknown(error, "the saved renewal stays pending; call recover()");
+    }
+    const state = { ...this.state };
+    delete state.renewal;
+    this.save(state, true);
+    return structuredClone(volume);
+  }
+
+  /** Read-only plan for an initialized writer. The caller chooses the path to remove. */
+  planRemoval(
+    path: string,
+    options: { operationId: string; trace?: TraceIds },
+  ): Promise<RemovalPlan> {
+    return this.run(async () => {
+      if (this.state.pending)
+        refuse("busy", "recover the pending operation before planning removal");
+      check(
+        this.state.writer && this.state.admission,
+        "removal requires an initialized reusable writer",
+      );
+      const view = await this.ensureTarget();
+      return this.transport.planRemoval({
+        target: this.target(),
+        command: {
+          creation_id: this.target().creation_id,
+          writer: this.state.writer,
+          number: this.state.next,
+          operation_id: options.operationId,
+          base: view.head,
+          root: view.head.root,
+          trace: wireTrace(options.trace),
+          remove_path: path,
+          retention: { enabled: false, slot: 0, generation: 0, until: 0 },
+        },
+      });
     });
   }
 
+  applyRemoval(plan: RemovalPlan): Promise<Receipt> {
+    const saved = structuredClone(plan);
+    return this.run(async () => {
+      validateRemovalPlan(saved);
+      check(
+        sameValue(saved.target, this.target()) &&
+          saved.slot === this.state.admission?.slot &&
+          saved.generation === this.state.admission.generation,
+        "removal plan names another lifetime",
+      );
+      if (
+        !this.state.pending &&
+        this.state.removal &&
+        sameValue(this.state.removal.command, saved.command)
+      )
+        return structuredClone(this.state.removal);
+      return (await this.beginLifecycle({ kind: "remove", plan: saved })).receipt!;
+    });
+  }
+
+  /** Lists every promise affected. EndPromises must be explicitly true to authorize release. */
+  planVolumeRelease(options: {
+    operationId: string;
+    endPromises?: boolean;
+  }): Promise<VolumeReleasePlan> {
+    return this.run(async () => {
+      if (this.state.pending)
+        refuse("busy", "recover the pending operation before planning release");
+      check(this.state.admission, "volume release requires a reusable lifetime");
+      return this.transport.planVolumeRelease({
+        target: this.target(),
+        operation_id: options.operationId,
+        end_promises: options.endPromises ?? false,
+      });
+    });
+  }
+
+  applyVolumeRelease(plan: VolumeReleasePlan): Promise<VolumeReleaseOutcome> {
+    const saved = structuredClone(plan);
+    return this.run(
+      async () => {
+        validateVolumeReleasePlan(saved);
+        if (!this.state.pending && this.state.disposal) {
+          check(sameValue(this.state.disposal_plan, saved), "completed release differs from plan");
+          return this.releaseOutcome();
+        }
+        return (await this.beginLifecycle({ kind: "volume_release", plan: saved })).release!;
+      },
+      false,
+      true,
+    );
+  }
+
+  private async beginLifecycle(pending: Lifecycle): Promise<RecoveryResult> {
+    if (this.state.disposal) refuse("fenced", "this workspace lifetime has been released");
+    if (this.state.pending) {
+      const saved = this.state.pending;
+      const intent =
+        saved.kind === "volume_release" ? { kind: saved.kind, plan: saved.plan } : saved;
+      if (!sameValue(intent, pending))
+        refuse("busy", "recover the saved operation before changing intent");
+      return this.lifecycle(saved as Lifecycle, false);
+    }
+    this.change(pending);
+    return this.lifecycle(pending, true);
+  }
+
+  private async lifecycle(pending: Lifecycle, fresh: boolean): Promise<RecoveryResult> {
+    let result: RecoveryResult;
+    try {
+      if (pending.kind === "renew") {
+        const volume = await this.transport.renewLease(pending.request);
+        if (!sameValue(volume.lifetime?.admission, this.state.admission))
+          throw unknown(undefined, "renewal names another lifetime");
+        result = { kind: pending.kind, volume };
+      } else if (pending.kind === "remove") {
+        const receipt = await this.transport.applyRemoval(pending.plan);
+        if (!sameValue(receipt.principal, this.principal))
+          throw unknown(undefined, "removal names another principal");
+        result = { kind: pending.kind, receipt };
+      } else {
+        result = {
+          kind: pending.kind,
+          release: await this.transport.applyVolumeRelease(pending.plan),
+        };
+      }
+    } catch (error) {
+      if (
+        pending.kind === "volume_release" &&
+        error instanceof NativeScratchPadError &&
+        error.code === "generation_retired" &&
+        !error.unknown
+      ) {
+        const release: VolumeReleaseResult = {
+          target: pending.plan.request.target,
+          slot: pending.plan.slot,
+          generation: pending.plan.generation,
+          operation_id: pending.plan.request.operation_id,
+          disposed: true,
+          capacity_returned: true,
+        };
+        return this.finishRelease(pending.plan, release, !pending.fence_accepted);
+      }
+      if (
+        pending.kind === "volume_release" &&
+        !fresh &&
+        !pending.fence_accepted &&
+        error instanceof NativeScratchPadError &&
+        !error.unknown &&
+        error.code === "conflict" &&
+        (await this.releaseFenced(pending.plan))
+      ) {
+        const state = { ...this.state };
+        delete state.pending;
+        this.save(state, true);
+        refuse("fenced", "the saved release cannot take effect; review a new release plan");
+      }
+      if (
+        error instanceof NativeScratchPadError &&
+        !error.unknown &&
+        (fresh || (pending.kind === "renew" && error.code === "expired"))
+      ) {
+        const state = { ...this.state };
+        delete state.pending;
+        this.save(state, true);
+        throw error;
+      }
+      throw unknown(error, `the saved ${pending.kind} request stays pending; call recover()`);
+    }
+    if (pending.kind === "volume_release" && result.release) {
+      if (result.release.capacity_returned)
+        return this.finishRelease(pending.plan, result.release, false);
+      this.save({ ...this.state, pending: { ...pending, fence_accepted: true } }, true);
+      return structuredClone(result);
+    }
+    const state = { ...this.state };
+    delete state.pending;
+    if (result.receipt) {
+      state.removal = result.receipt;
+      state.next = result.receipt.command.number + 1;
+    }
+    this.save(state, true);
+    return structuredClone(result);
+  }
+
+  private async releaseFenced(plan: VolumeReleasePlan): Promise<boolean> {
+    let current: VolumeReleasePlan;
+    try {
+      current = await this.transport.planVolumeRelease(plan.request);
+    } catch {
+      // A failed read supplies no evidence about the saved fence.
+      return false;
+    }
+    // A plan can only describe an ordinary, nonterminal lifetime. A greater
+    // native position for that same lifetime stops every delayed old CAS.
+    return (
+      sameValue(current.request, plan.request) &&
+      current.incarnation === plan.incarnation &&
+      current.slot === plan.slot &&
+      current.generation === plan.generation &&
+      current.sequence > plan.sequence
+    );
+  }
+
+  private releaseOutcome(): VolumeReleaseOutcome {
+    check(this.state.disposal, "workspace has no completed release");
+    return structuredClone({
+      ...this.state.disposal,
+      ...(this.state.release_acceptance_unknown ? { acceptance_unknown: true as const } : {}),
+    });
+  }
+
+  private finishRelease(
+    plan: VolumeReleasePlan,
+    disposal: VolumeReleaseResult,
+    acceptanceUnknown: boolean,
+  ): RecoveryResult {
+    const state = { ...this.state, disposal, disposal_plan: plan };
+    delete state.pending;
+    if (acceptanceUnknown) state.release_acceptance_unknown = true;
+    this.save(state, true);
+    return { kind: "volume_release", release: this.releaseOutcome() };
+  }
+
   recover(): Promise<RecoveryResult> {
-    return this.run(() => this.recoverPending());
+    return this.run(() => this.recoverPending(), true, true);
   }
 
   private async recoverPending(): Promise<RecoveryResult> {
+    if (this.state.renewal)
+      return { kind: "renew", volume: await this.resumeRenewal(this.state.renewal, false) };
+    const lifecycle = this.state.pending;
+    if (
+      lifecycle?.kind === "renew" ||
+      lifecycle?.kind === "remove" ||
+      lifecycle?.kind === "volume_release"
+    )
+      return this.lifecycle(lifecycle, false);
+    if (this.state.disposal) return { kind: "volume_release", release: this.releaseOutcome() };
     if (this.state.pending?.kind === "reset")
       refuse("fenced", "reset outcome needs an explicit resetWriter with the observed generation");
     await this.initialize();
@@ -424,6 +820,12 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       }
     }
     if (pending) {
+      if (
+        pending.kind === "renew" ||
+        pending.kind === "remove" ||
+        pending.kind === "volume_release"
+      )
+        return this.lifecycle(pending, false);
       await this.control(pending, false);
       return { kind: pending.kind };
     }
@@ -463,6 +865,9 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       validateAction({ operation_id: options.operationId, trace });
       if (recover) await this.recoverPending();
       await this.initialize();
+      const scope = this.scope;
+      if (!scope || !sameValue(scope.admission, this.state.admission) || this.state.disposal)
+        refuse("fenced", "workspace has no matching current reservation");
       const pending = this.state.pending;
       if (pending) {
         if (pending.kind !== "publish" || pending.command.operation_id !== options.operationId)
@@ -492,7 +897,7 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
         totalBytes = 0;
       const put = (object: ObjectSpec["object"], data: Uint8Array): void => {
         totalBytes += data.length;
-        if (totalBytes > this.scope.bytes || ordinal + 1 > this.scope.objects)
+        if (totalBytes > scope.bytes || ordinal + 1 > scope.objects)
           refuse("capacity", "artifact exceeds this volume's configured capacity");
         this.store.putObject(ordinal++, object, data);
       };
@@ -533,8 +938,8 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
         // existing content. It cannot leave a new pending intent on capacity.
         const needsCleanup =
           fullRetention ||
-          view.objects + objects.length > this.scope.objects ||
-          view.bytes + objects.reduce((n, object) => n + object.length, 0) > this.scope.bytes;
+          view.objects + objects.length > scope.objects ||
+          view.bytes + objects.reduce((n, object) => n + object.length, 0) > scope.bytes;
         if (needsCleanup) view = await this.maintainInternal();
         const slot = view.retentions.findIndex((entry) => !entry.pin);
         if (slot < 0)
@@ -543,8 +948,8 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
             "all retention slots are occupied; release finished handoffs or wait for their expiry",
           );
         if (
-          view.objects + objects.length > this.scope.objects ||
-          view.bytes + objects.reduce((n, object) => n + object.length, 0) > this.scope.bytes
+          view.objects + objects.length > scope.objects ||
+          view.bytes + objects.reduce((n, object) => n + object.length, 0) > scope.bytes
         )
           refuse("capacity", "live roots and this artifact exceed the volume's capacity");
         const writer = this.state.writer!;
@@ -552,6 +957,13 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
         if (actual.generation !== writer.generation || actual.number + 1 !== this.state.next)
           refuse("fenced", "remote writer position differs from the durable workspace");
         if (view.closed) refuse("closed", "volume is closed by another maintenance interval");
+        const deadlineClock = now();
+        const until = Math.min(
+          deadlineClock + ttl,
+          view.lifetime?.expires_at || Number.MAX_SAFE_INTEGER,
+        );
+        if (until <= deadlineClock)
+          refuse("expired", "the observed lifetime has no remaining retention window");
         const command: Command = {
           creation_id: this.target().creation_id,
           writer,
@@ -564,7 +976,7 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
             enabled: true,
             slot,
             generation: view.retentions[slot]!.generation,
-            until: now() + ttl,
+            until,
           },
         };
         const publication: Publication = {
@@ -974,6 +1386,27 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
   }
 
   private async control(control: Control, fresh: boolean): Promise<void> {
+    if (control.kind === "apply" && this.state.admission) {
+      let view: VolumeView;
+      try {
+        view = await this.transport.getVolume(control.request.target);
+      } catch (error) {
+        throw unknown(error, "private collection completion has not been observed");
+      }
+      if (view.epoch > control.request.revision) {
+        const state = { ...this.state };
+        delete state.pending;
+        this.save(state, true);
+        refuse("fenced", "a later collection epoch superseded the saved interval");
+      }
+      if (view.epoch < control.request.revision)
+        throw unknown(undefined, "saved collection epoch has not been observed");
+      if (view.closed) refuse("closed", "the private worker has not reopened the saved interval");
+      const state = { ...this.state };
+      delete state.pending;
+      this.save(state, true);
+      return;
+    }
     let failure: unknown, view: VolumeView | undefined, handle: GrantHandle | undefined;
     let settled = false;
     try {
@@ -1015,13 +1448,17 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
               settled = true;
             }
           } else if (control.kind === "close") {
-            if (view.closed && view.revision === control.request.revision + 1) {
+            if (
+              this.state.admission
+                ? view.epoch === control.request.revision + 1
+                : view.closed && view.revision === control.request.revision + 1
+            ) {
               failure = undefined;
               settled = true;
             } else if (view.revision !== control.request.revision) {
               settled = true;
               failure = new NativeScratchPadError(
-                "conflict",
+                this.state.admission ? "fenced" : "conflict",
                 "saved close is fenced by another revision",
               );
             }
@@ -1042,12 +1479,25 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       )
         settled = true;
     }
+    if (
+      control.kind === "close" &&
+      this.state.admission &&
+      view &&
+      view.epoch > control.request.revision + 1
+    ) {
+      const state = { ...this.state };
+      delete state.pending;
+      this.save(state, true);
+      refuse("fenced", "a later collection epoch superseded the saved close");
+    }
     if (!settled)
       throw unknown(failure, `the saved ${control.kind} request stays pending; call recover()`);
     if (
       !failure &&
       control.kind === "close" &&
-      (!view?.closed || view.revision !== control.request.revision + 1)
+      (this.state.admission
+        ? view?.epoch !== control.request.revision + 1
+        : !view?.closed || view.revision !== control.request.revision + 1)
     )
       throw unknown(undefined, "close returned another maintenance interval");
     const state = { ...this.state };
@@ -1059,10 +1509,13 @@ export class NativeScratchPad extends ScratchPadReader implements ScratchPadClie
       );
       state.grants.push({ request: control.request, handle, kind: control.provenance });
     }
-    if (!failure && control.kind === "close")
+    if (!failure && control.kind === "close" && (!this.state.admission || view!.closed))
       state.pending = {
         kind: "apply",
-        request: { target: this.target(), revision: view!.revision },
+        request: {
+          target: this.target(),
+          revision: this.state.admission ? control.request.revision + 1 : view!.revision,
+        },
       };
     this.save(state, true);
     if (failure)
@@ -1090,23 +1543,30 @@ export async function nativeScratchPad(
   const transport = new ScratchPadTransport(options.nc, options);
   const info: Info = await transport.info();
   const scope = info.scopes.find((scope) => scope.volume === options.volume);
-  if (!scope) refuse("denied", "authenticated principal owns no provisioned scope for this volume");
   const store = await WorkspaceStore.open(options.dir);
   try {
     let state = store.load();
     if (state === undefined) {
+      if (!scope)
+        refuse("denied", "authenticated principal owns no provisioned scope for this volume");
       state = {
         version: 1,
         principal: info.principal,
         volume: options.volume,
         creator: options.creator,
         creation: { operation_id: randomUUID(), trace: {} },
+        ...(scope.admission ? { admission: structuredClone(scope.admission) } : {}),
         next: 1,
         grants: [],
       } satisfies State;
       store.save(state);
     }
     validateState(state);
+    if (!state.target && (!scope || !sameValue(state.admission, scope.admission)))
+      refuse(
+        "fenced",
+        "saved creation does not match the current admission; it cannot adopt a new lifetime",
+      );
     check(
       sameValue(state.principal, info.principal) &&
         state.volume === options.volume &&
