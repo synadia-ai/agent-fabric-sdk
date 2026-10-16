@@ -3,9 +3,9 @@
 // creates nothing: the engine owns every resource.
 //
 //   server  — a nats-server with JetStream and one account, file storage
-//             only, `max_bytes` required, room for the engine's seven
+//             only, `max_bytes` required, room for the engine's eight
 //   engine  — `durable-engine serve` on that account, standalone, prefix
-//             `de` (`harness/engine.ts`): it provisions the seven at start
+//             `de` (`harness/engine.ts`): it provisions the eight at start
 //   tenant  — a user of that account. It watches the account's JetStream API
 //             advisories and reads the run's journal back
 //   agent   — `startAgent()` with `durable: true`, pointed at the fake
@@ -20,7 +20,7 @@
 // equal to that trace; the agent's connection sent no JetStream API request
 // at all, at its start or in the run (the worker's first poll bound its
 // workflow on the engine, whose requests the advisories show); the account
-// holds the engine's seven alone.
+// holds the engine's eight alone.
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -40,7 +40,7 @@ import { natsServerOnPath, newUser, TestNatsServer } from "./harness/nats-server
 
 const binary = await natsServerOnPath();
 
-const SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"];
+const EIGHT = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS", "KV_DE_TENANTS"];
 // A dot and a space, which a run id may not hold.
 const TOOL_CALL_ID = "call.durable 1";
 const SANITISED = "call_durable_1";
@@ -89,7 +89,7 @@ describe.skipIf(binary === undefined || engineUnavailable !== undefined)("start_
 
   beforeAll(async () => {
     const [agentUser, tenantUser] = [newUser(), newUser()];
-    server = await TestNatsServer.start(binary!, [callerUser, agentUser, tenantUser], { maxStreams: 7 });
+    server = await TestNatsServer.start(binary!, [callerUser, agentUser, tenantUser], { maxStreams: 8 });
     dir = await mkdtemp(join(tmpdir(), "fabric-examples-durable-"));
     const agentCreds = join(dir, "agent.nk");
     await writeFile(agentCreds, `${agentUser.seed}\n`);
@@ -235,7 +235,7 @@ describe.skipIf(binary === undefined || engineUnavailable !== undefined)("start_
     expect(engineAdvisories.length).toBeGreaterThan(0);
     expect(advisories).toEqual([]);
     const names = await api<{ streams: string[] }>("$JS.API.STREAM.NAMES");
-    expect([...names.streams].sort()).toEqual([...SEVEN].sort());
+    expect([...names.streams].sort()).toEqual([...EIGHT].sort());
 
     // The evidence, for whoever reads the run's output.
     console.log(
