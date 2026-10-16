@@ -63,7 +63,7 @@ describe.skipIf(binary === undefined || engineUnavailable !== undefined)("the du
 
   beforeAll(async () => {
     const [callerUser, agentUser, askerUser, tenantUser] = [newUser(), newUser(), newUser(), newUser()];
-    server = await TestNatsServer.start(binary!, [callerUser, agentUser, askerUser, tenantUser], { maxStreams: 7 });
+    server = await TestNatsServer.start(binary!, [callerUser, agentUser, askerUser, tenantUser], { maxStreams: 8 });
     dir = await mkdtemp(join(tmpdir(), "fabric-examples-durable-q-"));
     const agentSeed = join(dir, "agent.nk");
     await writeFile(agentSeed, `${agentUser.seed}\n`);

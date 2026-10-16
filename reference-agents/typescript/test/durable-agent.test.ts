@@ -106,7 +106,7 @@ describe.skipIf(binary === undefined || engineUnavailable !== undefined)("the du
   }
 
   beforeAll(async () => {
-    server = await TestNatsServer.start(binary!, [callerUser, agentUser, tenantUser], { maxStreams: 7 });
+    server = await TestNatsServer.start(binary!, [callerUser, agentUser, tenantUser], { maxStreams: 8 });
     dir = await mkdtemp(join(tmpdir(), "fabric-examples-durable-agent-"));
     marker = join(dir, "release-the-second-turn");
     const agentSeed = join(dir, "agent.nk");

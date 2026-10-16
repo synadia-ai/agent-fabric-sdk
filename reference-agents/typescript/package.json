@@ -21,7 +21,7 @@
     "@synadia-ai/agent-fabric": "^0.1.0",
     "@synadia-ai/agent-service": "^0.6.0",
     "@synadia-ai/agents": "^0.6.0",
-    "@synadia-ai/durable": "^0.1.1"
+    "@synadia-ai/durable": "^0.2.0"
   },
   "devDependencies": {
     "@nats-io/nkeys": "^2.0.3",

@@ -1,6 +1,6 @@
 // The durable engine for the durable tests: one `durable-engine serve` on the
 // test's nats-server, standalone, in the test's one account, on the prefix
-// `de`. The engine provisions its seven resources at start; the agent under
+// `de`. The engine provisions its eight resources at start; the agent under
 // test creates nothing and reaches it on `de.api.v1.*` alone.
 //
 // Adapted from the thin SDK's harness (`../durable-sdk`
@@ -120,7 +120,7 @@ export class TestEngine {
 
   /**
    * Start an engine on `url` (a user of the test's account, its password in
-   * the URL) and wait for its `serving` line: it has provisioned the seven.
+   * the URL) and wait for its `serving` line: it has provisioned the eight.
    * Each is sized 256 MiB, so all of them fit a tenant's 4 GB of file storage.
    */
   static async start(url: string, options: EngineOptions = {}): Promise<TestEngine> {
