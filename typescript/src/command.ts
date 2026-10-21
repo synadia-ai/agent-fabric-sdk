@@ -235,9 +235,11 @@ async function listAgents(caller: FabricCaller, json: boolean, io: CommandIO): P
   return EXIT_OK;
 }
 
+// The agent's own registered identity, from discovery: not the prompt's
+// signature, which every prompt carries.
 function describeIdentity(l: AgentLine): string {
-  if (l.identity === null) return "no identity";
-  return l.verified ? `${l.identity}, verified` : l.identity;
+  if (l.identity === null) return "agent identity: none";
+  return l.verified ? `agent ${l.identity}, verified` : `agent ${l.identity}`;
 }
 
 async function prompt(

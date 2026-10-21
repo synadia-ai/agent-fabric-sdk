@@ -214,9 +214,13 @@ def _agent_line(a: Agent) -> dict[str, object]:
 
 
 def _describe_identity(line: Mapping[str, object]) -> str:
+    # The agent's own registered identity, from discovery: not the prompt's
+    # signature, which every prompt carries.
     if line["identity"] is None:
-        return "no identity"
-    return f"{line['identity']}, verified" if line["verified"] else str(line["identity"])
+        return "agent identity: none"
+    if line["verified"]:
+        return f"agent {line['identity']}, verified"
+    return f"agent {line['identity']}"
 
 
 def _json(value: object) -> str:

@@ -49,7 +49,9 @@ try {
 try {
   // By address as discovery reports it, or by kind when there is one such agent.
   const target = await caller.find(who);
-  console.error(`→ ${target.promptSubject} (${target.identity ?? "no identity"}${target.idSigVerified ? ", verified" : ""})`);
+  // The agent's own registered identity, not this prompt's signature.
+  const identity = target.identity === undefined ? "agent identity: none" : `agent ${target.identity}${target.idSigVerified ? ", verified" : ""}`;
+  console.error(`→ ${target.promptSubject} (${identity})`);
 
   const started = Date.now();
   let reply = "";

@@ -55,8 +55,10 @@ async def main() -> int:
     try:
         # By address as discovery reports it, or by kind when there is one such agent.
         target = await caller.find(who)
+        # The agent's own registered identity, not this prompt's signature.
         verified = ", verified" if target.id_sig_verified else ""
-        print(f"→ {target.prompt_subject} ({target.identity or 'no identity'}{verified})", file=sys.stderr)
+        identity = f"agent {target.identity}{verified}" if target.identity else "agent identity: none"
+        print(f"→ {target.prompt_subject} ({identity})", file=sys.stderr)
 
         started = time.monotonic()
         reply: list[str] = []

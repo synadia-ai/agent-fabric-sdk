@@ -14,7 +14,9 @@ from synadia_ai.agent_fabric import fabric_caller_from_env
 async def main() -> None:
     async with await fabric_caller_from_env() as caller:
         for agent in await caller.list():
-            identity = str(agent.identity) if agent.identity is not None else "no identity"
+            identity = (
+                f"agent {agent.identity}" if agent.identity is not None else "agent identity: none"
+            )
             verified = ", verified" if agent.id_sig_verified else ""
             print(f"{agent.prompt_subject}\t{agent.agent}\t{identity}{verified}")
 

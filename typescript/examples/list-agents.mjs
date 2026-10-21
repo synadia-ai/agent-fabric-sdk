@@ -10,7 +10,8 @@ import { fabricCallerFromEnv } from "@synadia-ai/agent-fabric";
 const caller = await fabricCallerFromEnv();
 try {
   for (const agent of await caller.list()) {
-    const identity = agent.identity === undefined ? "no identity" : agent.identity;
+    const identity =
+      agent.identity === undefined ? "agent identity: none" : `agent ${agent.identity}`;
     console.log(
       `${agent.promptSubject}\t${agent.agent}\t${identity}${agent.idSigVerified ? ", verified" : ""}`,
     );

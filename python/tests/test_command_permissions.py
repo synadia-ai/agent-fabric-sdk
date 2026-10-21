@@ -89,7 +89,7 @@ async def test_lists_the_agents(world: World) -> None:
     io, rec = recording_io(world.env)
     assert await run_command(["agents"], io) == EXIT_OK
     # The host registers no identity of its own.
-    assert rec.out == f"{world.address}\twriter\tno identity\n"
+    assert rec.out == f"{world.address}\twriter\tagent identity: none\n"
     assert rec.err == f"url {world.server.url}\n"
 
 
@@ -123,7 +123,7 @@ async def test_streams_the_reply_and_the_root_and_reference_on_stderr(world: Wor
     found = ROOT_LINE.search(rec.err)
     assert found is not None
     root = found.group(1)
-    assert f"→ {world.address} (" in rec.err
+    assert f"→ {world.address} (agent identity: none)\n" in rec.err
     assert f"reference: {REF}\n" in rec.err
     record = json.loads(edges[0].data)
     assert record["parent_id"] is None

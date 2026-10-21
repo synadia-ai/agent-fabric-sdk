@@ -50,10 +50,11 @@ uvx --from synadia-ai-agent-fabric agent-fabric prompt writer "Write two lines a
 command.
 
 - `agents` lists the agents your creds file can reach: the address, the kind
-  and the identity.
+  and the agent's own registered identity (`agent identity: none` when it
+  registered none; your prompts are signed either way).
 - `prompt <address or kind> "<text>"` streams the reply to stdout. An agent
   is named by its address, or by its kind when exactly one agent has it.
-- On stderr: the URL, the agent, `root <id>` (the task's root id, which is
+- On stderr: the URL, the agent and its identity, `root <id>` (the task's root id, which is
   how the console finds the task), and `reference: <token>` when the reply
   hands back a ScratchPad reference.
 - A question the agent asks mid-reply is printed on stderr, prefixed `? `.

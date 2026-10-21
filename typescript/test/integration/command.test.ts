@@ -73,7 +73,7 @@ describe.skipIf(!bin)("the agent-fabric command with a caller's permissions", ()
     const io = recordingIO(env);
     expect(await runCommand(["agents"], io)).toBe(EXIT_OK);
     // The host registers no identity of its own.
-    expect(io.stdout()).toBe(`${svc.subject.prompt}\twriter\tno identity\n`);
+    expect(io.stdout()).toBe(`${svc.subject.prompt}\twriter\tagent identity: none\n`);
     expect(io.stderr()).toBe(`url ${server.url}\n`);
   });
 
@@ -101,7 +101,7 @@ describe.skipIf(!bin)("the agent-fabric command with a caller's permissions", ()
     expect(io.stdout()).toBe(`echo: hello there. kept at ${REF}\n`);
     const root = ROOT_LINE.exec(io.stderr())?.[1];
     expect(root).toBeDefined();
-    expect(io.stderr()).toContain(`→ ${svc.subject.prompt} (`);
+    expect(io.stderr()).toContain(`→ ${svc.subject.prompt} (agent identity: none)\n`);
     expect(io.stderr()).toContain(`reference: ${REF}\n`);
     expect(parse(edges.msgs[0]!)).toMatchObject({
       parent_id: null,
