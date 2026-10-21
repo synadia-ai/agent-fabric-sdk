@@ -283,7 +283,12 @@ async def fabric_caller(
     # never be published to.
     tracing = fabric_tracing(TraceOptions(edge_subject=edge_subject))
 
-    bundle = resolve_nats_connection_bundle(url=server, creds=creds_path, identity="signed")
+    # A missing or unreadable file, or one without a user seed (signing needs
+    # it), is a setting to fix: one line, never a traceback.
+    try:
+        bundle = resolve_nats_connection_bundle(url=server, creds=creds_path, identity="signed")
+    except Exception as err:
+        raise FabricCallerError("config", f"creds file {creds_path}: {err}") from err
     # Built before connecting: it refuses a name the identity cannot carry.
     try:
         identity = Identity(signer=bundle.signer, name=name)

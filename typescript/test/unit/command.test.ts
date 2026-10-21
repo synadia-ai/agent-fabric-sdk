@@ -91,4 +91,12 @@ describe("runCommand without a server", () => {
     expect(await runCommand(["agents"], io)).toBe(EXIT_USAGE);
     expect(io.stderr()).toContain("the URL the console showed next to your creds file");
   });
+
+  it("exits 2 with one line for a creds file it cannot read", async () => {
+    const io = recordingIO({ NATS_URL: "nats://127.0.0.1:1" });
+    expect(await runCommand(["agents", "--creds", "/no/such/typo.creds"], io)).toBe(EXIT_USAGE);
+    expect(io.stderr()).toMatch(
+      /^url nats:\/\/127\.0\.0\.1:1\nagent-fabric: creds file \/no\/such\/typo\.creds: [^\n]+\n$/,
+    );
+  });
 });

@@ -5,6 +5,7 @@ The TypeScript suite's ``command.test.ts``.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -106,3 +107,12 @@ def test_the_help_is_the_typescript_commands() -> None:
         ["node", str(_TS_CLI), "--help"], capture_output=True, text=True, check=True
     )
     assert ts.stdout == f"{USAGE}\n"
+
+
+async def test_exits_2_with_one_line_for_a_creds_file_it_cannot_read() -> None:
+    io, rec = recording_io({"NATS_URL": "nats://127.0.0.1:1"})
+    assert await run_command(["agents", "--creds", "/no/such/typo.creds"], io) == EXIT_USAGE
+    assert re.fullmatch(
+        r"url nats://127\.0\.0\.1:1\nagent-fabric: creds file /no/such/typo\.creds: [^\n]+\n",
+        rec.err,
+    )

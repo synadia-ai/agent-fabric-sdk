@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -119,6 +120,21 @@ async def test_reads_nats_creds_and_nats_url(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(FabricCallerError, match=re.escape("nats://127.0.0.1:1")) as caught:
         await fabric_caller_from_env()
     assert caught.value.reason == "connect"
+
+
+async def test_names_a_creds_file_it_cannot_read_as_a_setting() -> None:
+    with pytest.raises(FabricCallerError, match=r"^creds file /no/such/typo\.creds: ") as caught:
+        await fabric_caller(creds="/no/such/typo.creds", url="nats://127.0.0.1:1")
+    assert caught.value.reason == "config"
+
+
+async def test_names_a_creds_file_without_a_seed_as_a_setting(tmp_path: Path) -> None:
+    text = ERIN.read_text(encoding="utf-8")
+    jwt_only = tmp_path / "jwt-only.creds"
+    jwt_only.write_text(text[: text.index("-----BEGIN USER NKEY SEED")], encoding="utf-8")
+    with pytest.raises(FabricCallerError, match=re.escape(f"creds file {jwt_only}: ")) as caught:
+        await fabric_caller(creds=jwt_only, url="nats://127.0.0.1:1")
+    assert caught.value.reason == "config"
 
 
 async def test_refuses_a_name_the_identity_would_refuse_before_connecting() -> None:

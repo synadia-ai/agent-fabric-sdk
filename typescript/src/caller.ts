@@ -27,6 +27,7 @@ import {
   type PromptOptions,
   type PromptStream,
   type QueryEvent,
+  type SignedNatsConnectionBundle,
   type StreamMessage,
 } from "@synadia-ai/agents";
 import { ROOT_ID_FIELD, type TraceOptions } from "./trace.js";
@@ -237,7 +238,14 @@ export async function fabricCaller(options: FabricCallerOptions): Promise<Fabric
     }
   }
 
-  const bundle = await resolveNatsConnectionBundle({ url, creds }, { identity: "signed" });
+  // A missing or unreadable file, or one without a user seed (signing
+  // needs it), is a setting to fix: one line, never a stack.
+  let bundle: SignedNatsConnectionBundle;
+  try {
+    bundle = await resolveNatsConnectionBundle({ url, creds }, { identity: "signed" });
+  } catch (err) {
+    throw new FabricCallerError("config", `creds file ${creds}: ${errorMessage(err)}`);
+  }
   let nc: Awaited<ReturnType<typeof connect>>;
   try {
     nc = await connect(

@@ -1,6 +1,9 @@
 // The caller's rules without a server: which agent `find` picks, and what
 // the options and the environment must give before anything connects.
 
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Agent, PromptInterceptor, PromptInterceptorContext } from "@synadia-ai/agents";
 import { ROOT_SINK_KEY, rootCapturing, rootDeferred, type RootSink } from "../../src/caller.js";
@@ -104,6 +107,23 @@ describe("options and environment", () => {
     const err = await failure(fabricCallerFromEnv());
     expect(err.reason).toBe("connect");
     expect(err.message).toContain("nats://127.0.0.1:1");
+  });
+
+  it("names a creds file it cannot read, as a setting", async () => {
+    const err = await failure(
+      fabricCaller({ creds: "/no/such/typo.creds", url: "nats://127.0.0.1:1" }),
+    );
+    expect(err.reason).toBe("config");
+    expect(err.message).toMatch(/^creds file \/no\/such\/typo\.creds: /);
+  });
+
+  it("names a creds file without a seed, as a setting", async () => {
+    const jwtOnly = join(await mkdtemp(join(tmpdir(), "fabric-caller-")), "jwt-only.creds");
+    const text = await readFile(ERIN, "utf8");
+    await writeFile(jwtOnly, text.slice(0, text.indexOf("-----BEGIN USER NKEY SEED")));
+    const err = await failure(fabricCaller({ creds: jwtOnly, url: "nats://127.0.0.1:1" }));
+    expect(err.reason).toBe("config");
+    expect(err.message).toContain(`creds file ${jwtOnly}: `);
   });
 
   it("refuses a name the identity would refuse, before connecting", async () => {
