@@ -3,9 +3,12 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    // The `agent-fabric` command; tsup keeps its shebang.
+    cli: "src/cli.ts",
   },
   format: ["esm", "cjs"],
-  dts: true,
+  // Declarations for the library only: the command has no API.
+  dts: { entry: { index: "src/index.ts" } },
   clean: true,
   sourcemap: true,
   target: "node20",

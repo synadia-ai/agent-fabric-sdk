@@ -29,6 +29,10 @@ def run(command: list[str], **kwargs: object) -> None:
     subprocess.run(command, check=True, **kwargs)
 
 
+# The console script the package installs.
+COMMAND = "agent-fabric"
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -300,6 +304,18 @@ def verify(directory: Path, version: str, install: bool) -> None:
                             version,
                         ],
                         cwd=temporary,
+                    )
+                    # The console script the wheel installs, run as a user would.
+                    shown = subprocess.run(
+                        [str(venv / "bin" / COMMAND), "--help"],
+                        cwd=temporary,
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    ).stdout
+                    require(
+                        shown.startswith(f"usage: {COMMAND} "),
+                        f"the {COMMAND} command did not print its usage",
                     )
                     count += 1
     print(

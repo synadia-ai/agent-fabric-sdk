@@ -29,6 +29,9 @@ dependencies = [
     "nats-py>=2.16",
 ]
 
+[project.scripts]
+agent-fabric = "synadia_ai.agent_fabric.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/synadia-ai/agent-fabric-sdk/tree/main/python"
 Repository = "https://github.com/synadia-ai/agent-fabric-sdk"
@@ -69,8 +72,10 @@ include = [
     "/LICENSE",
     "/THIRD_PARTY_NOTICES",
     "/README.md",
+    "/CHANGELOG.md",
     "/pyproject.toml",
     "/src",
+    "/examples",
 ]
 
 [tool.ruff]
@@ -89,6 +94,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"] # magic values in tests are fine
+"examples/**" = ["PLR2004"] # an argument count, read at a glance
 
 [tool.mypy]
 strict = true
