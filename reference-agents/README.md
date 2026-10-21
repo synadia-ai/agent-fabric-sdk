@@ -93,6 +93,13 @@ make agent-py     # the Python agent, from python/.env
 
 A fabric provides what an agent needs: a NATS URL and a credentials file per agent, the model proxy's URL, a virtual key per agent, and ScratchPad if it has it. Each agent's `env.example` names the variable for each.
 
+The console's **Connect an agent** sets an agent up in one of two ways, both choosing **Your own agent**:
+
+- **The `fabric` CLI**, on a computer you work on: `fabric connect <name> --harness sdk --kind <kind>` makes its user and its model key, and `eval "$(fabric env <name>)" && npm start` runs it. `fabric env` exports every connection variable, so `.env` holds only the persona, the kind, the description and the tools.
+- **Environment variables**, for a server, a container or CI: the console creates the agent and hands out its files once, `<name>.creds` and `<name>.env`. In `typescript/`, the env file becomes `.env` with the creds beside it, and `npm start` reads it; in a container, `--env-file <name>.env` with the creds mounted where `NATS_CREDS` names them. The page shows the commands for this computer, Docker and Kubernetes.
+
+The steps below do the same by hand, one variable at a time.
+
 Your fabric gives each agent a NATS user and a virtual key: the console's onboarding issues the user, and its key manager issues the key for the agent's identity. The key manager asks for that identity, `<account>.<user>`; the echo agent prints it before the agent has a key.
 
 **The TypeScript agent.** In `typescript/`, copy `env.example` to `.env` and fill in `NATS_URL` and `NATS_CREDS`. Print the identity, then stop the echo agent with Ctrl+C:

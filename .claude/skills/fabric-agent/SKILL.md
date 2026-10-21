@@ -1,11 +1,11 @@
 ---
 name: fabric-agent
-description: Build, connect and run an agent on the Synadia Agent Fabric from this repository's reference agent, with the fabric command-line tool (`fabric`). Use when asked to make an agent for the fabric (a research agent, a writer, a reviewer, …), to connect an agent to the fabric, to start it, or to change its model. Covers which steps need the user's own terminal, because they take secrets.
+description: Build, connect and run an agent on the Synadia Agent Fabric from this repository's reference agent, with the fabric command-line tool (`fabric`) or with the files the console hands out (a creds file and an env file). Use when asked to make an agent for the fabric (a research agent, a writer, a reviewer, …), to connect an agent to the fabric, to start it, or to change its model. Covers which steps need the user's own terminal, because they take secrets.
 ---
 
 # An agent on the Synadia Agent Fabric
 
-You build the agent from the reference agent in `reference-agents/`, connect it with `fabric`, and run it. The fabric gives the agent a signed identity on NATS, its own model key for the fabric's model proxy, the other agents to find and prompt, and the console, where its owner sees what it did.
+You build the agent from the reference agent in `reference-agents/`, connect it with `fabric` (or with the console's files, for a server or a container), and run it. The fabric gives the agent a signed identity on NATS, its own model key for the fabric's model proxy, the other agents to find and prompt, and the console, where its owner sees what it did.
 
 ## The rule on secrets
 
@@ -14,6 +14,7 @@ Two steps take a secret: `fabric login` (a Synadia Cloud token) and `fabric conn
 - **Never ask the user to paste a key, a token or a credentials file into the chat.** Never put one on a command line you run, in `.env`, or in code.
 - **Hand the step to the user instead.** Give the exact command, ask them to run it in their own terminal, where it asks for the secret and does not echo it, and wait until they say it is done. Then carry on.
 - **Never print what holds a secret:** `fabric env <name>` on its own (it prints the agent's model key), `~/.fabric/agents/<name>/model-key`, the agent's `.creds` file. Use `fabric env` only inside `eval "$(fabric env <name>)"`.
+- **The files the console hands out are the user's to place, never yours to open.** With the console's **Connect an agent → Environment variables**, the user downloads `<name>.creds` (the agent's identity) and `<name>.env` (its environment, with the model key in it), shown once. The user saves and moves them; you refer to them by path only. Never `cat`, print, copy into the chat, edit or rewrite either file, and never ask for their content. If the user pastes one into the chat anyway, tell them to treat it as exposed: delete the agent on the console and create it again. Before the user puts them in a directory, check that its `.gitignore` covers `*.creds`, `.env` and `.env.*` (`reference-agents/.gitignore` does; a copy elsewhere needs its own).
 - **The agent never uses the provider's key.** It calls its model through the proxy with its own model key, `MODEL_PROXY_URL` and `MODEL_VIRTUAL_KEY`, which is how the fabric records its calls. Never wire `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` or another provider key into the agent's code or `.env`.
 
 ## 1. Check fabric
@@ -58,12 +59,20 @@ This command needs the provider's API key, unless the agent already has a live m
 
 `fabric connect` creates the agent's user on the account, its credentials, its model key and its settings under `~/.fabric/agents/<name>`. Run it again to finish a setup that stopped half way; what is done is kept.
 
+**Without `fabric`**, for an agent on a server, in a container or in CI, or when the user prefers it: they open **Connect an agent** on their console, choose **Environment variables** and **Your own agent**, and create the agent there, typing the provider's key into the browser. The console hands out `<name>.creds` and `<name>.env` once. Hand them that step and wait, then ask only where they saved the two files. Keep the console's env file out of the agent's `.env`, although the console's own commands make it `.env`: then you could not touch `.env` at all. `.env` stays yours, with the persona, the kind, the description and the tools, and nothing secret in it. The creds file's path is in the env file as `NATS_CREDS`; if the user moved the file, they correct that line themselves.
+
 ## 4. Run it
 
 In the agent's directory:
 
 ```sh
 eval "$(fabric env <name>)" && npm start
+```
+
+With the console's files instead, the user loads the env file into the shell that starts the agent; the environment wins over `.env`:
+
+```sh
+set -a; . <path>/<name>.env; set +a; npm start
 ```
 
 It runs until stopped: start it in the background and read its output for errors. A first prompt checks it end to end: from the console, on the agent's page, or for the user from their terminal with `npm run prompt -- <kind> "<a prompt>"` in a shell where `fabric env` was evaluated. The console shows the agent online, then its tasks with every model call. Stop only the process you started.

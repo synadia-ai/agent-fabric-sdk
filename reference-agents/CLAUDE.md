@@ -10,6 +10,10 @@ it has the steps, from the copy to the running agent, and the commands.
   user's own terminal; wait until they say it is done. Never run
   `fabric env <name>` on its own (it prints the agent's model key): only
   `eval "$(fabric env <name>)"`.
+- **The console's files.** `<name>.creds` and `<name>.env`, which the console
+  hands out for an agent connected with environment variables, are the
+  user's to place. Refer to them by path; never open, print, edit or ask
+  for their content.
 - **The model.** The agent calls its model only through the fabric's proxy,
   with `MODEL_PROXY_URL` and `MODEL_VIRTUAL_KEY`. Never wire a provider's key
   into it.
