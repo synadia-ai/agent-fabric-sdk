@@ -6,8 +6,9 @@ the two envelope fields through unread, §5.6). An untraced caller is
 served by a traced TypeScript host, which mints a root of its own, and
 sees nothing of tracing on the wire. In operator mode the caller's edge
 record names the thread the TypeScript host adopted, verifies, and
-validates against edge.json. The TypeScript suite runs the mirror image
-against a Python host.
+validates against edge.json. A caller (``fabric_caller``, with a caller's
+permissions only) prompts a TypeScript host, which adopts the root it
+returned. The TypeScript suite runs the mirror image against a Python host.
 
 The host is ``test-fixtures/interop/ts-agent-service-host.ts`` (from the
 protocol SDK's interop host at synadia-agents c9d7bcb), fed to ``bun run
@@ -44,7 +45,7 @@ from synadia_ai.agents import (
     verify_sender,
 )
 
-from synadia_ai.agent_fabric import TraceOptions, fabric_tracing, is_thread_id
+from synadia_ai.agent_fabric import TraceOptions, fabric_caller, fabric_tracing, is_thread_id
 from tests.harness.nats_server import identity_fixture
 from tests.interop import FABRIC_TS_MODULE, TS_DIR, interop_prereqs_missing
 from tests.support import REPO_ROOT, capture, drain, edge_schema_errors
@@ -61,6 +62,7 @@ READY_MARKER = "agent service listening on "
 STARTUP_TIMEOUT_S = 30.0
 PRETRACING_TS_DIR_ENV = "SYNADIA_INTEROP_PRETRACING_TS_DIR"
 CREDS = identity_fixture("operator/alice.creds")
+CALLER_CREDS = identity_fixture("operator/erin.creds")
 _ECHO = re.compile(
     r"^echo: (?P<prompt>.*?)(?: thread=(?P<thread>[0-9a-f]{32}) root=(?P<root>[0-9a-f]{32}))?$"
 )
@@ -251,6 +253,33 @@ async def test_traced_python_callers_edge_names_the_thread_the_ts_host_adopted(
             # One id three ways: the body's record_id is the signed nonce and the Nats-Msg-Id.
             assert sender.header.nonce == record["record_id"]
             assert (edges[0].headers or {})["Nats-Msg-Id"] == record["record_id"]
+    finally:
+        await nc.close()
+
+
+async def test_a_caller_prompts_a_ts_host_which_adopts_the_root_it_returned(
+    nats_server_operator: RunningServer,
+) -> None:
+    nc = await nats.connect(nats_server_operator.url, user_credentials=str(CREDS))
+    try:
+        async for host in _host(
+            nats_server_operator.url, agent="ts-for-caller", traced=True, creds=CREDS
+        ):
+            edges = await capture(nc, "TRACE.edges")
+            async with await fabric_caller(
+                creds=CALLER_CREDS, url=nats_server_operator.url
+            ) as caller:
+                reply = await caller.ask(host.prompt_subject, "from a caller")
+            m = _ECHO.match(reply.text)
+            assert m is not None, reply.text
+            assert m.group("prompt") == "from a caller"
+            assert m.group("thread") == m.group("root") == reply.root_id
+            await asyncio.sleep(0.2)
+            assert len(edges) == 1, [e.data for e in edges]
+            record = json.loads(edges[0].data)
+            assert edge_schema_errors(record) == []
+            assert record["parent_id"] is None
+            assert record["thread_id"] == record["root_id"] == reply.root_id
     finally:
         await nc.close()
 

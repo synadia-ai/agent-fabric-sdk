@@ -11,6 +11,14 @@ from __future__ import annotations
 import synadia_ai.agent_fabric as m
 
 PUBLIC = {
+    # A caller: prompts agents with a creds file.
+    "fabric_caller",
+    "fabric_caller_from_env",
+    "FabricCaller",
+    "FabricCallerError",
+    "CallerPrompt",
+    "CallerReply",
+    "pick_agent",
     # The hooks the SDK takes.
     "fabric_tracing",
     "FabricTracing",

@@ -31,6 +31,9 @@ It carries tracing and the agent tools' ScratchPad extension:
 * :class:`SpCliScratchPad`, :func:`scratchpad_from_env` — the optional
   implementation over the sp v2 command line. :class:`ScratchPadError`
   reports CLI failures; :class:`NativeScratchPadError` reports native failures.
+* :func:`fabric_caller`, :func:`fabric_caller_from_env` — a caller: prompts
+  agents with a creds file and nothing else, signed and traced, and returns
+  the root of the task each prompt starts.
 * :func:`request_grant`, :func:`grant_request_endpoint` — the grant request,
   both sides: asking a reference's creator to let one more agent read it,
   and answering.
@@ -43,6 +46,21 @@ wire-identical.
 
 from __future__ import annotations
 
+from .caller import (
+    CALLER_INBOX_PREFIX,
+    CANNOT_ANSWER,
+    DEFAULT_DISCOVER_TIMEOUT_S,
+    NATS_CREDS_VAR,
+    NATS_URL_VAR,
+    CallerPrompt,
+    CallerReply,
+    FabricCaller,
+    FabricCallerError,
+    FabricCallerErrorReason,
+    fabric_caller,
+    fabric_caller_from_env,
+    pick_agent,
+)
 from .durable import (
     DurableTrace,
     durable_headers,
@@ -155,6 +173,9 @@ from .tracing import (
 )
 
 __all__ = [
+    "CALLER_INBOX_PREFIX",
+    "CANNOT_ANSWER",
+    "DEFAULT_DISCOVER_TIMEOUT_S",
     "DEFAULT_EDGE_SUBJECT",
     "DEFAULT_GRANT_REQUEST_TIMEOUT_S",
     "DEFAULT_GRANT_TTL_S",
@@ -164,6 +185,8 @@ __all__ = [
     "GRANT_REQUEST_ENDPOINT",
     "HARNESS_THREAD_ID_MAX",
     "MAX_BOOTSTRAP_BYTES",
+    "NATS_CREDS_VAR",
+    "NATS_URL_VAR",
     "READS_REFERENCES_KEY",
     "READS_SCRATCHPAD_REFERENCES_FIELD",
     "REFERENCE_PREFIX",
@@ -181,7 +204,12 @@ __all__ = [
     "THREAD_ID_HEX_LEN",
     "TOOL_CALL_ID_CONTEXT_KEY",
     "TOOL_CALL_ID_MAX",
+    "CallerPrompt",
+    "CallerReply",
     "DurableTrace",
+    "FabricCaller",
+    "FabricCallerError",
+    "FabricCallerErrorReason",
     "FabricTracing",
     "GrantKind",
     "GrantReply",
@@ -224,6 +252,8 @@ __all__ = [
     "encode_grant_reply",
     "encode_grant_request",
     "encode_reference",
+    "fabric_caller",
+    "fabric_caller_from_env",
     "fabric_tracing",
     "find_references",
     "grant_request_endpoint",
@@ -232,6 +262,7 @@ __all__ = [
     "is_thread_id",
     "native_scratchpad",
     "native_scratchpad_from_env",
+    "pick_agent",
     "random_thread_id",
     "reads_references",
     "reference_creator",

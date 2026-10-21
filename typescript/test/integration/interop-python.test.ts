@@ -19,7 +19,8 @@
 //   export SYNADIA_INTEROP_PRETRACING_PY_PYTHON=$PWD/old-py/bin/python
 //
 // and skips when that variable is unset. The Python suite runs the mirror
-// image against a TypeScript host.
+// image against a TypeScript host. A caller (`fabricCaller`, with a caller's
+// permissions only) prompts a Python host, which adopts the root it returned.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -34,7 +35,7 @@ import {
   verifySender,
   type Agent,
 } from "@synadia-ai/agents";
-import { fabricTracing, isThreadId, type TraceOptions } from "../../src/index.js";
+import { fabricCaller, fabricTracing, isThreadId, type TraceOptions } from "../../src/index.js";
 import {
   findNatsServerBinary,
   identityFixture,
@@ -48,6 +49,7 @@ const PRETRACING_PY_ENV = "SYNADIA_INTEROP_PRETRACING_PY_PYTHON";
 const READY_MARKER = "agent service listening on ";
 const ECHO = /^echo: (.*?)(?: thread=([0-9a-f]{32}) root=([0-9a-f]{32}))?$/;
 const CREDS = identityFixture("operator/alice.creds");
+const CALLER_CREDS = identityFixture("operator/erin.creds");
 
 const bin = await findNatsServerBinary();
 const uvAvailable = spawnSync("uv", ["--version"]).status === 0;
@@ -276,6 +278,38 @@ describe.skipIf(!bin || !uvAvailable)("tracing interop with Python hosts (operat
       expect(sender?.header.nonce).toBe(record["record_id"]);
       expect(edges[0]!.headers?.get("Nats-Msg-Id")).toBe(record["record_id"]);
     } finally {
+      await host.stop();
+    }
+  });
+
+  it("a caller with a caller's permissions prompts a Python host: the root it returned is adopted", async () => {
+    const host = await startPyHost({
+      url: server.url,
+      agent: "py-for-caller",
+      traced: true,
+      creds: CREDS,
+    });
+    const caller = await fabricCaller({ creds: CALLER_CREDS, url: server.url });
+    try {
+      const edges = capture(nc, "TRACE.edges");
+      await nc.flush();
+      const reply = await caller.ask(host.subject, "from a caller");
+      const m = ECHO.exec(reply.text);
+      expect(m, reply.text).not.toBeNull();
+      expect(m![1]).toBe("from a caller");
+      expect(m![2]).toBe(reply.rootId);
+      expect(m![3]).toBe(reply.rootId);
+      await sleep(200);
+      expect(edges).toHaveLength(1);
+      const record = parse(edges[0]!);
+      expect(edgeSchemaErrors(record)).toEqual([]);
+      expect(record).toMatchObject({
+        parent_id: null,
+        thread_id: reply.rootId,
+        root_id: reply.rootId,
+      });
+    } finally {
+      await caller.close();
       await host.stop();
     }
   });
