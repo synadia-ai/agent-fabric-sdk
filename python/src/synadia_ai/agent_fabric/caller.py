@@ -316,7 +316,9 @@ async def fabric_caller(
     except Exception as err:
         bundle.wipe()
         cause = nc.last_error or err
-        raise FabricCallerError("connect", f"could not connect to {server}: {cause}") from err
+        # A timeout's text is empty: name its type instead.
+        why = str(cause) or type(cause).__name__
+        raise FabricCallerError("connect", f"could not connect to {server}: {why}") from err
     nc.options["allow_reconnect"] = True
     nc.options["max_reconnect_attempts"] = -1
 
