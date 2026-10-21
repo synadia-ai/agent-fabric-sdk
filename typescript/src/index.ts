@@ -41,6 +41,10 @@
 //                             one more agent read it, and answering.
 //   - {@link findReferences}, {@link removeReferences} and the rest of the
 //                             references' vocabulary.
+//   - {@link fabricCaller}, {@link fabricCallerFromEnv} — a caller: prompts
+//                             agents with a creds file and nothing else,
+//                             signed and traced, and returns the root of
+//                             the task each prompt starts.
 //   - {@link loopGuard}, {@link resolveEdgeSubject} and the harness plugins'
 //                             extension contract ({@link AgentExtension} and
 //                             its types) — what every add-on under
@@ -53,6 +57,25 @@
 // like the plugins, and none of them is wire.
 
 export { fabricTracing, TOOL_CALL_ID_CONTEXT_KEY, type FabricTracing } from "./tracing.js";
+
+export {
+  CALLER_INBOX_PREFIX,
+  CANNOT_ANSWER,
+  DEFAULT_DISCOVER_TIMEOUT_MS,
+  CallerStream,
+  FabricCallerError,
+  NATS_CREDS_VAR,
+  NATS_URL_VAR,
+  fabricCaller,
+  fabricCallerFromEnv,
+  pickAgent,
+  type AskOptions,
+  type CallerPrompt,
+  type CallerReply,
+  type FabricCaller,
+  type FabricCallerErrorReason,
+  type FabricCallerOptions,
+} from "./caller.js";
 
 export {
   DEFAULT_EDGE_SUBJECT,

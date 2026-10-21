@@ -1,0 +1,169 @@
+// The caller's rules without a server: which agent `find` picks, and what
+// the options and the environment must give before anything connects.
+
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Agent, PromptInterceptor, PromptInterceptorContext } from "@synadia-ai/agents";
+import { ROOT_SINK_KEY, rootCapturing, rootDeferred, type RootSink } from "../../src/caller.js";
+import {
+  FabricCallerError,
+  fabricCaller,
+  fabricCallerFromEnv,
+  pickAgent,
+} from "../../src/index.js";
+import { identityFixture } from "../harness/nats-server.js";
+
+const ERIN = identityFixture("operator/erin.creds");
+
+function agent(kind: string, name: string): Agent {
+  return { agent: kind, promptSubject: `agents.prompt.${kind}.acme.${name}` } as Agent;
+}
+
+describe("pickAgent", () => {
+  const writer = agent("writer", "w1");
+  const reviewerA = agent("reviewer", "r1");
+  const reviewerB = agent("reviewer", "r2");
+  const found = [writer, reviewerA, reviewerB];
+
+  it("takes the agent at that address", () => {
+    expect(pickAgent(found, "agents.prompt.reviewer.acme.r2")).toBe(reviewerB);
+  });
+
+  it("takes the one agent of a kind", () => {
+    expect(pickAgent(found, "writer")).toBe(writer);
+  });
+
+  it("counts two instances behind one address as one agent", () => {
+    const twin = agent("writer", "w1");
+    expect(pickAgent([writer, twin], "writer")).toBe(writer);
+  });
+
+  it("refuses a kind two agents have, naming both", () => {
+    expect(() => pickAgent(found, "reviewer")).toThrow(
+      '2 agents of kind "reviewer": agents.prompt.reviewer.acme.r1, agents.prompt.reviewer.acme.r2; name one by its address',
+    );
+    try {
+      pickAgent(found, "reviewer");
+    } catch (err) {
+      expect((err as FabricCallerError).reason).toBe("ambiguous");
+    }
+  });
+
+  it("names what is there when nothing matches", () => {
+    expect(() => pickAgent([writer], "nobody")).toThrow(
+      'no agent "nobody"; there: agents.prompt.writer.acme.w1',
+    );
+    expect(() => pickAgent([], "nobody")).toThrow('no agent "nobody"; there: nobody');
+  });
+});
+
+describe("options and environment", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const failure = (p: Promise<unknown>): Promise<FabricCallerError> =>
+    p.then(
+      () => {
+        throw new Error("expected a failure");
+      },
+      (err: unknown) => err as FabricCallerError,
+    );
+
+  it("needs a URL, and says where it comes from", async () => {
+    vi.stubEnv("NATS_URL", "");
+    const err = await failure(fabricCaller({ creds: ERIN }));
+    expect(err).toBeInstanceOf(FabricCallerError);
+    expect(err.reason).toBe("config");
+    expect(err.message).toContain("the URL the console showed next to your creds file");
+  });
+
+  it("needs a creds file", async () => {
+    const err = await failure(fabricCaller({ creds: "", url: "nats://127.0.0.1:1" }));
+    expect(err.reason).toBe("config");
+    expect(err.message).toContain("NATS_CREDS");
+  });
+
+  it("takes the URL from NATS_URL when none is given", async () => {
+    vi.stubEnv("NATS_URL", "nats://127.0.0.1:1");
+    const err = await failure(fabricCaller({ creds: ERIN }));
+    expect(err.reason).toBe("connect");
+    expect(err.message).toContain("could not connect to nats://127.0.0.1:1");
+  });
+
+  it("prefers the option to NATS_URL", async () => {
+    vi.stubEnv("NATS_URL", "nats://127.0.0.1:1");
+    const err = await failure(fabricCaller({ creds: ERIN, url: "nats://127.0.0.1:2" }));
+    expect(err.message).toContain("could not connect to nats://127.0.0.1:2");
+  });
+
+  it("reads NATS_CREDS and NATS_URL from the environment", async () => {
+    vi.stubEnv("NATS_CREDS", "");
+    vi.stubEnv("NATS_URL", "nats://127.0.0.1:1");
+    expect((await failure(fabricCallerFromEnv())).reason).toBe("config");
+    vi.stubEnv("NATS_CREDS", ERIN);
+    const err = await failure(fabricCallerFromEnv());
+    expect(err.reason).toBe("connect");
+    expect(err.message).toContain("nats://127.0.0.1:1");
+  });
+
+  it("names a creds file it cannot read, as a setting", async () => {
+    const err = await failure(
+      fabricCaller({ creds: "/no/such/typo.creds", url: "nats://127.0.0.1:1" }),
+    );
+    expect(err.reason).toBe("config");
+    expect(err.message).toMatch(/^creds file \/no\/such\/typo\.creds: /);
+  });
+
+  it("names a creds file without a seed, as a setting", async () => {
+    const jwtOnly = join(await mkdtemp(join(tmpdir(), "fabric-caller-")), "jwt-only.creds");
+    const text = await readFile(ERIN, "utf8");
+    await writeFile(jwtOnly, text.slice(0, text.indexOf("-----BEGIN USER NKEY SEED")));
+    const err = await failure(fabricCaller({ creds: jwtOnly, url: "nats://127.0.0.1:1" }));
+    expect(err.reason).toBe("config");
+    expect(err.message).toContain(`creds file ${jwtOnly}: `);
+  });
+
+  it("refuses a name the identity would refuse, before connecting", async () => {
+    // The URL has no server: a connect would fail with reason "connect".
+    const err = await failure(
+      fabricCaller({ creds: ERIN, url: "nats://127.0.0.1:1", name: "n".repeat(65) }),
+    );
+    expect(err.reason).toBe("config");
+    expect(err.message).toMatch(/^name: /);
+  });
+
+  it("refuses an edge subject that can never be published to, before connecting", async () => {
+    await expect(
+      fabricCaller({ creds: ERIN, url: "nats://127.0.0.1:1", edgeSubject: "a..b" }),
+    ).rejects.toThrow(/edgeSubject/);
+  });
+});
+
+describe("the root's interceptor", () => {
+  const ctx = (sink: RootSink): PromptInterceptorContext =>
+    ({ context: { [ROOT_SINK_KEY]: sink } }) as unknown as PromptInterceptorContext;
+
+  it("settles the root when tracing's interceptor throws", async () => {
+    const { sink, rootId } = rootDeferred();
+    const failing: PromptInterceptor = {
+      beforePrompt() {
+        throw new Error("tracing failed");
+      },
+    };
+    await expect(rootCapturing(failing).beforePrompt(ctx(sink))).rejects.toThrow("tracing failed");
+    await expect(rootId).rejects.toThrow("tracing failed");
+  });
+
+  it("resolves the root tracing minted, and settles only once", async () => {
+    const { sink, rootId } = rootDeferred();
+    const minting: PromptInterceptor = {
+      beforePrompt: () => ({ fields: { root_id: "r".repeat(32) } }),
+    };
+    await rootCapturing(minting).beforePrompt(ctx(sink));
+    sink.reject(new Error("too late"));
+    expect(await rootId).toBe("r".repeat(32));
+  });
+});

@@ -1,7 +1,7 @@
 # Publish the Python package
 
 Publish the protocol caller and service first, in that order. The Fabric
-release is `synadia-ai-agent-fabric` 0.1.0 and uses exact protocol versions
+release is `synadia-ai-agent-fabric` 0.2.0 and uses exact protocol versions
 0.8.1 and 0.5.0 in its publication artifacts. Those versions must already
 be available on PyPI before the Fabric installation gate can pass.
 
@@ -31,7 +31,7 @@ Run the complete package suites before selecting a release commit. The
 publication workflow's controls inspect packaging; they do not replace
 source behavior tests.
 
-`python-v0.1.0` is the explicit publication trigger. Build and inspection
+`python-v0.2.0` is the explicit publication trigger. Build and inspection
 also run for pull requests that change this workflow or its controls.
 The publishing job downloads and verifies the same wheel and sdist that
 passed installation on Python 3.11, 3.12 and 3.13. It does not rebuild.
@@ -46,10 +46,13 @@ Local controls and artifact preparation:
 
 ```sh
 uv run --python 3.12 python -m unittest discover -s scripts/tests -p test_python_release.py -v
-uv run --python 3.12 scripts/python-release.py build --version 0.1.0 --artifacts /new/outside-checkout/directory
-uv run --python 3.12 scripts/python-release.py verify --version 0.1.0 --artifacts /new/outside-checkout/directory --install
+uv run --python 3.12 scripts/python-release.py build --version 0.2.0 --artifacts /new/outside-checkout/directory
+uv run --python 3.12 scripts/python-release.py verify --version 0.2.0 --artifacts /new/outside-checkout/directory --install
 ```
 
 Use a clean committed checkout for the build. Artifact metadata records
 its exact source and checksums. Installation tests resolve protocol
 packages from PyPI, with no local checkout or private service source.
+Each clean install imports the three SDKs and runs the `agent-fabric`
+console script with `--help`; `verify --install` fails if it does not
+print its usage.

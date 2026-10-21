@@ -40,6 +40,9 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
   src/scratchpad-extension.ts     scratchPadExtension(): AgentTools' three hooks
   src/scratchpad-cli.ts           spCliScratchPad(), scratchPadFromEnv(): the port's ready implementation over `sp`
   src/scratchpad-native.ts        nativeScratchPad(), nativeScratchPadFromEnv(), scratchPadReader(): the native NATS client; protocol, codec, SQLite workspace and workflows in scratchpad-native/
+  src/caller.ts      fabricCaller(): a caller with a creds file only, signed and traced, the root of each prompt returned
+  src/command.ts, src/cli.ts      the `agent-fabric` command (agents, prompt) and its bin entry
+  examples/          the caller examples the package ships (prompt, ask, answer-questions, list-agents, every)
   src/plugin-contract.ts          the harness plugins' extension contract, as types — TypeScript only
   src/loop-guard.ts               loopGuard(): the 409 guard every add-on returns — TypeScript only
   src/plugin-settings.ts          resolveEdgeSubject(): the add-ons' one setting — TypeScript only
@@ -51,11 +54,13 @@ typescript/          @synadia-ai/agent-fabric — tsup (ESM + CJS), vitest, esli
 python/              synadia-ai-agent-fabric — uv, ruff, mypy (strict), pytest
   src/synadia_ai/agent_fabric/{trace,tracing,served,durable}.py   the same four modules
   src/synadia_ai/agent_fabric/{scratchpad,grant_request,scratchpad_extension,scratchpad_cli}.py
+  src/synadia_ai/agent_fabric/{caller,cli}.py   the caller and the `agent-fabric` console script; examples/ ships in the sdist only
   tests/             the same suites; conftest starts the servers lazily
 test-fixtures/       shared by both suites — see its README for every file's source
   schemas/           the contracts, from the fabric's design documents: edge.json, served.json
                      and the grant request's two shapes, sp-grant-{request,reply}.json
-  identity/          throwaway keys and server configs, vendored from synadia-agents
+  identity/          throwaway keys and server configs, vendored from synadia-agents; operator/caller-permissions.json
+                     and erin.creds, a caller's permissions, minted here
   interop/           the TS and Python hosts and agents the cross-language tests spawn
 plugins/             the fabric add-ons for the harness plugins, one package per harness (docs/plugins.md)
   scratchpad-skill/  the one ScratchPad skill every add-on ships: SKILL.md, scripts/sp, load-sp.mjs, install.sh

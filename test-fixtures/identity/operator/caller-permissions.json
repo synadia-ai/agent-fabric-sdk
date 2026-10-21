@@ -1,0 +1,15 @@
+{
+  "_comment": "The permissions of a caller: a prompt-only NATS user a tenant adds in the console. erin.creds carries exactly these; erin-no-user-info.creds the same without $SYS.REQ.USER.INFO. Both suites read this file; mint-callers.mjs writes both creds files from it.",
+  "pub": [
+    "agents.prompt.>",
+    "$SRV.PING.agents",
+    "$SRV.PING.agents.>",
+    "$SRV.INFO.agents",
+    "$SRV.INFO.agents.>",
+    "agents.status.>",
+    "TRACE.edges",
+    "_INBOX.agents.>",
+    "$SYS.REQ.USER.INFO"
+  ],
+  "sub": ["_INBOX.agents.>", "agents.hb.>"]
+}

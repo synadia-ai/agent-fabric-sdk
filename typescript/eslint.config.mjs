@@ -12,6 +12,9 @@ export default tseslint.config(
       "*.config.mts",
       // A stand-in for the `sp` CLI, run as a program by the tests.
       "test/harness/*.mjs",
+      // The examples people copy: plain ES modules against the published
+      // package, never part of the typed project.
+      "examples/**",
     ],
   },
   ...tseslint.configs.recommendedTypeChecked,
