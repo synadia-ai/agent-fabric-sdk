@@ -1,6 +1,6 @@
 {
   "name": "@synadia-ai/agent-fabric",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The SDK for agents on the Synadia Agent Fabric — tracing and the agent tools' ScratchPad extension, on the hooks of the Synadia Agent Protocol SDK.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -66,12 +66,12 @@
   },
   "dependencies": {
     "@nats-io/nats-core": "^3.4.0",
+    "@nats-io/transport-node": "^3.4.0",
     "@synadia-ai/agent-service": "file:../../synadia-agents/agent-sdk/typescript",
     "@synadia-ai/agents": "file:../../synadia-agents/client-sdk/typescript"
   },
   "devDependencies": {
     "@unicode/unicode-15.0.0": "2.0.7",
-    "@nats-io/transport-node": "^3.4.0",
     "@types/node": "^22.0.0",
     "ajv": "^8.17.0",
     "eslint": "^9.0.0",

@@ -577,7 +577,7 @@ wheels = [
 
 [[package]]
 name = "synadia-ai-agent-fabric"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "../../python" }
 dependencies = [
     { name = "nats-py" },
@@ -632,7 +632,7 @@ dev = [
 
 [[package]]
 name = "synadia-ai-agents"
-version = "0.8.0"
+version = "0.8.1"
 source = { editable = "../../../synadia-agents/client-sdk/python" }
 dependencies = [
     { name = "nats-py" },
@@ -662,7 +662,7 @@ dev = [
 
 [[package]]
 name = "synadia-durable"
-version = "0.7.0a0"
+version = "0.2.0"
 source = { editable = "../../../durable-sdk/python" }
 dependencies = [
     { name = "nats-py" },
