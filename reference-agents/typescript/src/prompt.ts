@@ -55,7 +55,12 @@ try {
   let reply = "";
   const maxWaitMs = Number(env["PROMPT_TIMEOUT_MS"] ?? 600_000);
   const { stream, rootId } = await caller.prompt(target, text, { maxWaitMs });
-  void rootId.then((root) => console.error(`root ${root}`));
+  // Printed when known; a prompt that never goes out has no root, and the
+  // stream's own error says why.
+  rootId.then(
+    (root) => console.error(`root ${root}`),
+    () => {},
+  );
   for await (const msg of stream) {
     if (msg.type === "response") {
       process.stdout.write(msg.text);

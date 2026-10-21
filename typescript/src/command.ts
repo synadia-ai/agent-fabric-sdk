@@ -252,7 +252,12 @@ async function prompt(
   const { stream, rootId } = await caller.prompt(target, text, {
     maxWaitMs: Math.round(opts.timeoutS * 1000),
   });
-  void rootId.then((root) => io.err(`root ${root}\n`));
+  // Printed when known; a prompt that never goes out has no root, and the
+  // stream's own error says why.
+  rootId.then(
+    (root) => io.err(`root ${root}\n`),
+    () => {},
+  );
   let reply = "";
   for await (const msg of stream) {
     if (msg.type === "response") {
