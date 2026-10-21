@@ -225,7 +225,8 @@ async function listAgents(caller: FabricCaller, json: boolean, io: CommandIO): P
     seen.add(a.promptSubject);
     lines.push(agentLine(a));
   }
-  lines.sort((x, y) => x.address.localeCompare(y.address));
+  // By code point, as the Python command sorts: the same order in both.
+  lines.sort((x, y) => (x.address < y.address ? -1 : x.address > y.address ? 1 : 0));
   if (json) {
     io.out(`${JSON.stringify(lines)}\n`);
     return EXIT_OK;

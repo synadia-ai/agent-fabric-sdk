@@ -5,13 +5,16 @@ The TypeScript suite's ``command.test.ts``.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
+from synadia_ai.agent_fabric import cli
 from synadia_ai.agent_fabric.cli import (
     DEFAULT_TIMEOUT_S,
     EXIT_OK,
@@ -116,3 +119,41 @@ async def test_exits_2_with_one_line_for_a_creds_file_it_cannot_read() -> None:
         r"url nats://127\.0\.0\.1:1\nagent-fabric: creds file /no/such/typo\.creds: [^\n]+\n",
         rec.err,
     )
+
+
+async def test_lists_agents_by_code_point_the_typescript_commands_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @dataclass
+    class _A:
+        prompt_subject: str
+        agent: str = "k"
+        identity: None = None
+        id_sig_verified: bool = False
+        description: str = ""
+
+    class _Caller:
+        async def list(self) -> list[_A]:
+            subjects = [
+                "agents.prompt.b",
+                "agents.prompt.a_x",
+                "agents.prompt.B",
+                "agents.prompt.a-x",
+            ]
+            return [_A(s) for s in subjects]
+
+        async def close(self) -> None:
+            pass
+
+    async def fake(**_kwargs: object) -> _Caller:
+        return _Caller()
+
+    monkeypatch.setattr(cli, "fabric_caller", fake)
+    io, rec = recording_io({"NATS_CREDS": "a.creds", "NATS_URL": "nats://127.0.0.1:1"})
+    assert await run_command(["agents", "--json"], io) == EXIT_OK
+    assert [a["address"] for a in json.loads(rec.out)] == [
+        "agents.prompt.B",
+        "agents.prompt.a-x",
+        "agents.prompt.a_x",
+        "agents.prompt.b",
+    ]
