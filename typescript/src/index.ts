@@ -62,6 +62,7 @@ export {
   CALLER_INBOX_PREFIX,
   CANNOT_ANSWER,
   DEFAULT_DISCOVER_TIMEOUT_MS,
+  CallerStream,
   FabricCallerError,
   NATS_CREDS_VAR,
   NATS_URL_VAR,

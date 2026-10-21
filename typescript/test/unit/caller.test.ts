@@ -2,7 +2,8 @@
 // the options and the environment must give before anything connects.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Agent } from "@synadia-ai/agents";
+import type { Agent, PromptInterceptor, PromptInterceptorContext } from "@synadia-ai/agents";
+import { ROOT_SINK_KEY, rootCapturing, rootDeferred, type RootSink } from "../../src/caller.js";
 import {
   FabricCallerError,
   fabricCaller,
@@ -105,9 +106,44 @@ describe("options and environment", () => {
     expect(err.message).toContain("nats://127.0.0.1:1");
   });
 
+  it("refuses a name the identity would refuse, before connecting", async () => {
+    // The URL has no server: a connect would fail with reason "connect".
+    const err = await failure(
+      fabricCaller({ creds: ERIN, url: "nats://127.0.0.1:1", name: "n".repeat(65) }),
+    );
+    expect(err.reason).toBe("config");
+    expect(err.message).toMatch(/^name: /);
+  });
+
   it("refuses an edge subject that can never be published to, before connecting", async () => {
     await expect(
       fabricCaller({ creds: ERIN, url: "nats://127.0.0.1:1", edgeSubject: "a..b" }),
     ).rejects.toThrow(/edgeSubject/);
+  });
+});
+
+describe("the root's interceptor", () => {
+  const ctx = (sink: RootSink): PromptInterceptorContext =>
+    ({ context: { [ROOT_SINK_KEY]: sink } }) as unknown as PromptInterceptorContext;
+
+  it("settles the root when tracing's interceptor throws", async () => {
+    const { sink, rootId } = rootDeferred();
+    const failing: PromptInterceptor = {
+      beforePrompt() {
+        throw new Error("tracing failed");
+      },
+    };
+    await expect(rootCapturing(failing).beforePrompt(ctx(sink))).rejects.toThrow("tracing failed");
+    await expect(rootId).rejects.toThrow("tracing failed");
+  });
+
+  it("resolves the root tracing minted, and settles only once", async () => {
+    const { sink, rootId } = rootDeferred();
+    const minting: PromptInterceptor = {
+      beforePrompt: () => ({ fields: { root_id: "r".repeat(32) } }),
+    };
+    await rootCapturing(minting).beforePrompt(ctx(sink));
+    sink.reject(new Error("too late"));
+    expect(await rootId).toBe("r".repeat(32));
   });
 });

@@ -17,6 +17,7 @@ PUBLIC = {
     "FabricCaller",
     "FabricCallerError",
     "CallerPrompt",
+    "CallerStream",
     "CallerReply",
     "pick_agent",
     # The hooks the SDK takes.

@@ -19,6 +19,7 @@
 import { connect } from "@nats-io/transport-node";
 import {
   Agents,
+  assertValidSenderName,
   resolveNatsConnectionBundle,
   withAgentReconnectDefaults,
   type Agent,
@@ -26,6 +27,7 @@ import {
   type PromptOptions,
   type PromptStream,
   type QueryEvent,
+  type StreamMessage,
 } from "@synadia-ai/agents";
 import { ROOT_ID_FIELD, type TraceOptions } from "./trace.js";
 import { fabricTracing } from "./tracing.js";
@@ -44,10 +46,17 @@ export const DEFAULT_DISCOVER_TIMEOUT_MS = 1_000;
 export const NATS_URL_VAR = "NATS_URL";
 export const NATS_CREDS_VAR = "NATS_CREDS";
 
-/** Why a caller could not be set up, or could not find its agent. */
-export type FabricCallerErrorReason = "config" | "connect" | "not-found" | "ambiguous";
+/**
+ * Why a caller could not be set up, could not find its agent, or has no
+ * root for a prompt: `config` (a missing or invalid setting), `connect`
+ * (no connection), `identity` (the server would not say who the creds
+ * file is), `not-found`, `ambiguous`, `not-sent` (the prompt ended before
+ * it went out, so it has no root).
+ */
+export type FabricCallerErrorReason =
+  "config" | "connect" | "identity" | "not-found" | "ambiguous" | "not-sent";
 
-/** A caller's own error: a missing setting, no connection, or no such agent. */
+/** A caller's own error: a missing setting, no connection, no identity, or no such agent. */
 export class FabricCallerError extends Error {
   constructor(
     readonly reason: FabricCallerErrorReason,
@@ -72,16 +81,60 @@ export interface FabricCallerOptions {
   readonly edgeSubject?: TraceOptions["edgeSubject"];
 }
 
-/** A prompt on its way: the SDK's stream, and the root of the task it starts. */
+/** A prompt on its way: its stream, and the root of the task it starts. */
 export interface CallerPrompt {
-  /** The SDK's `PromptStream`, unchanged: iterate it for the reply. */
-  readonly stream: PromptStream;
+  /** The SDK's `PromptStream`, passed through: iterate it for the reply. */
+  readonly stream: CallerStream;
   /**
    * The root id of the task the prompt starts. Resolves at the stream's
    * first iteration, before any chunk arrives; await it after iteration
-   * has begun, never before.
+   * has begun, never before. Rejects with a {@link FabricCallerError}
+   * (`not-sent`), or the stream's own error, when the prompt ends before
+   * it goes out: cancelled, refused before it was sent, or failed.
    */
   readonly rootId: Promise<string>;
+}
+
+/**
+ * The SDK's `PromptStream`, with the prompt's root settled when iteration
+ * ends or fails before the prompt went out. The messages are the SDK's,
+ * unchanged.
+ */
+export class CallerStream implements AsyncIterable<StreamMessage> {
+  readonly #inner: PromptStream;
+  readonly #sink: RootSink;
+
+  constructor(inner: PromptStream, sink: RootSink) {
+    this.#inner = inner;
+    this.#sink = sink;
+  }
+
+  /** The subject the prompt is published to. */
+  get subject(): string {
+    return this.#inner.subject;
+  }
+
+  /** Stop the stream, as `PromptStream.cancel()`. */
+  cancel(): void {
+    this.#sink.reject(notSent("it was cancelled"));
+    this.#inner.cancel();
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<StreamMessage> {
+    try {
+      for await (const msg of this.#inner) yield msg;
+    } catch (err) {
+      this.#sink.reject(err);
+      throw err;
+    } finally {
+      // A no-op once the root is known: the prompt went out.
+      this.#sink.reject(notSent("its stream ended first"));
+    }
+  }
+}
+
+function notSent(why: string): FabricCallerError {
+  return new FabricCallerError("not-sent", `the prompt never went out, so it has no root: ${why}`);
 }
 
 export interface AskOptions extends PromptOptions {
@@ -124,9 +177,36 @@ export interface FabricCaller {
 // The key of `PromptOptions.context` the root's deferred travels under. It
 // is read only by the caller's own interceptor; the SDK never reads the
 // context, and tracing reads only its tool call id key.
-const ROOT_SINK_KEY = "agentFabricCallerRootSink";
+/** Internal, for the tests. */
+export const ROOT_SINK_KEY = "agentFabricCallerRootSink";
 
-type RootSink = (rootId: string) => void;
+/** Settles a prompt's root once: the first call wins. Internal. */
+export interface RootSink {
+  resolve(rootId: string): void;
+  reject(err: unknown): void;
+}
+
+/** A root and its sink. Internal, for the tests. */
+export function rootDeferred(): { readonly sink: RootSink; readonly rootId: Promise<string> } {
+  let settled = false;
+  let resolve!: (rootId: string) => void;
+  let reject!: (err: unknown) => void;
+  const rootId = new Promise<string>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  // An un-awaited rejection must never crash the process; whoever awaits
+  // `rootId` still sees it.
+  rootId.catch(() => {});
+  const once =
+    <T>(fn: (v: T) => void) =>
+    (v: T): void => {
+      if (settled) return;
+      settled = true;
+      fn(v);
+    };
+  return { rootId, sink: { resolve: once(resolve), reject: once(reject) } };
+}
 
 /** Connect a caller with a creds file. */
 export async function fabricCaller(options: FabricCallerOptions): Promise<FabricCaller> {
@@ -145,10 +225,17 @@ export async function fabricCaller(options: FabricCallerOptions): Promise<Fabric
     );
   }
   // Fails here, before anything connects, for an edge subject that can
-  // never be published to.
+  // never be published to, or a name the identity would refuse.
   const tracing = fabricTracing(
     options.edgeSubject !== undefined ? { edgeSubject: options.edgeSubject } : {},
   );
+  if (options.name !== undefined) {
+    try {
+      assertValidSenderName(options.name);
+    } catch (err) {
+      throw new FabricCallerError("config", `name: ${errorMessage(err)}`);
+    }
+  }
 
   const bundle = await resolveNatsConnectionBundle({ url, creds }, { identity: "signed" });
   let nc: Awaited<ReturnType<typeof connect>>;
@@ -165,19 +252,37 @@ export async function fabricCaller(options: FabricCallerOptions): Promise<Fabric
     );
   } catch (err) {
     bundle.wipe();
+    throw new FabricCallerError("connect", `could not connect to ${url}: ${errorMessage(err)}`);
+  }
+  let agents: Agents;
+  try {
+    agents = new Agents({
+      nc,
+      identity: {
+        signer: bundle.signer,
+        ...(options.name !== undefined ? { name: options.name } : {}),
+      },
+      interceptors: [rootCapturing(tracing.promptInterceptor)],
+    });
+  } catch (err) {
+    await nc.close();
+    bundle.wipe();
+    throw err;
+  }
+  // Every prompt is signed, and signing needs the creds file's identity,
+  // which the server tells. Learnt once here, so a creds file the server
+  // will not describe fails now rather than at each prompt.
+  try {
+    await agents.selfId();
+  } catch (err) {
+    await agents.close();
+    await nc.close();
+    bundle.wipe();
     throw new FabricCallerError(
-      "connect",
-      `could not connect to ${url}: ${err instanceof Error ? err.message : String(err)}`,
+      "identity",
+      `the server at ${url} would not tell this creds file's identity, which signing needs: ${errorMessage(err)}`,
     );
   }
-  const agents = new Agents({
-    nc,
-    identity: {
-      signer: bundle.signer,
-      ...(options.name !== undefined ? { name: options.name } : {}),
-    },
-    interceptors: [rootCapturing(tracing.promptInterceptor)],
-  });
 
   const list = (opts: { readonly timeoutMs?: number } = {}): Promise<Agent[]> =>
     agents.discover({ timeoutMs: opts.timeoutMs ?? DEFAULT_DISCOVER_TIMEOUT_MS });
@@ -191,15 +296,18 @@ export async function fabricCaller(options: FabricCallerOptions): Promise<Fabric
     promptOptions: PromptOptions = {},
   ): Promise<CallerPrompt> => {
     const target = typeof who === "string" ? await find(who) : who;
-    let sink!: RootSink;
-    const rootId = new Promise<string>((resolve) => {
-      sink = resolve;
-    });
-    const stream = await target.prompt(text, {
-      ...promptOptions,
-      context: { ...(promptOptions.context ?? {}), [ROOT_SINK_KEY]: sink },
-    });
-    return { stream, rootId };
+    const { sink, rootId } = rootDeferred();
+    let inner: PromptStream;
+    try {
+      inner = await target.prompt(text, {
+        ...promptOptions,
+        context: { ...(promptOptions.context ?? {}), [ROOT_SINK_KEY]: sink },
+      });
+    } catch (err) {
+      sink.reject(err);
+      throw err;
+    }
+    return { stream: new CallerStream(inner, sink), rootId };
   };
 
   const ask = async (
@@ -274,19 +382,31 @@ function distinctAddresses(agents: ReadonlyArray<Agent>): Agent[] {
 /**
  * Tracing's prompt interceptor, with the root it mints handed to the
  * prompt's sink. Both phases are forwarded; the extras go back verbatim,
- * so the SDK hands tracing's own extras to its second phase.
+ * so the SDK hands tracing's own extras to its second phase. Internal:
+ * not exported from the package; the tests reach it here.
  */
-function rootCapturing(inner: PromptInterceptor): PromptInterceptor {
+export function rootCapturing(inner: PromptInterceptor): PromptInterceptor {
   return {
     async beforePrompt(ctx) {
-      const extras = await inner.beforePrompt(ctx);
-      const sink = ctx.context[ROOT_SINK_KEY];
+      const sink = ctx.context[ROOT_SINK_KEY] as RootSink | undefined;
+      let extras;
+      try {
+        extras = await inner.beforePrompt(ctx);
+      } catch (err) {
+        sink?.reject(err);
+        throw err;
+      }
       const root = extras?.fields?.[ROOT_ID_FIELD];
-      if (typeof sink === "function" && typeof root === "string") (sink as RootSink)(root);
+      if (typeof root === "string") sink?.resolve(root);
+      else sink?.reject(notSent("tracing minted no root"));
       return extras;
     },
     async beforePublish(ctx, extras) {
       await inner.beforePublish?.(ctx, extras);
     },
   };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

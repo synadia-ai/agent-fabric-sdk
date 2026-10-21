@@ -66,6 +66,8 @@ async def world(nats_server_operator: RunningServer) -> AsyncIterator[World]:
     w = World(nats_server_operator, alice, svc)
 
     async def handler(envelope: Any, stream: Any) -> None:
+        if envelope.prompt.startswith("fail:"):
+            raise RuntimeError("refused")
         if envelope.prompt.startswith("ask:"):
             answer = await stream.ask("which colour?", timeout=3.0)
             w.answers.append(answer.prompt)
@@ -159,10 +161,16 @@ async def test_exits_1_for_no_such_agent(world: World) -> None:
 
 
 async def test_exits_1_for_a_refused_prompt(world: World) -> None:
+    io, rec = recording_io(world.env)
+    assert await run_command(["prompt", "writer", "fail: now"], io) == EXIT_FAILED
+    assert "agent-fabric: no reply:" in rec.err
+
+
+async def test_exits_1_for_creds_the_server_will_not_describe(world: World) -> None:
     env = {**world.env, "NATS_CREDS": str(identity_fixture("operator/erin-no-user-info.creds"))}
     io, rec = recording_io(env)
     assert await run_command(["prompt", "writer", "hi"], io) == EXIT_FAILED
-    assert "agent-fabric: no reply:" in rec.err
+    assert "would not tell this creds file's identity" in rec.err
 
 
 async def test_exits_1_when_it_cannot_connect(world: World) -> None:

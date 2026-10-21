@@ -202,10 +202,51 @@ async def test_tells_the_agent_it_cannot_answer_without_on_query(world: World) -
     assert reply.text == f"got {CANNOT_ANSWER}"
 
 
-async def test_fails_the_signed_prompt_without_user_info(world: World) -> None:
-    limited = await fabric_caller(creds=ERIN_NO_USER_INFO, url=world.server.url)
-    try:
-        with pytest.raises(Exception, match=r"USER\.INFO"):
-            await limited.ask("writer", "hello")
-    finally:
-        await limited.close()
+async def test_fails_at_fabric_caller_without_user_info(world: World) -> None:
+    with pytest.raises(FabricCallerError, match=r"USER\.INFO") as caught:
+        await fabric_caller(creds=ERIN_NO_USER_INFO, url=world.server.url)
+    assert caught.value.reason == "identity"
+
+
+async def test_settles_the_root_when_the_stream_is_closed_before_it_goes_out(
+    world: World,
+) -> None:
+    started = await world.caller.prompt("writer", "never sent")
+    await started.stream.aclose()
+    with pytest.raises(FabricCallerError) as caught:
+        await asyncio.wait_for(started.root_id, 5)
+    assert caught.value.reason == "not-sent"
+
+
+async def test_settles_the_root_when_iteration_fails_before_it_goes_out(world: World) -> None:
+    async with await fabric_caller(creds=ERIN, url=world.server.url) as own:
+        started = await own.prompt(await own.find("writer"), "never sent")
+        await own.agents.close()
+        with pytest.raises(Exception):  # noqa: B017 — whatever the SDK raises
+            async for _ in started.stream:
+                pass
+        with pytest.raises(BaseException):  # noqa: B017
+            await asyncio.wait_for(started.root_id, 5)
+
+
+async def test_gives_the_servers_own_refusal_for_creds_it_does_not_accept(
+    world: World, tmp_path: Path
+) -> None:
+    # erin's creds with the JWT's claims changed after signing: the signature
+    # no longer verifies, so the server refuses the connection.
+    text = ERIN.read_text(encoding="utf-8")
+    found = re.search(r"-----BEGIN NATS USER JWT-----\s*(\S+)", text)
+    assert found is not None
+    jwt = found.group(1)
+    head, body, sig = jwt.split(".")
+    claims = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+    forged = (
+        base64.urlsafe_b64encode(json.dumps({**claims, "name": "mallory"}).encode())
+        .decode()
+        .rstrip("=")
+    )
+    bad = tmp_path / "bad.creds"
+    bad.write_text(text.replace(jwt, f"{head}.{forged}.{sig}"), encoding="utf-8")
+    with pytest.raises(FabricCallerError, match=r"(?i)authorization violation") as caught:
+        await fabric_caller(creds=bad, url=world.server.url)
+    assert caught.value.reason == "connect"

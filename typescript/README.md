@@ -91,7 +91,7 @@ try {
   // The whole reply as a string.
   const { text, rootId } = await caller.ask("writer", "Name three rivers.");
 
-  // Or streamed: the SDK's PromptStream, unchanged.
+  // Or streamed: the SDK's messages, unchanged.
   const prompt = await caller.prompt("writer", "Write two lines about the sea.");
   for await (const msg of prompt.stream) {
     if (msg.type === "response") process.stdout.write(msg.text);
@@ -110,7 +110,10 @@ try {
   for anything else.
 - `prompt(who, text, options?)` returns `{ stream, rootId }`. `rootId`
   resolves once you start iterating the stream, before the first chunk.
-  Await it after iteration has begun, never before.
+  Await it after iteration has begun, never before. If the prompt never goes
+  out (the stream is cancelled, or fails first), `rootId` rejects instead.
+  `stream` passes the SDK's `PromptStream` through, with its `subject` and
+  `cancel()`.
 - `ask(who, text, { onQuery? })` returns `{ text, rootId }`. `onQuery`
   answers a question the agent asks. Without it, the agent is told the
   caller cannot answer.
@@ -118,12 +121,14 @@ try {
 
 Errors are `FabricCallerError`s with a `reason`:
 
-| `reason`    | When                                                                 |
-| ----------- | -------------------------------------------------------------------- |
-| `config`    | no creds file, or no URL                                             |
-| `connect`   | the server at the URL cannot be reached; the message names the URL   |
-| `not-found` | no agent by that address or kind; the message lists the agents there |
-| `ambiguous` | more than one agent of that kind; the message lists their addresses  |
+| `reason`    | When                                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| `config`    | no creds file, or no URL                                                                                              |
+| `connect`   | the server at the URL cannot be reached, or refuses the creds file; the message names the URL and the server's reason |
+| `identity`  | the server will not tell the creds file's identity, which signing needs                                               |
+| `not-found` | no agent by that address or kind; the message lists the agents there                                                  |
+| `ambiguous` | more than one agent of that kind; the message lists their addresses                                                   |
+| `not-sent`  | the prompt never went out, so it has no root (from `rootId`)                                                          |
 
 A prompt the agent refuses fails the stream with the protocol SDK's error.
 

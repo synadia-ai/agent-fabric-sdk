@@ -86,7 +86,7 @@ async def main() -> None:
         reply = await caller.ask("writer", "Name three rivers.")
         print(reply.text, reply.root_id)
 
-        # Or streamed: the SDK's stream, unchanged.
+        # Or streamed: the SDK's messages, unchanged.
         prompt = await caller.prompt("writer", "Write two lines about the sea.")
         async for msg in prompt.stream:
             if isinstance(msg, ResponseChunk):
@@ -106,7 +106,8 @@ asyncio.run(main())
 - `prompt(who, text, **options)` returns `CallerPrompt(stream, root_id)`.
   `root_id` is a future that resolves once you start iterating the stream,
   before the first chunk. Await it after iteration has begun, never before.
-  The options are `Agent.prompt`'s, such as `max_wait_s`.
+  If the prompt never goes out (the stream is closed with `aclose()`, or
+  fails first), `root_id` fails instead. The options are `Agent.prompt`'s, such as `max_wait_s`.
 - `ask(who, text, on_query=None, **options)` returns
   `CallerReply(text, root_id)`. `on_query` answers a question the agent asks
   and may be a coroutine function. Without it, the agent is told the caller
@@ -118,9 +119,11 @@ Errors are `FabricCallerError`s with a `reason`:
 | `reason` | When |
 | --- | --- |
 | `config` | no creds file, or no URL |
-| `connect` | the server at the URL cannot be reached; the message names the URL |
+| `connect` | the server at the URL cannot be reached, or refuses the creds file; the message names the URL and the server's reason |
+| `identity` | the server will not tell the creds file's identity, which signing needs |
 | `not-found` | no agent by that address or kind; the message lists the agents there |
 | `ambiguous` | more than one agent of that kind; the message lists their addresses |
+| `not-sent` | the prompt never went out, so it has no root (from `root_id`) |
 
 A prompt the agent refuses fails the stream with the protocol SDK's error.
 The source distribution also holds five examples in `examples/`: one prompt,

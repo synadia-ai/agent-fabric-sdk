@@ -50,6 +50,7 @@ describe.skipIf(!bin)("the agent-fabric command with a caller's permissions", ()
       interceptors: [fabricTracing().requestInterceptor],
     });
     svc.onPrompt(async (envelope, response) => {
+      if (envelope.prompt.startsWith("fail:")) throw new Error("refused");
       if (envelope.prompt.startsWith("ask:")) {
         const answer = await response.ask("which colour?", { timeoutMs: 3_000 });
         answers.push(answer.prompt);
@@ -142,12 +143,18 @@ describe.skipIf(!bin)("the agent-fabric command with a caller's permissions", ()
   });
 
   it("exits 1 for a refused prompt", async () => {
+    const io = recordingIO(env);
+    expect(await runCommand(["prompt", "writer", "fail: now"], io)).toBe(EXIT_FAILED);
+    expect(io.stderr()).toContain("agent-fabric: no reply:");
+  });
+
+  it("exits 1 for creds the server will not describe", async () => {
     const io = recordingIO({
       ...env,
       NATS_CREDS: identityFixture("operator/erin-no-user-info.creds"),
     });
     expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_FAILED);
-    expect(io.stderr()).toContain("agent-fabric: no reply:");
+    expect(io.stderr()).toContain("would not tell this creds file's identity");
   });
 
   it("exits 1 when it cannot connect, naming the URL", async () => {

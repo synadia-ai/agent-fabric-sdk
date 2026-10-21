@@ -29,7 +29,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-import nats
+from nats.aio.client import Client as NATSClient
 from synadia_ai.agents import (
     Agent,
     Agents,
@@ -61,7 +61,14 @@ DEFAULT_DISCOVER_TIMEOUT_S = 1.0
 NATS_URL_VAR = "NATS_URL"
 NATS_CREDS_VAR = "NATS_CREDS"
 
-FabricCallerErrorReason = Literal["config", "connect", "not-found", "ambiguous"]
+#: Why a caller could not be set up, could not find its agent, or has no root
+#: for a prompt: ``config`` (a missing or invalid setting), ``connect`` (no
+#: connection), ``identity`` (the server would not say who the creds file is),
+#: ``not-found``, ``ambiguous``, ``not-sent`` (the prompt ended before it went
+#: out, so it has no root).
+FabricCallerErrorReason = Literal[
+    "config", "connect", "identity", "not-found", "ambiguous", "not-sent"
+]
 
 # The key of the prompt's ``context`` the root's future travels under. It is
 # read only by the caller's own interceptor; the SDK never reads the context,
@@ -70,23 +77,75 @@ _ROOT_SINK_KEY = "agent_fabric_caller_root_sink"
 
 
 class FabricCallerError(Exception):
-    """A caller's own error: a missing setting, no connection, or no such agent."""
+    """A caller's own error: a missing setting, no connection, no identity, or no such agent."""
 
     def __init__(self, reason: FabricCallerErrorReason, message: str) -> None:
         super().__init__(message)
         self.reason: FabricCallerErrorReason = reason
 
 
-@dataclass(frozen=True, slots=True)
-class CallerPrompt:
-    """A prompt on its way: the SDK's stream, and the root of the task it starts.
+def _not_sent(why: str) -> FabricCallerError:
+    return FabricCallerError("not-sent", f"the prompt never went out, so it has no root: {why}")
 
-    ``stream`` is what ``Agent.prompt`` returns, unchanged: iterate it for the
-    reply. ``root_id`` resolves at the stream's first iteration, before any
-    chunk arrives; await it after iteration has begun, never before.
+
+def _fail_root(root: asyncio.Future[str], err: BaseException) -> None:
+    """Settle ``root`` with ``err`` unless it is settled; a no-op once the root is known."""
+    if root.done():
+        return
+    if isinstance(err, asyncio.CancelledError):
+        root.cancel()
+        return
+    root.set_exception(err)
+    # Retrieved here: a root nobody awaits must not log "never retrieved".
+    root.exception()
+
+
+class CallerStream:
+    """The stream ``Agent.prompt`` returns, with the prompt's root settled.
+
+    The messages are the SDK's, unchanged. When iteration ends or fails, or
+    :meth:`aclose` is called, before the prompt went out, the root fails
+    instead of waiting forever.
     """
 
-    stream: AsyncIterator[StreamMessage]
+    def __init__(self, inner: AsyncIterator[StreamMessage], root: asyncio.Future[str]) -> None:
+        self._inner = inner
+        self._root = root
+
+    def __aiter__(self) -> CallerStream:
+        return self
+
+    async def __anext__(self) -> StreamMessage:
+        try:
+            return await self._inner.__anext__()
+        except StopAsyncIteration:
+            _fail_root(self._root, _not_sent("its stream ended first"))
+            raise
+        except BaseException as err:
+            _fail_root(self._root, err)
+            raise
+
+    async def aclose(self) -> None:
+        """Stop the stream, as closing the SDK's stream does."""
+        _fail_root(self._root, _not_sent("it was cancelled"))
+        aclose = getattr(self._inner, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
+
+@dataclass(frozen=True, slots=True)
+class CallerPrompt:
+    """A prompt on its way: its stream, and the root of the task it starts.
+
+    ``stream`` passes the SDK's stream through: iterate it for the reply.
+    ``root_id`` resolves at the stream's first iteration, before any chunk
+    arrives; await it after iteration has begun, never before. It fails with
+    a :class:`FabricCallerError` (``not-sent``), or the stream's own error,
+    when the prompt ends before it goes out: closed, refused before it was
+    sent, or failed.
+    """
+
+    stream: CallerStream
     root_id: asyncio.Future[str]
 
 
@@ -144,8 +203,12 @@ class FabricCaller:
         target = await self.find(who) if isinstance(who, str) else who
         root_id: asyncio.Future[str] = asyncio.get_running_loop().create_future()
         context = {**(prompt_kwargs.pop("context", None) or {}), _ROOT_SINK_KEY: root_id}
-        stream = target.prompt(text, context=context, **prompt_kwargs)
-        return CallerPrompt(stream=stream, root_id=root_id)
+        try:
+            stream = target.prompt(text, context=context, **prompt_kwargs)
+        except BaseException as err:
+            _fail_root(root_id, err)
+            raise
+        return CallerPrompt(stream=CallerStream(stream, root_id), root_id=root_id)
 
     async def ask(
         self,
@@ -221,28 +284,59 @@ async def fabric_caller(
     tracing = fabric_tracing(TraceOptions(edge_subject=edge_subject))
 
     bundle = resolve_nats_connection_bundle(url=server, creds=creds_path, identity="signed")
+    # Built before connecting: it refuses a name the identity cannot carry.
+    try:
+        identity = Identity(signer=bundle.signer, name=name)
+    except Exception as err:
+        bundle.wipe()
+        raise FabricCallerError("config", f"name: {err}") from err
     options: dict[str, Any] = {
         **bundle.connection_options,
         "inbox_prefix": CALLER_INBOX_PREFIX,
-        # A wrong URL fails after two attempts, naming the URL, instead of
-        # nats-py's minutes of retries; once connected, reconnects never stop.
+        # The first connect fails fast with the server's own error: a refused
+        # creds file at once (no reconnect), an unreachable URL after two
+        # attempts, instead of minutes of retries reported as "no servers
+        # available". Once connected, reconnects never stop.
+        "allow_reconnect": False,
         "max_reconnect_attempts": 1,
         "error_cb": _log_connection_error,
     }
     if name is not None:
         options["name"] = name
+    nc = NATSClient()
     try:
-        nc = await nats.connect(**options)
+        await nc.connect(**options)
     except Exception as err:
         bundle.wipe()
-        raise FabricCallerError("connect", f"could not connect to {server}: {err}") from err
+        cause = nc.last_error or err
+        raise FabricCallerError("connect", f"could not connect to {server}: {cause}") from err
+    nc.options["allow_reconnect"] = True
     nc.options["max_reconnect_attempts"] = -1
 
-    agents = Agents(
-        nc=nc,
-        identity=Identity(signer=bundle.signer, name=name),
-        interceptors=[_RootCapturing(tracing.prompt_interceptor)],
-    )
+    try:
+        agents = Agents(
+            nc=nc,
+            identity=identity,
+            interceptors=[_RootCapturing(tracing.prompt_interceptor)],
+        )
+    except BaseException:
+        await nc.close()
+        bundle.wipe()
+        raise
+    # Every prompt is signed, and signing needs the creds file's identity,
+    # which the server tells. Learnt once here, so a creds file the server
+    # will not describe fails now rather than at each prompt.
+    try:
+        await agents.self_id()
+    except Exception as err:
+        await agents.close()
+        await nc.close()
+        bundle.wipe()
+        raise FabricCallerError(
+            "identity",
+            f"the server at {server} would not tell this creds file's identity, "
+            f"which signing needs: {err}",
+        ) from err
 
     async def close() -> None:
         try:
@@ -309,11 +403,20 @@ class _RootCapturing:
         self._inner = inner
 
     async def before_prompt(self, ctx: PromptInterceptorContext) -> PromptExtras | None:
-        extras = await self._inner.before_prompt(ctx)
         sink = ctx.context.get(_ROOT_SINK_KEY)
+        root_sink = sink if isinstance(sink, asyncio.Future) else None
+        try:
+            extras = await self._inner.before_prompt(ctx)
+        except BaseException as err:
+            if root_sink is not None:
+                _fail_root(root_sink, err)
+            raise
         root = extras.fields.get(ROOT_ID_FIELD) if extras is not None else None
-        if isinstance(sink, asyncio.Future) and not sink.done() and isinstance(root, str):
-            sink.set_result(root)
+        if root_sink is not None and not root_sink.done():
+            if isinstance(root, str):
+                root_sink.set_result(root)
+            else:
+                _fail_root(root_sink, _not_sent("tracing minted no root"))
         return extras
 
     async def before_publish(
@@ -332,6 +435,7 @@ __all__ = [
     "NATS_URL_VAR",
     "CallerPrompt",
     "CallerReply",
+    "CallerStream",
     "FabricCaller",
     "FabricCallerError",
     "FabricCallerErrorReason",

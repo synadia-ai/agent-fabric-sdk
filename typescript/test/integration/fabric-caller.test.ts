@@ -4,10 +4,12 @@
 // alice hosts without limits. It lists, finds, prompts and asks; its edge
 // record lands on `TRACE.edges` and validates; the prompt is a root, and its
 // root is the one `prompt()` returned; the agent sees erin verified. Without
-// `$SYS.REQ.USER.INFO` the signed prompt fails, and on the default inbox
+// `$SYS.REQ.USER.INFO` the caller fails to start, and on the default inbox
 // prefix the caller is refused: both belong to what a caller needs.
 
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { connect, credsAuthenticator } from "@nats-io/transport-node";
 import type { NatsConnection } from "@nats-io/nats-core";
@@ -31,7 +33,7 @@ import {
   identityFixture,
   NatsServerProcess,
 } from "../harness/nats-server.js";
-import { capture, dec, edgeSchemaErrors, enc, parse, sleep } from "../support/fixtures.js";
+import { capture, dec, drain, edgeSchemaErrors, enc, parse, sleep } from "../support/fixtures.js";
 
 interface OperatorKeys {
   readonly accounts: Record<string, { readonly public: string }>;
@@ -187,13 +189,47 @@ describe.skipIf(!bin)("a caller with a caller's permissions", () => {
     expect(reply.text).toBe(`got ${CANNOT_ANSWER}`);
   });
 
-  it("fails the signed prompt without $SYS.REQ.USER.INFO", async () => {
-    const limited = await fabricCaller({ creds: ERIN_NO_USER_INFO, url: server.url });
-    try {
-      await expect(limited.ask("writer", "hello")).rejects.toThrow(/USER\.INFO/);
-    } finally {
-      await limited.close();
-    }
+  it("fails at fabricCaller() without $SYS.REQ.USER.INFO, which signing needs", async () => {
+    const err = await fabricCaller({ creds: ERIN_NO_USER_INFO, url: server.url }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(FabricCallerError);
+    expect((err as FabricCallerError).reason).toBe("identity");
+    expect((err as Error).message).toMatch(/USER\.INFO/);
+  });
+
+  it("settles rootId when the stream is cancelled before it goes out", async () => {
+    const { stream, rootId } = await caller.prompt("writer", "never sent");
+    stream.cancel();
+    await expect(rootId).rejects.toMatchObject({ reason: "not-sent" });
+  });
+
+  it("settles rootId when iteration fails before the prompt goes out", async () => {
+    const { stream, rootId } = await caller.prompt("writer", "never sent");
+    await caller.agents.close();
+    await expect(drain(stream)).rejects.toThrow();
+    await expect(rootId).rejects.toThrow();
+  });
+
+  it("gives the server's own refusal for creds it does not accept", async () => {
+    // erin's creds with the JWT's claims changed after signing: the
+    // signature no longer verifies, so the server refuses the connection.
+    const text = await readFile(ERIN, "utf8");
+    const jwt = /-----BEGIN NATS USER JWT-----\s*(\S+)/.exec(text)![1]!;
+    const [head, body, sig] = jwt.split(".");
+    const claims = JSON.parse(Buffer.from(body!, "base64url").toString()) as Record<
+      string,
+      unknown
+    >;
+    const forged = Buffer.from(JSON.stringify({ ...claims, name: "mallory" })).toString(
+      "base64url",
+    );
+    const dir = await mkdtemp(join(tmpdir(), "fabric-caller-"));
+    const bad = join(dir, "bad.creds");
+    await writeFile(bad, text.replace(jwt, `${head}.${forged}.${sig}`));
+    const err = await fabricCaller({ creds: bad, url: server.url }).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/authorization violation/i);
+    expect((err as FabricCallerError).reason).toBe("connect");
   });
 
   it("is refused on the default inbox prefix", async () => {
