@@ -197,6 +197,15 @@ async def test_answers_a_question_with_on_query(world: World) -> None:
     assert world.seen[-1].answer == "blue"
 
 
+async def test_tells_the_agent_it_cannot_answer_when_on_query_answers_nothing(
+    world: World,
+) -> None:
+    for empty in ("", "  \n"):
+        reply = await world.caller.ask("writer", "ask: colour", on_query=lambda _q, e=empty: e)
+        assert reply.text == f"got {CANNOT_ANSWER}"
+        assert world.seen[-1].answer == CANNOT_ANSWER
+
+
 async def test_tells_the_agent_it_cannot_answer_without_on_query(world: World) -> None:
     reply = await world.caller.ask("writer", "ask: colour")
     assert reply.text == f"got {CANNOT_ANSWER}"

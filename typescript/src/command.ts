@@ -261,7 +261,7 @@ async function prompt(
     } else if (msg.type === "query") {
       io.err(`? ${msg.prompt}\n`);
       const answer = await io.readLine();
-      await msg.reply(answer === null || answer === "" ? CANNOT_ANSWER : answer);
+      await msg.reply(answer === null || answer.trim() === "" ? CANNOT_ANSWER : answer);
     }
   }
   const root = await rootId;

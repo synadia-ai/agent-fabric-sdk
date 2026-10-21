@@ -184,6 +184,14 @@ describe.skipIf(!bin)("a caller with a caller's permissions", () => {
     expect(seen.at(-1)!.answer).toBe("blue");
   });
 
+  it("tells the agent it cannot answer when onQuery answers with nothing", async () => {
+    for (const empty of ["", "  \n"]) {
+      const reply = await caller.ask("writer", "ask: colour", { onQuery: () => empty });
+      expect(reply.text).toBe(`got ${CANNOT_ANSWER}`);
+      expect(seen.at(-1)!.answer).toBe(CANNOT_ANSWER);
+    }
+  });
+
   it("tells the agent it cannot answer without onQuery, and the agent goes on", async () => {
     const reply = await caller.ask("writer", "ask: colour");
     expect(reply.text).toBe(`got ${CANNOT_ANSWER}`);

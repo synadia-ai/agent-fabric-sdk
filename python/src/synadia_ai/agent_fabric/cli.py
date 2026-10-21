@@ -260,7 +260,7 @@ async def _prompt(
         elif isinstance(msg, Query):
             io.err(f"? {msg.prompt}\n")
             answer = await io.read_line()
-            await msg.reply(answer or CANNOT_ANSWER)
+            await msg.reply(answer if answer and answer.strip() else CANNOT_ANSWER)
     root = await started.root_id
     whole = "".join(reply)
     references = find_references(whole)

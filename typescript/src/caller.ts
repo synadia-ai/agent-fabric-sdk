@@ -140,8 +140,9 @@ function notSent(why: string): FabricCallerError {
 
 export interface AskOptions extends PromptOptions {
   /**
-   * Answers a question the agent asks mid-reply. Without it, the agent is
-   * told the caller cannot answer and goes on.
+   * Answers a question the agent asks mid-reply. Without it, or when it
+   * answers with nothing but whitespace, the agent is told the caller
+   * cannot answer and goes on.
    */
   readonly onQuery?: (query: QueryEvent) => string | Promise<string>;
 }
@@ -330,7 +331,9 @@ export async function fabricCaller(options: FabricCallerOptions): Promise<Fabric
       if (msg.type === "response") reply += msg.text;
       else if (msg.type === "query") {
         // Every question is answered: an agent left waiting would stall.
-        await msg.reply(onQuery !== undefined ? await onQuery(msg) : CANNOT_ANSWER);
+        // An empty answer is no answer: the agent cannot decode zero bytes.
+        const answer = onQuery !== undefined ? await onQuery(msg) : "";
+        await msg.reply(answer.trim() === "" ? CANNOT_ANSWER : answer);
       }
     }
     return { text: reply, rootId: await rootId };

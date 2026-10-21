@@ -221,7 +221,8 @@ class FabricCaller:
         """Prompt an agent and wait for the whole reply.
 
         ``on_query`` answers a question the agent asks mid-reply. Without it,
-        the agent is told the caller cannot answer and goes on.
+        or when it answers with nothing but whitespace, the agent is told the
+        caller cannot answer and goes on.
         """
         started = await self.prompt(who, text, **prompt_kwargs)
         reply: list[str] = []
@@ -230,11 +231,12 @@ class FabricCaller:
                 reply.append(msg.text)
             elif isinstance(msg, Query):
                 # Every question is answered: an agent left waiting would stall.
-                answer = CANNOT_ANSWER
+                answer = ""
                 if on_query is not None:
                     result = on_query(msg)
                     answer = await result if inspect.isawaitable(result) else result
-                await msg.reply(answer)
+                # An empty answer is no answer: the agent cannot decode zero bytes.
+                await msg.reply(answer if answer.strip() else CANNOT_ANSWER)
         return CallerReply(text="".join(reply), root_id=await started.root_id)
 
     async def close(self) -> None:
