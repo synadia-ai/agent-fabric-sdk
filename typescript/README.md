@@ -19,6 +19,8 @@ Node 20 or later; the native ScratchPad writer needs Node 22.13+.
 
 ## What it gives
 
+- **A caller:** `fabricCaller()` and the `agent-fabric` command, to prompt
+  your agents with the creds file the console gave you (below).
 - **Tracing:** `fabricTracing()` and `traceHeaders()`.
 - **Durable runs** joined to the task that started them:
   `durableRunId(toolCallId)`, `durableTrace()`, `durableHeaders(trace)` and
@@ -42,6 +44,102 @@ Node 20 or later; the native ScratchPad writer needs Node 22.13+.
   `grantRequestEndpoint` (an `AgentService` extra endpoint). The agent
   brings its ScratchPad client behind the `ScratchPad` port, or takes the
   ready one below.
+
+## Prompt your agents
+
+All a caller needs is the creds file the console gave you and the URL it
+showed next to that file. The command and the helper below connect with that
+file and sign every prompt with its key. Each prompt is traced as a task of its
+own, so the console shows it with everything the agent did for it.
+
+### From the command line
+
+```sh
+export NATS_URL=<the URL the console showed>
+npx @synadia-ai/agent-fabric agents --creds ./my.creds
+npx @synadia-ai/agent-fabric prompt writer "Write two lines about the sea." --creds ./my.creds
+```
+
+- `agents` lists the agents your creds file can reach: the address, the kind
+  and the identity.
+- `prompt <address or kind> "<text>"` streams the reply to stdout. An agent
+  is named by its address, or by its kind when exactly one agent has it.
+- On stderr: the URL, the agent, `root <id>` (the task's root id, which is
+  how the console finds the task), and `reference: <token>` when the reply
+  hands back a ScratchPad reference.
+- A question the agent asks mid-reply is printed on stderr, prefixed `? `.
+  The next line on stdin answers it. With no input, the agent is told the
+  caller cannot answer and goes on.
+
+| Flag             | What                                                                         |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `--creds <file>` | the creds file; default `NATS_CREDS`                                         |
+| `--url <url>`    | the URL the console showed; default `NATS_URL`. There is no built-in default |
+| `--timeout <s>`  | how long to wait for the whole reply; default 600 seconds                    |
+| `--json`         | one JSON object, `{"root", "text", "references"}`, instead of the stream     |
+
+Exit codes: `0` done; `1` no such agent, a refused prompt, or no connection;
+`2` a usage error, or no creds file or URL.
+
+### From code
+
+```ts
+import { fabricCaller } from "@synadia-ai/agent-fabric";
+
+const caller = await fabricCaller({ creds: "./my.creds", url: process.env.NATS_URL });
+try {
+  // The whole reply as a string.
+  const { text, rootId } = await caller.ask("writer", "Name three rivers.");
+
+  // Or streamed: the SDK's PromptStream, unchanged.
+  const prompt = await caller.prompt("writer", "Write two lines about the sea.");
+  for await (const msg of prompt.stream) {
+    if (msg.type === "response") process.stdout.write(msg.text);
+  }
+  console.log(`root ${await prompt.rootId}`);
+} finally {
+  await caller.close();
+}
+```
+
+- `fabricCaller({ creds, url?, name?, edgeSubject? })` connects. `url`
+  defaults to `NATS_URL`. `fabricCallerFromEnv()` reads `NATS_CREDS` and
+  `NATS_URL`.
+- `list()` returns the agents. `find(who)` returns one by address, or by
+  kind when exactly one agent has it. `agents` is the protocol SDK's client,
+  for anything else.
+- `prompt(who, text, options?)` returns `{ stream, rootId }`. `rootId`
+  resolves once you start iterating the stream, before the first chunk.
+  Await it after iteration has begun, never before.
+- `ask(who, text, { onQuery? })` returns `{ text, rootId }`. `onQuery`
+  answers a question the agent asks. Without it, the agent is told the
+  caller cannot answer.
+- `close()` closes the connection and wipes the credentials from memory.
+
+Errors are `FabricCallerError`s with a `reason`:
+
+| `reason`    | When                                                                 |
+| ----------- | -------------------------------------------------------------------- |
+| `config`    | no creds file, or no URL                                             |
+| `connect`   | the server at the URL cannot be reached; the message names the URL   |
+| `not-found` | no agent by that address or kind; the message lists the agents there |
+| `ambiguous` | more than one agent of that kind; the message lists their addresses  |
+
+A prompt the agent refuses fails the stream with the protocol SDK's error.
+
+### Examples
+
+The package ships five examples in `node_modules/@synadia-ai/agent-fabric/examples/`.
+Each runs alone with `NATS_URL` and `NATS_CREDS` set, and its first lines
+name the command to run:
+
+| File                   | What                                             |
+| ---------------------- | ------------------------------------------------ |
+| `prompt.mjs`           | one prompt, streamed, its root printed           |
+| `ask.mjs`              | a reply as a string, in a script                 |
+| `answer-questions.mjs` | the agent's questions answered from the terminal |
+| `list-agents.mjs`      | the agents your creds file can reach             |
+| `every.mjs`            | a list of topics prompted on an interval         |
 
 ## Tracing
 

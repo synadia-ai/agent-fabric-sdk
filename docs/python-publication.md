@@ -53,3 +53,6 @@ uv run --python 3.12 scripts/python-release.py verify --version 0.2.0 --artifact
 Use a clean committed checkout for the build. Artifact metadata records
 its exact source and checksums. Installation tests resolve protocol
 packages from PyPI, with no local checkout or private service source.
+Each clean install imports the three SDKs and runs the `agent-fabric`
+console script with `--help`; `verify --install` fails if it does not
+print its usage.
