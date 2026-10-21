@@ -234,8 +234,10 @@ async def test_settles_the_root_when_iteration_fails_before_it_goes_out(world: W
         with pytest.raises(Exception):  # noqa: B017 — whatever the SDK raises
             async for _ in started.stream:
                 pass
-        with pytest.raises(BaseException):  # noqa: B017
-            await asyncio.wait_for(started.root_id, 5)
+        # Settled by the failed iteration itself, not by waiting.
+        root = started.root_id
+        assert root.done()
+        assert root.cancelled() or root.exception() is not None
 
 
 async def test_gives_the_servers_own_refusal_for_creds_it_does_not_accept(
