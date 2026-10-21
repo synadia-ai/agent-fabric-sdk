@@ -18,7 +18,7 @@
   "dependencies": {
     "@nats-io/nats-core": "^3.4.0",
     "@nats-io/transport-node": "^3.4.0",
-    "@synadia-ai/agent-fabric": "^0.1.0",
+    "@synadia-ai/agent-fabric": "^0.2.0",
     "@synadia-ai/agent-service": "^0.6.0",
     "@synadia-ai/agents": "^0.6.0",
     "@synadia-ai/durable": "^0.2.0"

@@ -40,7 +40,7 @@ New here? `../docs/getting-started/typescript.md` walks through this agent in si
 
 - Node 22.13 or later for native ScratchPad, npm.
 - `nats-server` on PATH for the tests (`brew install nats-server`). The bounded-reply gate fails when it is absent; older fabric tests skip.
-- The packages come from npm: `npm install` here installs the published `@synadia-ai/agents`, `@synadia-ai/agent-service`, `@synadia-ai/agent-fabric` and `@synadia-ai/durable` that `package.json` names. A copy of this directory anywhere installs the same way. One exception: the caller, `npm run prompt`, uses `fabricCaller()`, which `@synadia-ai/agent-fabric` 0.1.0 lacks, and `package.json` names `^0.1.0`, which never installs 0.2.0. So the caller needs `make setup` in `reference-agents/`, which links this checkout's package, until `package.json` and the lockfile move to `^0.2.0` when that version is published.
+- The packages come from npm: `npm install` here installs the published `@synadia-ai/agents`, `@synadia-ai/agent-service`, `@synadia-ai/agent-fabric` and `@synadia-ai/durable` that `package.json` names. A copy of this directory anywhere installs the same way.
 - For ScratchPad, which is optional: a service import in the agent's NATS account, an allocated volume, and a private persistent workspace.
 - For durable work, which is optional: on the fabric, the tenant's import of the durable engine's API (`de.api.>`), which the console's onboarding makes, and an agent user with no durable rights of its own; the agent creates nothing. `AGENT_DURABLE=1` turns on the tool `start_workflow` in `npm start`, and `npm run start:durable` runs the durable agent with the same `.env`.
 
