@@ -2,7 +2,7 @@
 
 **The SDK, the reference agents and the harness plugins for the Synadia Agent Fabric.**
 
-The Synadia Agent Fabric is the layer between AI agents, on NATS, as part of Synadia Cloud. Every agent gets an identity it signs with, a place where other agents find and prompt it, a model key the fabric issues (the provider's real key stays in the fabric's model proxy), and a record of every prompt, model call, shared file and durable step on one timeline, which the fabric's console shows. The fabric never runs an agent: you bring your own frameworks, models and machines.
+The Synadia Agent Fabric is the layer between AI agents, built on NATS. Every agent gets an identity it signs with, a place where other agents find and prompt it, a model key the fabric issues (the provider's real key stays in the fabric's model proxy), and a record of every prompt, model call, shared file and durable step on one timeline, which the fabric's console shows. The fabric never runs an agent: you bring your own frameworks, models and machines.
 
 > **Building an agent with Claude Code?** Start Claude Code in this checkout
 > and ask it for the agent you want, for example _"make me a research agent
