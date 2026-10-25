@@ -55,13 +55,36 @@ scripts/sp read --ref "$REFERENCE"
 scripts/sp hydrate --ref "$REFERENCE" --destination "$DESTINATION"
 ```
 
-Read returns verified bytes as `data_base64` and their count as `bytes`; decode `data_base64` to get the content.
+Read returns verified bytes as `data_base64` and the file size as `bytes`; decode `data_base64` to get the content.
 Read accepts files up to 16 MiB; use hydration for larger files and directory trees.
 `limits.read_bytes` from `info` bounds one service range request; the CLI combines ranges for this buffered read.
 Hydrate requires a destination that does not exist.
 It verifies content identities before completing files, and reports the files, directories, symbolic links and bytes it installed.
 Failure can leave a partial destination; preserve that path for inspection.
 An expired reference or refused grant does not authorize another identity or path.
+
+### Read text in windows
+
+```sh
+scripts/sp read --ref "$REFERENCE" --text --max-bytes 65536
+scripts/sp read --ref "$REFERENCE" --text --offset "$NEXT_OFFSET" --max-bytes 65536
+```
+
+A text window returns `text` and never splits a character.
+It reports `next_offset` until the end of the file; there, `next_offset` is `null`.
+`returned` counts the bytes in the window; `bytes` stays the file size.
+Each window reads and verifies the whole file, so hydrate a large file for extensive work.
+A file that is not UTF-8 fails with `invalid`.
+
+### List a directory
+
+```sh
+scripts/sp list --ref "$REFERENCE"
+```
+
+`list` returns one page of the referenced directory.
+Continue with `--offset "$NEXT_OFFSET"` until `next_offset` is `null`.
+`--path` selects a directory below the reference path.
 
 ## Initialize and inspect
 
@@ -114,6 +137,8 @@ scripts/sp publish-file --source "$SOURCE" --path "$ARTIFACT_PATH" --operation-i
 Copy the returned `reference` without editing its contents.
 This command publishes a complete root containing that one file.
 It also retains the root in the same atomic publication.
+Keep `--ttl-seconds`; without it, the root stays retained for 24 hours.
+Each volume has only 8 retention slots, and each publication holds one.
 While you serve a prompt, it also grants the agent that prompted you read on that file: the result's `granted_to_caller` says so, and `caller_grant_error` says why not.
 Then put the unchanged reference in your reply.
 
@@ -125,6 +150,25 @@ scripts/sp grant --ref "$REFERENCE" --operation-id "$GRANT_ID" --ttl-seconds 600
 
 A grant goes to the agent whose prompt you are serving, and to no one else.
 The returned expiry can be earlier than requested because the grant cannot outlive its retained root.
+
+### Free a retention slot
+
+A full retention table refuses the next publication with `capacity`.
+An expired pin still holds its slot until maintenance releases it.
+When no reader still needs a handoff, free its slot early:
+
+```sh
+scripts/sp release --ref "$REFERENCE"
+scripts/sp release --ref "$REFERENCE" --apply
+```
+
+The first command reports the plan, including every live grant that names this retention handle.
+A live grant, such as the caller grant from `publish-file`, makes `--apply` fail with `conflict`.
+Wait for that grant to expire before you apply the release.
+Otherwise the release frees the slot, and the released short reference no longer resolves.
+A retry after a lost reply settles the same saved request; `scripts/sp recover` settles it too.
+A rerun after the release settled reports `absent`.
+`scripts/sp maintain --apply` releases expired pins.
 
 ## Hand a reference to another agent
 
@@ -161,11 +205,31 @@ Another writer's publication can produce an explicit conflict; the command does 
 | 2    | Correct the local arguments; no product request was sent.                          |
 | 3    | The outcome is unknown. Recover the saved intent before starting another mutation. |
 
+The error object's `outcome` field classifies a failure that sp reports.
+A refusal by `scripts/sp` itself exits 2 and has no `outcome`.
+
+| `outcome`    | Next step                                                                                             |
+| ------------ | ----------------------------------------------------------------------------------------------------- |
+| `unresolved` | Run `scripts/sp recover`, or inspect the reset plan that the message names. Start no other mutation.  |
+| `conflict`   | After `release`, wait for the live grant to expire. Otherwise read the message.                       |
+| `capacity`   | Free the named resource: release a finished handoff, remove a path, or renew an expired lease.        |
+| `retry`      | Repeat the same command later. Remove a partial hydration destination first. For `closed`, see below. |
+| `refused`    | Correct the input or the policy before trying again.                                                  |
+
+An expired or released reference needs a new reference.
+`closed` is temporary during maintenance and during a removal.
+Run `scripts/sp describe`, and renew when `volume.lifetime.phase` is `expiring`.
+If `describe` also fails with `closed`, renew with a deadline about 60 seconds ahead; renewal needs no read.
+Then `describe` reports `max_lease_seconds` for a longer renewal.
+If `renew` fails with `invalid` on a volume that never expires, retry the original command later.
+If `renew` also fails with `closed`, retry for a bounded time; a lasting `closed` can mean that the lifetime ended.
+
 ```sh
 scripts/sp recover
 ```
 
-Recovery first reconciles an exact accepted receipt.
+A saved terminal disposal or lease renewal settles first.
+Otherwise recovery settles a saved retention release, then reconciles an exact accepted receipt.
 If publication remains necessary, recovery uploads the saved spool and submits the same command.
 It never rereads a changed source file or standard input.
 An `epoch_changed` response requires preparation against the current collection epoch; rerun recovery after maintenance ends.
@@ -217,7 +281,9 @@ collects unreachable objects and reopens that interval. The client observes its 
 On an existing deployment, the client performs that collection.
 Maintenance does not scrub retained file payloads.
 If interrupted, recover the saved request. A newer collection interval fences that request.
-Capacity refusal requires maintenance or an explicit operator decision; it never permits eviction of retained content.
+A full retention table refuses new handoffs with `capacity`.
+Free a finished handoff's slot with `scripts/sp release`, or run `scripts/sp maintain --apply` after its deadline.
+A capacity refusal never permits eviction of retained content.
 
 ## Capacity
 
