@@ -138,6 +138,7 @@ Copy the returned `reference` without editing its contents.
 This command publishes a complete root containing that one file.
 It also retains the root in the same atomic publication.
 Keep `--ttl-seconds`; without it, the root stays retained for 24 hours.
+A managed volume's lease expiry can end that retention earlier.
 Each volume has only 8 retention slots, and each publication holds one.
 While you serve a prompt, it also grants the agent that prompted you read on that file: the result's `granted_to_caller` says so, and `caller_grant_error` says why not.
 Then put the unchanged reference in your reply.
@@ -155,7 +156,15 @@ The returned expiry can be earlier than requested because the grant cannot outli
 
 A full retention table refuses the next publication with `capacity`.
 An expired pin still holds its slot until maintenance releases it.
-When no reader still needs a handoff, free its slot early:
+After the retention deadline, `scripts/sp maintain --apply` frees that slot.
+
+In this harness, `scripts/sp release` rarely frees a slot early.
+The caller grant from `publish-file` lasts as long as its retention.
+While that grant lives, `release --apply` fails with `conflict`.
+After the deadline, a short reference no longer resolves, so `release --apply` fails with `not_found`.
+Do not repeat a release that failed with `conflict` or `not_found`; run `scripts/sp maintain --apply` after the deadline.
+
+Use `release` only for a publication without a live grant, when no reader still needs it:
 
 ```sh
 scripts/sp release --ref "$REFERENCE"
@@ -163,12 +172,10 @@ scripts/sp release --ref "$REFERENCE" --apply
 ```
 
 The first command reports the plan, including every live grant that names this retention handle.
-A live grant, such as the caller grant from `publish-file`, makes `--apply` fail with `conflict`.
-Wait for that grant to expire before you apply the release.
-Otherwise the release frees the slot, and the released short reference no longer resolves.
+An empty `protected_by` list means that `--apply` can free the slot.
+The released short reference then no longer resolves.
 A retry after a lost reply settles the same saved request; `scripts/sp recover` settles it too.
 A rerun after the release settled reports `absent`.
-`scripts/sp maintain --apply` releases expired pins.
 
 ## Hand a reference to another agent
 
@@ -208,13 +215,13 @@ Another writer's publication can produce an explicit conflict; the command does 
 The error object's `outcome` field classifies a failure that sp reports.
 A refusal by `scripts/sp` itself exits 2 and has no `outcome`.
 
-| `outcome`    | Next step                                                                                             |
-| ------------ | ----------------------------------------------------------------------------------------------------- |
-| `unresolved` | Run `scripts/sp recover`, or inspect the reset plan that the message names. Start no other mutation.  |
-| `conflict`   | After `release`, wait for the live grant to expire. Otherwise read the message.                       |
-| `capacity`   | Free the named resource: release a finished handoff, remove a path, or renew an expired lease.        |
-| `retry`      | Repeat the same command later. Remove a partial hydration destination first. For `closed`, see below. |
-| `refused`    | Correct the input or the policy before trying again.                                                  |
+| `outcome`    | Next step                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `unresolved` | Run `scripts/sp recover`, or inspect the reset plan that the message names. Start no other mutation.                       |
+| `conflict`   | After `release`, do not repeat it; see [Free a retention slot](#free-a-retention-slot). Otherwise read the message.        |
+| `capacity`   | Free the named resource: run `maintain --apply` after a retention deadline, remove a path, or renew an expired lease.      |
+| `retry`      | Repeat the same command later. Hydrate into a new destination; keep a partial one for inspection. For `closed`, see below. |
+| `refused`    | Correct the input or the policy before trying again.                                                                       |
 
 An expired or released reference needs a new reference.
 `closed` is temporary during maintenance and during a removal.
@@ -282,7 +289,8 @@ On an existing deployment, the client performs that collection.
 Maintenance does not scrub retained file payloads.
 If interrupted, recover the saved request. A newer collection interval fences that request.
 A full retention table refuses new handoffs with `capacity`.
-Free a finished handoff's slot with `scripts/sp release`, or run `scripts/sp maintain --apply` after its deadline.
+Run `scripts/sp maintain --apply` after a handoff's deadline to free its slot.
+`scripts/sp release` frees a slot early only when no live grant names its retention.
 A capacity refusal never permits eviction of retained content.
 
 ## Capacity
