@@ -5,14 +5,18 @@
 // ScratchPad extension for the plugin's agent tools. TypeScript only, like
 // the rest of the plugins' contract: none of it is wire.
 //
-// At start, once: the connection, the workspace and the volume, from the
-// config entry's `options.scratchpad`, else the variables of the same names
-// the package reads (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, `NATS_URL`,
-// `NATS_CREDS`), else, for the connection, the plugin's own: its NATS
-// context, which `sp` cannot read (PI's, Claude Code's), or the `url` and
-// `credentials` of its configuration (OpenClaw's account block). `sp` must
-// connect as the plugin does, since a caller grants read to the agent it
-// prompted.
+// At start, once: the connection, the workspace and the volume. The volume
+// and the workspace from the config entry's `options.scratchpad`, else the
+// variables of the same names the package reads (`SCRATCHPAD_VOLUME`,
+// `SCRATCHPAD_DIR`). The connection is the one the plugin's channel takes,
+// since `sp` must connect as the plugin does (a caller grants read to the
+// agent it prompted): `options.scratchpad`'s `url` and `creds` first, field
+// by field; then a non-empty `NATS_CONTEXT`'s context; with `NATS_CONTEXT`
+// set but empty, or `NATS_URL` or the credentials variable set, the
+// variables and never a context; otherwise the context in the plugin's
+// config, which `sp` cannot read (PI's, Claude Code's); and last, for what
+// is still missing, the `url` and `credentials` of the plugin's
+// configuration (OpenClaw's account block).
 // Without a volume ScratchPad is off and nothing is set.
 //
 // When the service is up: `SP_CREATOR`, the agent's prompt address, which
@@ -120,25 +124,59 @@ export interface ScratchPadSettings {
 
 type Env = Record<string, string | undefined>;
 
+/** How {@link resolveScratchPad} reads the connection's variables. */
+export interface ResolveScratchPadOptions {
+  /**
+   * The credentials file's variables in the order the plugin's channel reads
+   * them, the first set and non-empty winning, so `sp` never takes another
+   * credentials file than the agent. Default `NATS_CREDS`, then
+   * `NATS_CREDENTIALS` (PI's and Claude Code's channels); OpenClaw's channel
+   * lets `NATS_CREDENTIALS` win.
+   */
+  readonly credsVariables?: readonly string[];
+}
+
+/** The credentials variables as PI's and Claude Code's channels read them. */
+const CREDS_VARIABLES: readonly string[] = ["NATS_CREDS", "NATS_CREDENTIALS"];
+
 /**
  * ScratchPad's settings as the options, the environment and the plugin's
  * NATS context give them, or `undefined` when ScratchPad is off: no volume,
  * or a connection `sp` cannot use, which is logged.
+ *
+ * The connection, field by field: `options.scratchpad`'s `url` and `creds`;
+ * then the connection the plugin's channel takes, in order:
+ *
+ * 1. `NATS_CONTEXT` set and non-empty: that context's `url` and `creds`.
+ * 2. `NATS_CONTEXT` set but empty: no context at all, neither the variable's
+ *    nor the config's; `NATS_URL` and the credentials variable.
+ * 3. `NATS_URL` or the credentials variable set and non-empty: the
+ *    variables, never a context.
+ * 4. Otherwise the plugin's config's `context`.
+ *
+ * Then the `url` and `credentials` of the plugin's configuration fill what
+ * is still missing. Where a channel fails (credentials without a URL), the
+ * add-on is off with its warning.
  */
 export async function resolveScratchPad(
   ctx: AgentExtensionContext,
   env: Env,
+  resolveOptions: ResolveScratchPadOptions = {},
 ): Promise<ScratchPadSettings | undefined> {
   const log = ctx.logger;
   const raw = ctx.options[SCRATCHPAD_OPTION];
   const options: Readonly<Record<string, unknown>> =
     raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const pick = (option: string, variable: string): string | undefined => {
-    const fromOptions = options[option];
-    if (typeof fromOptions === "string" && fromOptions !== "") return fromOptions;
-    const fromEnv = env[variable];
-    return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
+  const option = (name: string): string | undefined => {
+    const value = options[name];
+    return typeof value === "string" && value !== "" ? value : undefined;
   };
+  const variable = (name: string): string | undefined => {
+    const value = env[name];
+    return value === undefined || value === "" ? undefined : value;
+  };
+  const pick = (name: string, variableName: string): string | undefined =>
+    option(name) ?? variable(variableName);
 
   const configuredBootstrap = pick("bootstrapFile", SP_VARS.bootstrapFile);
   const bootstrapFile =
@@ -150,10 +188,24 @@ export async function resolveScratchPad(
   if (bootstrap && bootstrap.volume !== volume)
     throw new Error("ScratchPad bootstrap differs from the configured volume");
 
-  let url = pick("url", "NATS_URL");
-  let creds = pick("creds", "NATS_CREDS");
+  let url = option("url");
+  let creds = option("creds");
   if (url === undefined || creds === undefined) {
-    const context = env["NATS_CONTEXT"] || stringOf(ctx.settings.config["context"]);
+    const envUrl = variable("NATS_URL");
+    let envCreds: string | undefined;
+    for (const name of resolveOptions.credsVariables ?? CREDS_VARIABLES) {
+      envCreds = variable(name);
+      if (envCreds !== undefined) break;
+    }
+    // Step 1, a non-empty NATS_CONTEXT; steps 2 and 3, the variables and
+    // never a context; step 4, the plugin's config's context.
+    const envContext = env["NATS_CONTEXT"];
+    const direct = envContext !== undefined || envUrl !== undefined || envCreds !== undefined;
+    const context = envContext
+      ? envContext
+      : direct
+        ? undefined
+        : stringOf(ctx.settings.config["context"]);
     if (context !== undefined) {
       try {
         const { fields } = await readContextFile(context);
@@ -165,6 +217,9 @@ export async function resolveScratchPad(
         );
         return undefined;
       }
+    } else if (direct) {
+      url ??= envUrl;
+      creds ??= envCreds;
     }
   }
   // A plugin that connects without a context names the two in its own
@@ -174,8 +229,9 @@ export async function resolveScratchPad(
   if (url === undefined || creds === undefined) {
     log.warn(
       "agent-fabric: ScratchPad is off: sp needs a NATS URL and a credentials file " +
-        "(options.scratchpad, NATS_URL and NATS_CREDS, a NATS context with both, " +
-        "or url and credentials in the plugin's configuration)",
+        "(options.scratchpad; else NATS_CONTEXT naming a context with both; else " +
+        "NATS_URL and NATS_CREDS or NATS_CREDENTIALS; else the plugin's NATS context " +
+        "with both; or url and credentials in the plugin's configuration)",
     );
     return undefined;
   }

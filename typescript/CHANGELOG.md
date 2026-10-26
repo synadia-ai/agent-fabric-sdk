@@ -4,6 +4,22 @@ All notable changes to `@synadia-ai/agent-fabric` are recorded here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `resolveScratchPad`, the add-ons' ScratchPad settings, takes the connection the plugin's
+  channel takes, so `sp` connects to the agent's server as the agent. After
+  `options.scratchpad`'s `url` and `creds`, field by field: a non-empty `NATS_CONTEXT`'s
+  context, over `NATS_URL` and `NATS_CREDS` (before, `sp` took the variables while the channel
+  connected by the context: two servers, possibly two identities); with `NATS_CONTEXT` set but
+  empty, or `NATS_URL`, `NATS_CREDS` or `NATS_CREDENTIALS` set, the variables and never a
+  context (before, an empty `NATS_CONTEXT` fell through to the config's context, and the
+  config's context filled a missing URL or credentials file); otherwise the config's context;
+  then the plugin's own `url` and `credentials`, as before. `NATS_CREDENTIALS` is read as
+  `NATS_CREDS`'s alias, in the order the channel reads them: a third argument,
+  `{ credsVariables }` (`ResolveScratchPadOptions`), gives it, `NATS_CREDS` first by default.
+
 ## [0.2.0] — Unreleased
 
 ### Added
