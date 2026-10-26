@@ -27,6 +27,7 @@ credentials. pi reads the rest from its environment:
 | `SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR` | optional: the agent's ScratchPad volume and its private workspace |
 
 `NATS_CONTEXT`, a NATS CLI context, wins over `NATS_URL` and `NATS_CREDS`.
+A context in the plugin's own config file counts only when neither is set.
 
 pi's model is pi's own setting. For the fabric to record the model calls,
 point pi at the fabric's model proxy with the agent's model key, as a

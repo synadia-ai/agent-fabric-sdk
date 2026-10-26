@@ -52,6 +52,7 @@ environment:
 | `SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR` | optional: the agent's ScratchPad volume and its private workspace |
 
 `NATS_CONTEXT`, a NATS CLI context, wins over `NATS_URL` and `NATS_CREDS`.
+A context in the plugin's own config file counts only when neither is set.
 
 Start it with the channel, which is not on Claude Code's list of channels,
 so it loads as a development channel, with the warning Claude Code shows

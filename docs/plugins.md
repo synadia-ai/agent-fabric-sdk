@@ -1122,13 +1122,32 @@ a harness that allows it by its path asks for a command that wraps it
 **The variables.** The names are the package's existing contract for
 `scratchPadFromEnv` (`typescript/src/scratchpad-cli.ts`, `SCRATCHPAD_VOLUME`,
 `SCRATCHPAD_DIR`, with `NATS_URL` and `NATS_CREDS`). The add-on resolves
-them once at start: from its config entry's `options`, else from the same
-variables, else, for the connection, from the plugin's own NATS context.
-The plugins connect through a context (`"context": "…"` in their config,
-which the add-on reads in `settings.config`), and sp reads no context, so
-the add-on reads the context file for its URL and credentials path. The
-connection must be the plugin's own: a caller grants read to the principal
-it prompted, which is the identity the plugin registered with.
+them once at start. The volume and the workspace: from its config entry's
+`options`, else from the same variables. The connection must be the
+plugin's own: a caller grants read to the principal it prompted, which is
+the identity the plugin registered with. So the add-on takes the
+connection the plugin's channel takes: `options.scratchpad`'s `url` and
+`creds` first, field by field; then, in the channel's order,
+
+1. `NATS_CONTEXT` set and non-empty: that context's `url` and `creds`;
+2. `NATS_CONTEXT` set but empty: no context at all, neither the variable's
+   nor the config's; `NATS_URL` and the credentials variable;
+3. `NATS_URL`, `NATS_CREDS` or `NATS_CREDENTIALS` set and non-empty: the
+   variables, never a context;
+4. otherwise the plugin's NATS context (`"context": "…"` in its config,
+   which the add-on reads in `settings.config`);
+
+and last the `url` and `credentials` of the plugin's configuration
+(OpenClaw's account block) for what is still missing. The credentials
+variables are read in the order the channel reads them: `NATS_CREDS`
+winning for PI and Claude Code, `NATS_CREDENTIALS` for OpenClaw
+(`resolveScratchPad`'s `credsVariables`). sp reads no context, so the
+add-on reads the context file for its URL and credentials path. Where a
+channel fails (credentials without a URL), the add-on is off with its
+warning; the channel has already failed first. OpenClaw's channel keeps
+its account's context for an empty `NATS_CONTEXT` and counts an empty
+`NATS_URL` as set, which the add-on does not
+(`plugins/openclaw/README.md`).
 `SCRATCHPAD_DIR` defaults to `<stateDir>/scratchpad`, which the add-on
 creates, since sp requires the directory to exist. `SCRATCHPAD_VOLUME` has
 no default: the operator reserves a volume for the harness's identity,

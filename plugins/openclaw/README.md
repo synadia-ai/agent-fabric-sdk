@@ -188,11 +188,22 @@ configured them, and OpenClaw's default exec mode asks nothing.
 "extensions": [{ "module": "<add-on>", "options": { "scratchpad": { "volume": "OcVol" } } }]
 ```
 
-**Where the settings come from.** The factory resolves each from the entry's
-`options.scratchpad` (`volume`, `dir`, `url`, `creds`), else the variable
-(`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, `NATS_URL`, `NATS_CREDS`), else, for
-the URL and the credentials file, the account's own `url` and
-`credentials`, which is how OpenClaw's plugin connects. The workspace
+**Where the settings come from.** The factory resolves the volume and the
+workspace from the entry's `options.scratchpad` (`volume`, `dir`), else the
+variable (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`). The URL and the
+credentials file are the connection OpenClaw's channel takes, so sp
+connects as the agent: `options.scratchpad`'s `url` and `creds` first, each
+on its own; then the context `NATS_CONTEXT` names; with `NATS_CONTEXT` set
+but empty, or `NATS_URL`, `NATS_CREDENTIALS` or `NATS_CREDS` set, those
+variables (`NATS_CREDENTIALS` winning, as the channel reads them) and never
+a context; otherwise the account's `context`; and last, for what is still
+missing, the account's own `url` and `credentials`, which is how
+OpenClaw's plugin connects without a context. Stated honestly: OpenClaw's
+channel keeps the account's `context` when `NATS_CONTEXT` is set but empty,
+and counts a set-but-empty `NATS_URL` as set; the add-on reads neither so.
+With `NATS_CONTEXT=""`, no variables and an account that names only a
+context, the gateway connects by that context and ScratchPad is off with
+its warning. No shipped way starts OpenClaw so. The workspace
 defaults to `scratchpad/` in OpenClaw's state directory
 (`$OPENCLAW_STATE_DIR/scratchpad`), created if missing; keep it across
 restarts. Without a volume ScratchPad is off.

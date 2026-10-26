@@ -4,6 +4,19 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- ScratchPad's `sp` connects as PI's channel does. A non-empty `NATS_CONTEXT` wins over
+  `NATS_URL` and `NATS_CREDS` for `sp` too; with `NATS_CONTEXT` set but empty, or `NATS_URL`,
+  `NATS_CREDS` or `NATS_CREDENTIALS` set, `sp` takes the variables and never a context;
+  otherwise the `context` in `nats-channel.json`. `NATS_CREDENTIALS` is read as
+  `NATS_CREDS`'s alias, `NATS_CREDS` winning.
+- The PI channel plugin from `synadia-agents`, once bundled at its next change, reads the
+  `context` in `nats-channel.json` only when the environment names no server, and its start
+  line names where the connection came from.
+
 ## [0.2.0] — 2026-10-11
 
 ### Changed

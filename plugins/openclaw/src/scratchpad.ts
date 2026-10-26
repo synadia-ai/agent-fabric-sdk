@@ -13,21 +13,41 @@
 
 import { fileURLToPath } from "node:url";
 import {
+  resolveScratchPad as sharedResolveScratchPad,
   spBinary as sharedSpBinary,
   spPort as sharedSpPort,
+  type AgentExtensionContext,
   type ScratchPad,
   type ScratchPadSettings,
 } from "@synadia-ai/agent-fabric";
 
 export {
   exportScratchPad,
-  resolveScratchPad,
   SCRATCHPAD_OPTION,
   ScratchPadHandOn,
   ServedPromptEnv,
   SP_VARS,
   type ScratchPadSettings,
 } from "@synadia-ai/agent-fabric";
+
+/**
+ * ScratchPad's settings, with the connection OpenClaw's channel takes: the
+ * shared resolver, the credentials variables read as the channel reads
+ * them, `NATS_CREDENTIALS` winning over `NATS_CREDS`
+ * (`agents/openclaw/src/accounts.ts` in `synadia-agents`).
+ *
+ * Stated honestly: OpenClaw's channel keeps its account's `context` when
+ * `NATS_CONTEXT` is set but empty, and counts a set-but-empty `NATS_URL` as
+ * set. The add-on reads neither so: with `NATS_CONTEXT=""`, no variables and
+ * an account that names only a context, the gateway connects by that context
+ * and ScratchPad is off with its warning. No shipped way starts OpenClaw so.
+ */
+export function resolveScratchPad(
+  ctx: AgentExtensionContext,
+  env: Record<string, string | undefined>,
+): Promise<ScratchPadSettings | undefined> {
+  return sharedResolveScratchPad(ctx, env, { credsVariables: ["NATS_CREDENTIALS", "NATS_CREDS"] });
+}
 
 /** This package's skill directory: `src/` in the tests, `dist/` when installed, one level below it. */
 export const SKILL_DIR = fileURLToPath(new URL("../skill/scratchpad", import.meta.url));

@@ -4,6 +4,19 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- ScratchPad's `sp` connects as OpenClaw's channel does. A non-empty `NATS_CONTEXT` wins over
+  `NATS_URL` and `NATS_CREDS` for `sp` too; with `NATS_CONTEXT` set but empty, or `NATS_URL`,
+  `NATS_CREDENTIALS` or `NATS_CREDS` set, `sp` takes the variables and never a context;
+  otherwise the account's `context`; then the account's `url` and `credentials`, as before.
+  `NATS_CREDENTIALS` is read and wins over `NATS_CREDS`, as the channel reads them. Stated
+  honestly: with `NATS_CONTEXT=""`, no variables and an account that names only a context, the
+  gateway connects by that context and ScratchPad is off with its warning (the README says
+  why).
+
 ## [0.2.1] — 2026-10-12
 
 ### Fixed

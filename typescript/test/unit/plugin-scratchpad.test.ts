@@ -4,10 +4,10 @@
 // the ScratchPad extension behind its wrapper, with the grant requests it
 // answers. The add-ons' own suites drive them through their factories.
 
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "@synadia-ai/agents";
 import type { AgentService } from "@synadia-ai/agent-service";
 import {
@@ -99,6 +99,162 @@ describe("resolveScratchPad", () => {
       volume: "OcVol",
       url: "nats://oc:4222",
       creds: "/oc.creds",
+    });
+  });
+
+  describe("the connection, as the plugin's channel takes it", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    /** NATS CLI contexts under a config home of their own. */
+    function natsContexts(contexts: Record<string, Record<string, unknown>>): void {
+      const home = mkdtempSync(join(tmpdir(), "fabric-plugin-sp-ctx-"));
+      const dir = join(home, "nats", "context");
+      mkdirSync(dir, { recursive: true });
+      for (const [name, fields] of Object.entries(contexts)) {
+        writeFileSync(join(dir, `${name}.json`), JSON.stringify(fields));
+      }
+      vi.stubEnv("NATS_CONFIG_HOME", join(home, "nats"));
+      vi.stubEnv("XDG_CONFIG_HOME", home);
+    }
+
+    /** A context whose plugin config names `configured` as its NATS context. */
+    function withConfigContext(
+      options: Record<string, unknown> = {},
+      config: Record<string, unknown> = { context: "configured" },
+    ): AgentExtensionContext {
+      const ctx = context(options);
+      return { ...ctx, settings: { ...ctx.settings, config } };
+    }
+
+    function recording(ctx: AgentExtensionContext): {
+      ctx: AgentExtensionContext;
+      warnings: string[];
+    } {
+      const warnings: string[] = [];
+      return {
+        ctx: { ...ctx, logger: { ...quiet, warn: (m: string) => warnings.push(m) } },
+        warnings,
+      };
+    }
+
+    const CONTEXTS = {
+      configured: { url: "nats://file:4222", creds: "/file.creds" },
+      named: { url: "nats://named:4222", creds: "/named.creds" },
+    };
+
+    it("takes a non-empty NATS_CONTEXT's context over NATS_URL and NATS_CREDS", async () => {
+      natsContexts(CONTEXTS);
+      expect(
+        await resolveScratchPad(withConfigContext(), {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_CONTEXT: "named",
+          NATS_URL: "nats://env:4222",
+          NATS_CREDS: "/env.creds",
+        }),
+      ).toMatchObject({ url: "nats://named:4222", creds: "/named.creds" });
+    });
+
+    it("reads no context for an empty NATS_CONTEXT, not even the config's: the variables, else off", async () => {
+      natsContexts(CONTEXTS);
+      const { ctx, warnings } = recording(withConfigContext());
+      expect(
+        await resolveScratchPad(ctx, { SCRATCHPAD_VOLUME: "V", NATS_CONTEXT: "" }),
+      ).toBeUndefined();
+      expect(warnings).toEqual([
+        expect.stringContaining("ScratchPad is off: sp needs a NATS URL and a credentials file"),
+      ]);
+      expect(
+        await resolveScratchPad(withConfigContext(), {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_CONTEXT: "",
+          NATS_URL: "nats://env:4222",
+          NATS_CREDS: "/env.creds",
+        }),
+      ).toMatchObject({ url: "nats://env:4222", creds: "/env.creds" });
+    });
+
+    it("takes the variables over the config's context, never filling from it", async () => {
+      natsContexts(CONTEXTS);
+      expect(
+        await resolveScratchPad(withConfigContext(), {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_URL: "nats://env:4222",
+          NATS_CREDS: "/env.creds",
+        }),
+      ).toMatchObject({ url: "nats://env:4222", creds: "/env.creds" });
+      // A URL alone, or credentials alone, still selects the variables: off, as the channel
+      // connects without the context (or, for credentials without a URL, fails).
+      const urlOnly = recording(withConfigContext());
+      expect(
+        await resolveScratchPad(urlOnly.ctx, {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_URL: "nats://env:4222",
+        }),
+      ).toBeUndefined();
+      expect(urlOnly.warnings).toEqual([expect.stringContaining("ScratchPad is off")]);
+      expect(
+        await resolveScratchPad(withConfigContext(), {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_CREDS: "/env.creds",
+        }),
+      ).toBeUndefined();
+      // With none of them set, empty meaning unset, the config's context.
+      expect(
+        await resolveScratchPad(withConfigContext(), {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_URL: "",
+          NATS_CREDS: "",
+          NATS_CREDENTIALS: "",
+        }),
+      ).toMatchObject({ url: "nats://file:4222", creds: "/file.creds" });
+    });
+
+    it("reads NATS_CREDENTIALS as NATS_CREDS's alias, in the order the channel reads them", async () => {
+      expect(
+        await resolveScratchPad(context(), {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_URL: "nats://env:4222",
+          NATS_CREDENTIALS: "/alias.creds",
+        }),
+      ).toMatchObject({ url: "nats://env:4222", creds: "/alias.creds" });
+      const both = {
+        SCRATCHPAD_VOLUME: "V",
+        NATS_URL: "nats://env:4222",
+        NATS_CREDS: "/creds.creds",
+        NATS_CREDENTIALS: "/alias.creds",
+      };
+      expect((await resolveScratchPad(context(), both))?.creds).toBe("/creds.creds");
+      expect(
+        (
+          await resolveScratchPad(context(), both, {
+            credsVariables: ["NATS_CREDENTIALS", "NATS_CREDS"],
+          })
+        )?.creds,
+      ).toBe("/alias.creds");
+    });
+
+    it("takes the options over everything, field by field, the channel's connection filling the rest", async () => {
+      natsContexts(CONTEXTS);
+      expect(
+        await resolveScratchPad(
+          withConfigContext({ scratchpad: { url: "nats://opt:4222", creds: "/opt.creds" } }),
+          {
+            SCRATCHPAD_VOLUME: "V",
+            NATS_CONTEXT: "named",
+            NATS_URL: "nats://env:4222",
+            NATS_CREDS: "/env.creds",
+          },
+        ),
+      ).toMatchObject({ url: "nats://opt:4222", creds: "/opt.creds" });
+      expect(
+        await resolveScratchPad(withConfigContext({ scratchpad: { url: "nats://opt:4222" } }), {
+          SCRATCHPAD_VOLUME: "V",
+          NATS_CONTEXT: "named",
+          NATS_CREDS: "/env.creds",
+        }),
+      ).toMatchObject({ url: "nats://opt:4222", creds: "/named.creds" });
     });
   });
 

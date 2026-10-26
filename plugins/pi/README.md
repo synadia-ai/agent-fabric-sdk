@@ -148,11 +148,15 @@ the variable.
 ```
 
 **Where the settings come from.** Once the service is up, the add-on
-resolves each from the entry's `options.scratchpad` (`volume`, `dir`, `url`,
-`creds`), else the variable (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`,
-`NATS_URL`, `NATS_CREDS`), else, for the URL and the credentials file, the
-plugin's own NATS context (`NATS_CONTEXT`, or `context` in
-`nats-channel.json`), which sp cannot read itself. The workspace defaults to
+resolves the volume and the workspace from the entry's `options.scratchpad`
+(`volume`, `dir`), else the variable (`SCRATCHPAD_VOLUME`,
+`SCRATCHPAD_DIR`). The URL and the credentials file are the connection
+PI's channel takes, so sp connects as the agent: `options.scratchpad`'s
+`url` and `creds` first, each on its own; then the context `NATS_CONTEXT`
+names; with `NATS_CONTEXT` set but empty, or `NATS_URL`, `NATS_CREDS` or
+`NATS_CREDENTIALS` set, those variables (`NATS_CREDS` winning) and never a
+context; otherwise the `context` in `nats-channel.json`. The add-on reads
+the context file, which sp cannot read itself. The workspace defaults to
 `scratchpad/` in the plugin's state directory (`~/.pi/agent/scratchpad`),
 created if missing; keep it across restarts. Without a volume ScratchPad is
 off; without a URL and a credentials file it is off with a warning.

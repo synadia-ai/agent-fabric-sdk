@@ -232,6 +232,7 @@ export {
   spPort,
   withRecordedGrants,
   type RecordedGrant,
+  type ResolveScratchPadOptions,
   type ScratchPadSettings,
 } from "./plugin-scratchpad.js";
 
