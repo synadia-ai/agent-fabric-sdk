@@ -78,6 +78,18 @@ describe("the environment", () => {
     expect(env[SP_VARS.creator]).toBe(ADDRESS);
   });
 
+  it("gives sp the credentials file OpenClaw's channel takes: NATS_CREDENTIALS over NATS_CREDS", async () => {
+    const env: Record<string, string | undefined> = {
+      SCRATCHPAD_VOLUME: "OcVol",
+      NATS_URL: "nats://127.0.0.1:4222",
+      NATS_CREDS: "/keys/creds.creds",
+      NATS_CREDENTIALS: "/keys/credentials.creds",
+    };
+    await createExtension(extensionContext({ stateDir: state }), env);
+    expect(env[SP_VARS.url]).toBe("nats://127.0.0.1:4222");
+    expect(env[SP_VARS.creds]).toBe("/keys/credentials.creds");
+  });
+
   it("logs the volume and the workspace at start", async () => {
     const { lines } = await started(configured());
     expect(lines.filter((l) => l.level === "info").at(-1)?.message).toBe(
