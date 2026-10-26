@@ -6,6 +6,19 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Local turns, a turn a harness runs that no served prompt started (typed at its terminal), for
+  the add-ons that trace them: `rootTraceScope()` mints a root scope (a thread that is its own
+  root, no call counted), the one a receiver also mints for an envelope without the pair; the
+  loop guard's `open(scope)` guards a local turn's scope like a served request until the function
+  it returns is called; `servedPublisher`'s `beginTurn` takes an optional third argument, `atMs`,
+  the arrival the `start` record is stamped with, floored to unix seconds as `settle` floors its
+  own. The plugin contract gains `LocalTurn`, `localTurnStarted` and `localTurnEnded`;
+  `aroundToolCall` and `providerHeaders` take a served request or a local turn.
+  `ServedPromptEnv`'s `enter` and `leave` take any `{ id, caller? }` (`PromptEnvHolder`), so a
+  local turn, which has no caller, holds the variables too.
+
 ### Changed
 
 - `resolveScratchPad`, the add-ons' ScratchPad settings, takes the connection the plugin's

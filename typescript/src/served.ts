@@ -281,10 +281,12 @@ export class ServedPublisher {
    * Start a prompt's pair: `scope` is the served prompt's trace scope —
    * the one the fabric's request interceptor bound around the handler,
    * `activeTrace()` inside it — and `harness` the one whose id `bind` will
-   * name. The arrival, `start`'s `ts`, is now.
+   * name. The arrival, `start`'s `ts`, is `atMs` (epoch milliseconds, the
+   * moment the harness reported the turn) floored to unix seconds, as
+   * `settle` floors its own; now when not given.
    */
-  beginTurn(scope: TraceScope, harness: Harness): ServedTurn {
-    const arrivedAt = unixSeconds();
+  beginTurn(scope: TraceScope, harness: Harness, atMs?: number): ServedTurn {
+    const arrivedAt = atMs === undefined ? unixSeconds() : Math.floor(atMs / 1000);
     let harnessThreadId: string | undefined;
     let settled = false;
     return {

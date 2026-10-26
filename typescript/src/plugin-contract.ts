@@ -1,8 +1,9 @@
 // The extension contract of the harness plugins in `synadia-agents`
 // (PI, OpenClaw, Claude Code), declared here so an add-on under `plugins/`
 // imports nothing of any plugin or harness. The plugins' own declarations
-// are `agents/pi/extensions/extensions.ts` and
-// `agents/openclaw/src/extensions.ts`, one contract kept in step, and the
+// are `agents/pi/extensions/extensions.ts`,
+// `agents/openclaw/src/extensions.ts` and
+// `agents/claude-code/src/extensions.ts`, one contract kept in step, and the
 // contract an author reads is `agents/EXTENSIONS.md` there. The shapes are
 // structural on both sides: a plugin type-checks what the factory returns
 // against its declaration, and this file must say the same thing. Nothing
@@ -60,6 +61,20 @@ export interface ServedRequest {
   readonly sessionId?: string;
 }
 
+/**
+ * A turn the harness runs that no served prompt started: typed at its
+ * terminal, or begun by the harness itself. Its add-on mints a root for it
+ * (`rootTraceScope()`) and binds it as the turn's scope.
+ */
+export interface LocalTurn {
+  /** The plugin's id for the turn, unique in the process, never equal to a served request's id. */
+  readonly id: string;
+  /** Tells a local turn from a served request, which has no such field. */
+  readonly local: true;
+  /** Claude Code only: the session the turn runs in, when known. */
+  readonly sessionId?: string;
+}
+
 export type Outcome = "ok" | "error" | "timeout";
 
 /**
@@ -80,9 +95,10 @@ export type EndReason = "final_text" | "no_reply" | "shutdown" | "delivery" | "e
  * once, synchronously, and return its value, a promise included. A wrapper
  * may be an async function: the plugin still takes `run`'s own value, and
  * the wrapper must call `run` once, before its first `await`, so the step
- * keeps its timing. Every harness calls the first three; PI also
- * `aroundInject` and `providerHeaders`, OpenClaw `aroundDispatch`, Claude
- * Code `sessionStarted` and `turnStopped`. One shape serves all three.
+ * keeps its timing. Every harness calls the first three; PI and Claude Code
+ * `localTurnStarted` and `localTurnEnded`; PI also `aroundInject` and
+ * `providerHeaders`, OpenClaw `aroundDispatch`, Claude Code
+ * `sessionStarted` and `turnStopped`. One shape serves all three.
  */
 export interface HarnessEvents {
   /** Inside the prompt handler, after every interceptor ran. */
@@ -92,12 +108,38 @@ export interface HarnessEvents {
    * the model did not end the prompt with its own reply.
    */
   promptEnded?(request: ServedRequest, outcome: Outcome, atMs: number, reason?: EndReason): void;
-  /** Around every agent-tool call, with the request the model works in. */
-  aroundToolCall?<T>(request: ServedRequest | undefined, toolName: string, run: () => T): T;
+  /**
+   * Around every agent-tool call, with the request or the local turn the
+   * model works in, or `undefined` when the plugin knows neither.
+   */
+  aroundToolCall?<T>(
+    request: ServedRequest | LocalTurn | undefined,
+    toolName: string,
+    run: () => T,
+  ): T;
+  /**
+   * PI and Claude Code: a local turn began. PI: at the run's `agent_start`,
+   * when no served prompt is active. Claude Code: when its channel sees the
+   * turn begin.
+   */
+  localTurnStarted?(turn: LocalTurn, atMs: number): void;
+  /**
+   * PI and Claude Code: a local turn ended. PI: at the run's
+   * `agent_settled`, before the next queued prompt is handed to PI, or when
+   * the session shuts down. Claude Code: when its channel sees the turn
+   * end. `outcome` is `error` when the harness reports the turn failed,
+   * else `ok`.
+   */
+  localTurnEnded?(turn: LocalTurn, outcome: Outcome, atMs: number): void;
   /** PI: around the hand-over of the prompt to PI's loop (`pi.sendUserMessage()`). */
   aroundInject?<T>(request: ServedRequest, run: () => T): T;
-  /** PI: headers to add to a provider request while `request` is PI's active turn. */
-  providerHeaders?(request: ServedRequest): Readonly<Record<string, string>> | undefined;
+  /**
+   * PI: headers to add to a provider request while `request` is PI's active
+   * turn, a served prompt or a local turn.
+   */
+  providerHeaders?(
+    request: ServedRequest | LocalTurn,
+  ): Readonly<Record<string, string>> | undefined;
   /**
    * OpenClaw: around the turn's dispatch
    * (`dispatchInboundDirectDmWithRuntime()`). Asynchronous: the extension

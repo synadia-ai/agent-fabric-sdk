@@ -20,6 +20,8 @@ import {
   spBinary,
   withRecordedGrants,
   type AgentExtensionContext,
+  type LocalTurn,
+  type ServedRequest,
 } from "../../src/index.js";
 import { MemoryScratchPad, promptContext, stubAgent, stubAgents } from "../support/scratchpad.js";
 
@@ -347,18 +349,40 @@ describe("ServedPromptEnv", () => {
     const env: Record<string, string | undefined> = {};
     const promptEnv = new ServedPromptEnv(env);
     const scope = { threadId: "a".repeat(32), rootId: "b".repeat(32), turnCountHint: 0 };
-    promptEnv.enter({ id: "r1", extras: {}, caller: "ACCT.USER" }, scope);
+    const r1: ServedRequest = { id: "r1", extras: {}, caller: "ACCT.USER" };
+    const r2: ServedRequest = { id: "r2", extras: {} };
+    promptEnv.enter(r1, scope);
     expect(env).toEqual({
       [SP_VARS.threadId]: "a".repeat(32),
       [SP_VARS.rootId]: "b".repeat(32),
       [SP_VARS.callerAccount]: "ACCT",
       [SP_VARS.callerUser]: "USER",
     });
-    promptEnv.enter({ id: "r2", extras: {} }, scope);
+    promptEnv.enter(r2, scope);
     expect(env[SP_VARS.callerAccount]).toBeUndefined();
-    promptEnv.leave({ id: "r1", extras: {} });
+    promptEnv.leave(r1);
     expect(env[SP_VARS.threadId]).toBe("a".repeat(32));
-    promptEnv.leave({ id: "r2", extras: {} });
+    promptEnv.leave(r2);
+    expect(env).toEqual({});
+  });
+
+  it("holds a local turn's trace, with no caller, and keeps it apart from a request's", () => {
+    const env: Record<string, string | undefined> = {};
+    const promptEnv = new ServedPromptEnv(env);
+    const local = { threadId: "c".repeat(32), rootId: "c".repeat(32), turnCountHint: 0 };
+    const turn: LocalTurn = { id: "local-1", local: true };
+    const request: ServedRequest = { id: "1", extras: {}, caller: "ACCT.USER" };
+    promptEnv.enter(request, {
+      threadId: "a".repeat(32),
+      rootId: "b".repeat(32),
+      turnCountHint: 0,
+    });
+    promptEnv.enter(turn, local);
+    expect(env).toEqual({ [SP_VARS.threadId]: "c".repeat(32), [SP_VARS.rootId]: "c".repeat(32) });
+    // The request's end does not clear the turn's variables.
+    promptEnv.leave(request);
+    expect(env[SP_VARS.threadId]).toBe("c".repeat(32));
+    promptEnv.leave(turn);
     expect(env).toEqual({});
   });
 });

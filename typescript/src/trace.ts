@@ -235,6 +235,17 @@ export function randomThreadId(): string {
   return out;
 }
 
+/**
+ * A fresh root: a scope whose thread is its own root, minted here, with no
+ * model call counted yet. What a receiver mints for an envelope that names
+ * no thread, and what a harness add-on binds around a local turn, a turn
+ * the harness runs that no served prompt started.
+ */
+export function rootTraceScope(): TraceScope {
+  const threadId = randomThreadId();
+  return { threadId, rootId: threadId, turnCountHint: 0 };
+}
+
 /** Longest accepted tool call id, in Unicode code points. */
 export const TOOL_CALL_ID_MAX = 256;
 
