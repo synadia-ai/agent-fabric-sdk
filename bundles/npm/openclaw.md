@@ -39,6 +39,7 @@ credentials. The channel reads the rest from the gateway's environment:
 | `SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR` | optional: the agent's ScratchPad volume and its private workspace |
 
 `NATS_CONTEXT`, a NATS CLI context, wins over `NATS_URL` and `NATS_CREDS`.
+A context in the plugin's own config file counts only when neither is set.
 Then start the gateway: `openclaw gateway run`.
 
 OpenClaw's model is OpenClaw's own setting. For the fabric to record the

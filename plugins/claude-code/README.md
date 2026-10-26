@@ -353,10 +353,15 @@ or no. The skill tells the model to run `scripts/sp` as a command of its
 own, since a command that wraps it (a shell variable for its path, a pipe
 out of it, `;` or `&&`) is a different command, and asks.
 
-**Where the settings come from.** The factory resolves each from the
-entry's `options.scratchpad` (`volume`, `dir`, `url`, `creds`), else the
-variable (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`, `NATS_URL`, `NATS_CREDS`),
-else, for the URL and the credentials file, the plugin's NATS context. The
+**Where the settings come from.** The factory resolves the volume and the
+workspace from the entry's `options.scratchpad` (`volume`, `dir`), else the
+variable (`SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR`). The URL and the
+credentials file are the connection the plugin's channel takes, so sp
+connects as the agent: `options.scratchpad`'s `url` and `creds` first, each
+on its own; then the context `NATS_CONTEXT` names; with `NATS_CONTEXT` set
+but empty, or `NATS_URL`, `NATS_CREDS` or `NATS_CREDENTIALS` set, those
+variables (`NATS_CREDS` winning) and never a context; otherwise the
+`context` in the channel's `config.json`, which the add-on reads for sp. The
 workspace defaults to `scratchpad/` in the channel's state directory
 (`$NATS_STATE_DIR/scratchpad`), created if missing; keep it across
 restarts, since it holds the volume's journal. Without a volume ScratchPad
