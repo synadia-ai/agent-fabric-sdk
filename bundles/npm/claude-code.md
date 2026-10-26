@@ -18,7 +18,7 @@ plugin; a marketplace names it with an npm source:
   "name": "agent-fabric",
   "owner": { "name": "Synadia" },
   "plugins": [
-    { "name": "nats-channel", "source": { "source": "npm", "package": "@synadia-ai/agent-fabric-claude-code", "version": "^0.2.0" } }
+    { "name": "nats-channel", "source": { "source": "npm", "package": "@synadia-ai/agent-fabric-claude-code", "version": "^0.3.0" } }
   ]
 }
 ```

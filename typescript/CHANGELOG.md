@@ -36,7 +36,7 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `NATS_CREDS`'s alias, in the order the channel reads them: a third argument,
   `{ credsVariables }` (`ResolveScratchPadOptions`), gives it, `NATS_CREDS` first by default.
 
-## [0.2.0] — Unreleased
+## [0.2.0] — 2026-10-21
 
 ### Added
 

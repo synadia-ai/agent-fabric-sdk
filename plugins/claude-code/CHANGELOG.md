@@ -4,7 +4,7 @@ All notable changes to `@synadia-ai/agent-fabric-claude-code` are recorded here.
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-10-26
 
 ### Added
 
@@ -13,6 +13,8 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the `409` guard on it, publishes the root's `served` pair on the turn's session from its start
   to its end, and runs the turn's agent-tool calls in the root, so the agents it prompts hang
   beneath it. ScratchPad's variables are the local turn's while it runs.
+- ScratchPad's bootstrap: `options.scratchpad.bootstrapFile` or `SCRATCHPAD_BOOTSTRAP_FILE` names a public creation descriptor that `scripts/sp init` imports; it can give the volume, must match a configured one, and needs a persistent workspace.
+- ScratchPad's skill covers reusable lifetimes: `renew`, `remove` and `retire`, maintenance on a reusable deployment, and `--end-promises` as a flag without a value in `scripts/sp`.
 
 ### Changed
 
@@ -28,9 +30,10 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `NATS_URL`, `NATS_CREDS` or `NATS_CREDENTIALS` set, `sp` takes the variables and never a
   context; otherwise the `context` in the channel's `config.json`. `NATS_CREDENTIALS` is read
   as `NATS_CREDS`'s alias, `NATS_CREDS` winning.
-- The Claude Code channel plugin from `synadia-agents`, once bundled at its next change, reads
-  the `context` in `config.json` only when the environment names no server, and names where
-  the connection came from on stderr.
+- The bundled Claude Code channel plugin from `synadia-agents` reads the `context` in
+  `config.json` only when the environment names no server, and names where the connection
+  came from on stderr.
+- The bundled channel follows Claude Code's turns by their prompt ids: a prompt belongs to the turn Claude Code took it into, its own or, folded, the running one; channel messages taken together are one turn; a turn that fails on a model API error ends its prompt at once with an error that names it.
 
 ## [0.2.0] — 2026-10-11
 

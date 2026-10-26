@@ -4,7 +4,7 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-10-26
 
 ### Added
 
@@ -14,6 +14,8 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   headers on the turn's model calls, runs its agent-tool calls inside it so their edges name it,
   guards it with the `409` loop guard, and sets ScratchPad's trace variables for it, with no
   caller. No edge is written for the root itself.
+- ScratchPad's bootstrap: `options.scratchpad.bootstrapFile` or `SCRATCHPAD_BOOTSTRAP_FILE` names a public creation descriptor that `scripts/sp init` imports; it can give the volume, must match a configured one, and needs a persistent workspace.
+- ScratchPad's skill covers reusable lifetimes: `renew`, `remove` and `retire`, maintenance on a reusable deployment, and `--end-promises` as a flag without a value in `scripts/sp`.
 
 ### Changed
 
@@ -22,9 +24,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `NATS_CREDS` or `NATS_CREDENTIALS` set, `sp` takes the variables and never a context;
   otherwise the `context` in `nats-channel.json`. `NATS_CREDENTIALS` is read as
   `NATS_CREDS`'s alias, `NATS_CREDS` winning.
-- The PI channel plugin from `synadia-agents`, once bundled at its next change, reads the
-  `context` in `nats-channel.json` only when the environment names no server, and its start
-  line names where the connection came from.
+- The bundled PI channel plugin from `synadia-agents` reads the `context` in
+  `nats-channel.json` only when the environment names no server, and its start line names
+  where the connection came from.
 
 ## [0.2.0] — 2026-10-11
 

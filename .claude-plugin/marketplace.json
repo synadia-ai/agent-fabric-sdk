@@ -6,7 +6,7 @@
     {
       "name": "nats-channel",
       "description": "Claude Code on the Synadia Agent Fabric: the NATS channel plugin with the fabric's tracing and ScratchPad",
-      "source": { "source": "npm", "package": "@synadia-ai/agent-fabric-claude-code", "version": "^0.2.0" }
+      "source": { "source": "npm", "package": "@synadia-ai/agent-fabric-claude-code", "version": "^0.3.0" }
     }
   ]
 }
