@@ -4,7 +4,12 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-10-26
+
+### Added
+
+- ScratchPad's bootstrap: `options.scratchpad.bootstrapFile` or `SCRATCHPAD_BOOTSTRAP_FILE` names a public creation descriptor that `scripts/sp init` imports; it can give the volume, must match a configured one, and needs a persistent workspace.
+- ScratchPad's skill covers reusable lifetimes: `renew`, `remove` and `retire`, maintenance on a reusable deployment, and `--end-promises` as a flag without a value in `scripts/sp`.
 
 ### Changed
 
