@@ -243,16 +243,29 @@ export interface ServedRequest {
   readonly sessionId?: string;
 }
 
+/** A turn the harness runs that no served prompt started (§3.1). */
+export interface LocalTurn {
+  /** The plugin's id for the turn, unique in the process, never equal to a served request's id. */
+  readonly id: string;
+  /** Tells a local turn from a served request, which has no such field. */
+  readonly local: true;
+  /** Claude Code only: the session the turn runs in, when known. */
+  readonly sessionId?: string;
+}
+
 export type Outcome = "ok" | "error" | "timeout";
 
 export interface HarnessEvents {
   // Every harness.
   promptAccepted?(request: ServedRequest): void;
   promptEnded?(request: ServedRequest, outcome: Outcome, atMs: number): void;
-  aroundToolCall?<T>(request: ServedRequest | undefined, toolName: string, run: () => T): T;
+  aroundToolCall?<T>(request: ServedRequest | LocalTurn | undefined, toolName: string, run: () => T): T;
+  // PI and Claude Code.
+  localTurnStarted?(turn: LocalTurn, atMs: number): void;
+  localTurnEnded?(turn: LocalTurn, outcome: Outcome, atMs: number): void;
   // PI.
   aroundInject?<T>(request: ServedRequest, run: () => T): T;
-  providerHeaders?(request: ServedRequest): Readonly<Record<string, string>> | undefined;
+  providerHeaders?(request: ServedRequest | LocalTurn): Readonly<Record<string, string>> | undefined;
   // OpenClaw.
   aroundDispatch?<T>(request: ServedRequest, run: () => Promise<T>): Promise<T>;
   // Claude Code.
@@ -265,9 +278,11 @@ export interface HarnessEvents {
 | --- | --- | --- | --- | --- |
 | `promptAccepted` | all | notification, synchronous | inside the prompt handler, in the request's async context, after every interceptor has run. An extension reads here what its own request interceptor bound | PI: `activeTrace()` captured at `enqueue` (`nats-channel.ts` `fbd16ab`); OpenClaw: `activeTrace()` at `beginTurn` (`gateway.ts`); Claude Code: the same plus `resolveClaudeSessionId` (`server.ts`) |
 | `promptEnded` | all | notification, synchronous | when the plugin settles the request: PI at `agent_settled`, or a failure or expiry; OpenClaw when the dispatch resolved, `error` when it threw or reported a dispatch error; Claude Code when `reply` completed with `done`, on a handler failure, or on the 30-minute request TTL (`timeout`) | OpenClaw's `turn.settle(status)`; Claude Code's `pending.outcome` |
-| `aroundToolCall` | all | wrapper, synchronous | around every `tools.execute()`, with the request the plugin believes the model is working in: PI's and OpenClaw's active turn, Claude Code's `request_id` argument or its last active request | `activeTrace() ?? promptQueue.active?.trace` in PI, `associateAgentTraceScope` in OpenClaw, `lastActiveRequestId` in Claude Code |
+| `aroundToolCall` | all | wrapper, synchronous | around every `tools.execute()`, with the request or the local turn the plugin believes the model is working in: PI's active NATS prompt, else its open local turn; OpenClaw's active turn; Claude Code's `request_id` argument or its last active request | `activeTrace() ?? promptQueue.active?.trace` in PI, `associateAgentTraceScope` in OpenClaw, `lastActiveRequestId` in Claude Code |
+| `localTurnStarted` | PI, Claude Code | notification, synchronous | a turn no served prompt started began (§3.1): PI at the run's `agent_start` when no NATS prompt is active and no local turn is open; Claude Code when its channel sees the turn begin | none: before, such a turn was no thread |
+| `localTurnEnded` | PI, Claude Code | notification, synchronous | the local turn ended: PI at the run's `agent_settled`, before the plugin completes the active request and hands PI the next queued prompt, or at `session_shutdown`; Claude Code when its channel sees the turn end. `outcome` is `error` when the harness reports the turn failed, else `ok` | none |
 | `aroundInject` | PI | wrapper, synchronous | around `pi.sendUserMessage()`; the extension must call `run` once and return its value | `injectInScope(pending.trace, …)` |
-| `providerHeaders` | PI | query, synchronous | from PI's `before_provider_headers` while a served request is PI's active turn; the plugin merges the returned headers into the event's headers | `Object.assign(event.headers, active.traceHeaders)` |
+| `providerHeaders` | PI | query, synchronous | from PI's `before_provider_headers` while a served request or a local turn is PI's active turn, the served request first; the plugin merges the returned headers into the event's headers | `Object.assign(event.headers, active.traceHeaders)` |
 | `aroundDispatch` | OpenClaw | wrapper, asynchronous | around `dispatchInboundDirectDmWithRuntime()` | `runWithTraceId(traceId, …)` |
 | `sessionStarted` | Claude Code | notification, synchronous | when the plugin learns of a `SessionStart` from its hook (§2.6), with the hook's `session_id` and `source` | the `SessionStart` file read at prompt arrival |
 | `turnStopped` | Claude Code | notification, synchronous | when the plugin learns of a `Stop` from its hook, with the time the hook recorded | the `Stop` file polled by `turnStopWaiter` |
@@ -422,6 +437,34 @@ sibling delegation issued with `wait: false` by the same coordinator. A
 harness serves one turn at a time anyway, so that prompt would have
 queued; the guard turns the wait into a refusal the caller sees at once.
 
+**Local turns.** Every turn the harness runs is a thread, not only a
+served prompt. A turn no served prompt started, typed at the harness's
+terminal or begun by the harness itself, is a *local turn*; the plugins
+of PI and Claude Code report one with `localTurnStarted` and
+`localTurnEnded` (§2.4). PI: at the run's `agent_start` and
+`agent_settled` (§3.2). Claude Code: when its channel sees the turn begin
+and end. OpenClaw is prompted over NATS only and reports none. For each
+local turn the add-on:
+
+- mints a root, `rootTraceScope()` (`thread_id` = `root_id`, random), the
+  scope tracing also mints for an envelope without the pair;
+- keeps it as the turn's scope from the turn's start to its end, by the
+  plugin's turn id, which no request id equals;
+- puts it on the turn's model calls by the harness's join: PI's two
+  headers (§3.2), Claude Code's own (§3.4);
+- runs the agent tools inside it, so a `prompt_agent` writes an edge that
+  names it as parent and root, and the agents the turn prompts hang
+  beneath it;
+- guards it with the `409` guard, `open(scope)` at the start and the
+  returned function at the end, so a child that prompts back during the
+  turn is refused at once instead of waiting behind it;
+- with ScratchPad on, sets the trace variables for it, with no caller.
+
+No edge is written for the local root itself: it is an implicit root, like
+the one a receiver mints for an envelope without IDs (the fabric's design,
+§8.2). It has no caller, so the console shows it as any root without a
+signed caller, and no record marks it as local.
+
 **Identity.** `edge` and `served` records are signed, so the add-on needs
 `senderIdentity: signed`. With identity off the add-on logs one warning at
 start, as the pre-split plugins did (`tracing is on but senderIdentity is
@@ -473,6 +516,32 @@ exactly as an SDK agent's.
 4. `aroundToolCall(request, …, run)`: bind the request's scope, so a
    `prompt_agent` PI's model calls writes its edge under the served thread
    even when PI's tool runner has not inherited the injected context.
+5. `localTurnStarted(turn)`: mint the turn's root (`rootTraceScope()`),
+   keep it by `turn.id` beside the served requests' scopes, open the guard
+   on it (`guard.open(scope)`), and with ScratchPad on set the trace
+   variables for it. Steps 3 and 4 look up by id, so they serve a local
+   turn unchanged; a local turn has no injection, so step 4's binding is
+   the one its tool calls get.
+6. `localTurnEnded(turn)`: forget the scope, close the guard, clear the
+   variables if the turn still holds them.
+
+**When the plugin opens and closes a local turn** (`agents/pi`,
+`extensions/local-turns.ts`). PI 0.85.1 fires `agent_start` when a run
+starts and awaits the extensions before the loop runs, so a turn opened
+there is in place for the run's first provider request; it fires
+`agent_settled` once no retry, compaction or queued continuation will run,
+also after an abort. The plugin opens a local turn, id `local-<n>`, at
+`agent_start` when no NATS prompt is active and none is open; a NATS
+prompt's run sees its prompt active, since the queue marks it before the
+hand-over, and a run PI continues (`agent.continue()`, which fires
+`agent_start` again) stays one turn. It closes the turn at `agent_settled`,
+before it completes the active request and drains the queue, or at
+`session_shutdown`. PI reads as idle once a run has settled, before the
+extensions hear of it, so the drain also waits while a local turn is open:
+a NATS prompt that arrives during a local turn is handed to PI after the
+turn has ended, never inside it. `before_provider_headers` asks
+`providerHeaders` for the active NATS prompt, else the open local turn; the
+agent tools are given the same.
 
 No `served` record. PI writes nothing to `TRACE.edges` but the edges of its
 own delegations.
@@ -483,7 +552,10 @@ agents view; the `asked` row of the caller's story names PI. A delegation
 PI's model makes is a grandchild under its tool call. No outcome or
 duration from a pair: PI publishes none, and the thread's calls carry its
 timing. `reference-agents/docs/findings.md` F16 item 4 describes the
-picture without the add-on; the same run with the add-on is the check.
+picture without the add-on; the same run with the add-on is the check. A
+turn typed at PI's terminal is one task with PI as its root, asked by no
+known caller, all its model calls in one thread, and the agents it prompts
+beneath it.
 
 **What the fabric's test system asserts.** Its PI cases run unwaived: a
 single prompt (the root as one thread with PI's call at its key's counts,
@@ -971,7 +1043,11 @@ on one machine (the examples' until 2026-09-26), measured on Claude Code
   until it settles, retries and the compaction after an answer included. A
   compaction before the turn is not stamped, and local typing during a
   remote turn files under the remote thread; PI gives the plugin no way to
-  tell the two apart (the fabric's design, §8.3).
+  tell the two apart (the fabric's design, §8.3). The same holds for a
+  local turn: text typed while it runs joins it.
+- **A local turn's root has no caller and no record of its own** (§3.1).
+  It is implicit, seen only in the thread records and the edges that name
+  it, and the console shows it as any root without a signed caller.
 - **OpenClaw before 2026.8.** The trace id is not carried through the turn
   queue, so the model calls carry an id of OpenClaw's own and the pair names
   an id no call carries. The scope is an internal of OpenClaw's, keyed by a
@@ -1822,9 +1898,9 @@ run on it.
 > the protocol: it can add fields and headers to the prompts the plugin's
 > agent tools send, publish signed messages of its own alongside them,
 > refuse an incoming prompt with a protocol error, add fields to the
-> heartbeat, extend the agent tools through their extension hooks, and
-> follow the harness's events. Without an extension the plugin behaves as
-> this README describes.
+> heartbeat, add keys to the service's registration metadata, extend the
+> agent tools through their extension hooks, and follow the harness's
+> events. Without an extension the plugin behaves as this README describes.
 >
 > **Naming an extension.** Set `SYNADIA_AGENT_EXTENSIONS` to one or more
 > module specifiers separated by commas, or the per-harness variable that
@@ -1852,29 +1928,78 @@ run on it.
 > (`PromptInterceptor` and `AgentToolsExtension` in `@synadia-ai/agents`,
 > `RequestInterceptor` and `heartbeatExtras` in `@synadia-ai/agent-service`).
 >
+> **Registration metadata.** An extension may return `metadata`, a map of
+> string keys to string values that the plugin merges into the service's
+> registration metadata before the service starts, so the registration
+> declares what the harness gains through the extension. The map is read
+> once. A key is one or more of `A-Z`, `a-z`, `0-9`, `_`, `-` and `.`; a
+> value is a string. On a clash the plugin's own keys and the protocol's
+> registration keys (`agent`, `owner`, `protocol_version`, `session`,
+> `user_nkey`, `account`, `id_sig`) win: the extension's entry is dropped
+> and a warning logged. Between extensions, a later-loaded one's key wins
+> over an earlier one's, also with a warning.
+>
+> ```js
+> export default function createExtension(ctx) {
+>   return {
+>     name: "example",
+>     metadata: { example_feature: "v1" },
+>   };
+> }
+> ```
+>
+> A caller reads the key where it reads the others, in the agent's
+> `$SRV.INFO` metadata (`agent.metadata.example_feature` in the SDKs).
+>
 > **The harness's events.** Every plugin reports a prompt accepted, called
 > synchronously inside the prompt handler after the interceptors ran, and a
 > prompt ended with its outcome; every plugin runs each agent-tool call
 > inside the extension's `aroundToolCall` wrapper, naming the served prompt
-> the model works in. PI also runs the hand-over of a prompt to its loop
-> inside `aroundInject`, and asks `providerHeaders` for headers to add to
-> the provider request of an active prompt. OpenClaw runs the turn's
-> dispatch inside `aroundDispatch`. Claude Code reports `sessionStarted`
-> and `turnStopped` from its hooks. A wrapper must call its `run` argument
-> once, synchronously, and return its value.
+> or the local turn the model works in, or none when it knows neither.
+> **A local turn** is a turn the harness runs that no served prompt
+> started: typed at its terminal, or begun by the harness itself. PI and
+> Claude Code report one with `localTurnStarted` when it begins and
+> `localTurnEnded`, with its outcome, when it ends: PI at the run's start
+> when no served prompt is active, and when the run has settled, before the
+> next queued prompt is handed to PI, or at the session's end; Claude Code
+> when its channel sees the turn begin and end. The turn the events name
+> carries the plugin's id for it, never a served request's, and
+> `local: true`; Claude Code adds the session when it knows it. PI cannot
+> tell text typed while a turn runs from that turn: it joins the turn. PI
+> also runs the hand-over of a prompt to its loop inside `aroundInject`,
+> and asks `providerHeaders` for headers to add to each provider request of
+> its active turn, a served prompt or a local turn. OpenClaw runs the
+> turn's dispatch inside `aroundDispatch`. Claude Code reports `sessionStarted`
+> and `turnStopped` from its hooks, and passes `promptEnded` a fourth
+> argument, the reason, when the model did not end the prompt with its own
+> reply: `final_text` (outcome `ok`: the turn ended without a reply, and the
+> plugin sent the turn's final text as the reply), `no_reply` (the turn
+> ended with no reply and no final text), `shutdown` (the plugin stopped with
+> the prompt open), `delivery` (the prompt could not be handed to Claude
+> Code), all with outcome `error`, or `expired` (the prompt outlived the
+> plugin's limit, outcome `timeout`). The argument is left out when the
+> model replied, and a prompt that failed otherwise carries none. A wrapper must call its `run` argument
+> once, synchronously, and return its value. A wrapper may be an async
+> function: the plugin still takes `run`'s own value, and the wrapper must
+> call `run` once, before its first `await`, so the step keeps its timing.
 >
 > **Failure.** A module that cannot be loaded is logged once and the plugin
-> starts without it. An event handler that throws is logged and ignored; a
-> wrapper that does not call `run` has it called by the plugin. Interceptors
-> keep the SDK's rules: a request interceptor that throws before `next()`
-> refuses the request, with the code of a `RequestRejectedError` or `500`;
-> a prompt interceptor's first phase that throws fails that prompt.
+> starts without it. Invalid `metadata` — not a map, a key outside the
+> characters above, a value that is not a string — is the exception: the
+> plugin fails its start with an error that names the extension and the key,
+> since it would otherwise register without what the extension declares. An
+> event handler that throws is logged and ignored; a wrapper that does not
+> call `run` has it called by the plugin. Interceptors keep the SDK's rules:
+> a request interceptor that throws before `next()` refuses the request,
+> with the code of a `RequestRejectedError` or `500`; a prompt interceptor's
+> first phase that throws fails that prompt.
 >
-> **Limits.** An extension may not set the protocol's fields or the
-> `Agent-Sender` header, may not change the tools offered, and sees nothing
-> of the plugin beyond the context, the handles and the events above. It
-> runs on its own installed copy of the SDK packages; the plugin's status
-> output names the extensions it loaded.
+> **Limits.** An extension may not set the protocol's fields, the
+> `Agent-Sender` header or a registration key the protocol or the plugin
+> sets, may not change the tools offered, and sees nothing of the plugin
+> beyond the context, the handles and the events above. It runs on its own
+> installed copy of the SDK packages; the plugin's status output names the
+> extensions it loaded.
 
 ### 10.2 The paragraph for each plugin's README
 
