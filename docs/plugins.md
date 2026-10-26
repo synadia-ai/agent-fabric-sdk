@@ -269,6 +269,7 @@ export interface HarnessEvents {
   // OpenClaw.
   aroundDispatch?<T>(request: ServedRequest, run: () => Promise<T>): Promise<T>;
   // Claude Code.
+  promptStarted?(request: ServedRequest, atMs: number, sessionId?: string): void;
   sessionStarted?(sessionId: string, source: string): void;
   turnStopped?(sessionId: string | undefined, atMs: number): void;
 }
@@ -278,12 +279,13 @@ export interface HarnessEvents {
 | --- | --- | --- | --- | --- |
 | `promptAccepted` | all | notification, synchronous | inside the prompt handler, in the request's async context, after every interceptor has run. An extension reads here what its own request interceptor bound | PI: `activeTrace()` captured at `enqueue` (`nats-channel.ts` `fbd16ab`); OpenClaw: `activeTrace()` at `beginTurn` (`gateway.ts`); Claude Code: the same plus `resolveClaudeSessionId` (`server.ts`) |
 | `promptEnded` | all | notification, synchronous | when the plugin settles the request: PI at `agent_settled`, or a failure or expiry; OpenClaw when the dispatch resolved, `error` when it threw or reported a dispatch error; Claude Code when `reply` completed with `done`, on a handler failure, or on the 30-minute request TTL (`timeout`) | OpenClaw's `turn.settle(status)`; Claude Code's `pending.outcome` |
-| `aroundToolCall` | all | wrapper, synchronous | around every `tools.execute()`, with the request or the local turn the plugin believes the model is working in: PI's active NATS prompt, else its open local turn; OpenClaw's active turn; Claude Code's `request_id` argument or its last active request | `activeTrace() ?? promptQueue.active?.trace` in PI, `associateAgentTraceScope` in OpenClaw, `lastActiveRequestId` in Claude Code |
+| `aroundToolCall` | all | wrapper, synchronous | around every `tools.execute()`, with the request or the local turn the plugin believes the model is working in: PI's active NATS prompt, else its open local turn; OpenClaw's active turn; Claude Code's `request_id` argument, else the turn that made the call by its prompt id (§3.4) | `activeTrace() ?? promptQueue.active?.trace` in PI, `associateAgentTraceScope` in OpenClaw, `lastActiveRequestId` in Claude Code |
 | `localTurnStarted` | PI, Claude Code | notification, synchronous | a turn no served prompt started began (§3.1): PI at the run's `agent_start` when no NATS prompt is active and no local turn is open; Claude Code when its channel sees the turn begin | none: before, such a turn was no thread |
 | `localTurnEnded` | PI, Claude Code | notification, synchronous | the local turn ended: PI at the run's `agent_settled`, before the plugin completes the active request and hands PI the next queued prompt, or at `session_shutdown`; Claude Code when its channel sees the turn end. `outcome` is `error` when the harness reports the turn failed, else `ok` | none |
 | `aroundInject` | PI | wrapper, synchronous | around `pi.sendUserMessage()`; the extension must call `run` once and return its value | `injectInScope(pending.trace, …)` |
 | `providerHeaders` | PI | query, synchronous | from PI's `before_provider_headers` while a served request or a local turn is PI's active turn, the served request first; the plugin merges the returned headers into the event's headers | `Object.assign(event.headers, active.traceHeaders)` |
 | `aroundDispatch` | OpenClaw | wrapper, asynchronous | around `dispatchInboundDirectDmWithRuntime()` | `runWithTraceId(traceId, …)` |
+| `promptStarted` | Claude Code | notification, synchronous | when Claude Code takes the served prompt into a turn, the one it starts or, folded at a tool result, the running one, with the hook's time and the session the turn runs in (§3.4); before Claude Code's hooks report prompt ids, right after `promptAccepted` | none: the pre-split plugin stamped the arrival |
 | `sessionStarted` | Claude Code | notification, synchronous | when the plugin learns of a `SessionStart` from its hook (§2.6), with the hook's `session_id` and `source` | the `SessionStart` file read at prompt arrival |
 | `turnStopped` | Claude Code | notification, synchronous | when the plugin learns of a `Stop` from its hook, with the time the hook recorded | the `Stop` file polled by `turnStopWaiter` |
 
@@ -443,7 +445,8 @@ terminal or begun by the harness itself, is a *local turn*; the plugins
 of PI and Claude Code report one with `localTurnStarted` and
 `localTurnEnded` (§2.4). PI: at the run's `agent_start` and
 `agent_settled` (§3.2). Claude Code: when its channel sees the turn begin
-and end. OpenClaw is prompted over NATS only and reports none. For each
+and end, following the turns by their prompt ids (§3.4). OpenClaw is
+prompted over NATS only and reports none. For each
 local turn the add-on:
 
 - mints a root, `rootTraceScope()` (`thread_id` = `root_id`, random), the
@@ -646,7 +649,7 @@ summarizer's call joined through the pair in the team, and OpenClaw's model
 delegating to the researcher when prompted directly, every call of the turn,
 tool turns included, under the one seeded id.
 
-### 3.4 Claude Code — the `served` pair on the session, ended at the turn's `Stop`
+### 3.4 Claude Code — the `served` pair on the session, from the turn's start to its `Stop`
 
 **The join.** Claude Code sends `X-Claude-Code-Session-ID` on every model
 request and `X-Claude-Code-Agent-ID` on a subagent's; the proxy files them
@@ -680,20 +683,80 @@ plugin sent the turn's final text as the reply, at that `Stop`),
 record names none. `stopping()` is called before the plugin fails the
 requests still open.
 
+**Turns by prompt id** (`synadia-agents` `agents/claude-code`, measured
+on Claude Code 2.1.310, 2026-10-26). Claude Code keeps typed text
+and channel prompts in one first-in, first-out queue: a waiting input is
+folded into the running turn at its next tool result, and with no further
+tool result it starts the next turn after the `Stop`. A turn is one
+`prompt_id`, on every `PreToolUse`, `Stop` and `StopFailure`, the same
+through a fold. `UserPromptSubmit` fires for a channel prompt when Claude
+Code takes it, at the fold or at the start of its own turn, its `prompt`
+beginning `<channel source="plugin:nats-channel:nats" request_id="…" …>`
+and its `prompt_id` the turn it runs in; for typed text at submit, with
+the running turn's id when Claude Code is busy, and nothing announces the
+turn such text later becomes: its id first shows on `PreToolUse` and
+`Stop`. Built-in commands fire no submit; an interrupt gives no `Stop`.
+So the plugin adds two hooks and a log: `UserPromptSubmit` and
+`StopFailure`, and `<pid>.events`, one appended JSON line per submit (the
+prompt id, and the `request_id` for its own channel's prompt; never the
+text), per recorded `Stop` and per `StopFailure` (the API error's type and
+details). `.stop` and `.turn` hold one record each, and the hooks run
+faster than the server's 250 ms poll (a short turn's submit and `Stop`
+34 to 91 ms apart, two `Stop`s 64 ms apart), so the server follows the turns
+by the log (`src/turns.ts`), once a submit with a prompt id has been seen:
+
+- a channel submit begins a served turn, or joins the running turn at a
+  fold; the request is bound to that prompt id and **starts** there:
+  `promptStarted(request, atMs, sessionId)`, the hook's time and the
+  submit's session;
+- a typed submit under a new id, or a tool call, `Stop` or failure of a
+  turn no submit announced, begins a **local turn** (`local-<prompt_id>`),
+  the latter at the last `Stop`: `localTurnStarted`;
+- a `Stop` ends its turn, a `StopFailure` ends it with `error`, a turn
+  begun without a `Stop` of the one before ends that one (an interrupt),
+  and shutdown ends the open one before `stopping()`: `localTurnEnded`
+  for a local turn.
+
+The served prompts' ends follow the binding too: a prompt owns the turn it
+was taken into, and is ended when that turn ends (at its `Stop` with the
+final text, at a `StopFailure` at once with an error naming the API error
+and the reason `no_reply`, at an interrupt with `no_reply`); a prompt not
+yet taken owns nothing, so a typed turn's `Stop` is no longer refused for
+a NATS prompt queued behind it, nor answered with the typed turn's text.
+The `Stop` hook works out the open prompts the stopping turn took in by
+itself, from `<pid>.open` and the log, never waiting for the server. An
+agent-tool call without `request_id` runs in the turn that made it, by its
+`PreToolUse` prompt id: a served turn's last open request, or the local
+turn. Before the first submit with a prompt id, and for a Claude Code that
+reports none, the plugin keeps its older guess: a prompt starts when it is
+accepted and no local turn is reported.
+
 **What the add-on does.** Built in `plugins/claude-code`
 (`@synadia-ai/agent-fabric-claude-code`, 2026-09-23): `src/extension.ts`
 the factory and the events; its README says the same in operator terms.
 
 1. `sessionStarted(sessionId)`: remember the session Claude Code is in now.
-2. `promptAccepted(request)`: read `activeTrace()`; the session is
-   `request.sessionId`, else the remembered one; when it passes the
-   session-id rule (`isClaudeSessionId`, declared in the add-on: the
-   pre-split rule of `fbd16ab` `src/session-id.ts`, header-safe, which a
-   Claude Code UUID passes), `beginTurn(scope, "claude")` and
-   `bind(sessionId)`, so `start` goes out stamped with the arrival. The
-   session is bound at arrival, so a `/clear` during a turn does not move
-   the binding. With no session known, no pair and one log line; the scope
-   is still kept for the tool calls.
+2. `promptAccepted(request)`: read `activeTrace()` and keep the scope,
+   with the session known then (`request.sessionId`, else the remembered
+   one). Nothing else: a prompt queued behind a running turn starts no
+   pair and takes no ScratchPad variables.
+2a. `promptStarted(request, atMs, sessionId)`: the session is the submit's,
+   else the one kept at the accept; when it passes the session-id rule
+   (`isClaudeSessionId`, declared in the add-on: the pre-split rule of
+   `fbd16ab` `src/session-id.ts`, header-safe, which a Claude Code UUID
+   passes), `beginTurn(scope, "claude", atMs)` and `bind(sessionId)`, so
+   `start` goes out stamped with the time Claude Code took the prompt. The
+   session is bound then, so a `/clear` during the turn does not move the
+   binding. With no session known, no pair and one log line; the scope is
+   still kept for the tool calls.
+2b. **Held pairs.** A prompt that ends before it was started (cancelled or
+   expired while it waited) is held while a turn runs, then published with
+   `start` and `end` both stamped with that turn's end, after the turn's
+   `end`; with no turn running, at once at its own end. Never a `start`
+   inside a turn: the console sets a window's `until` from any later
+   `start` on the session, so a mid-turn stamp would cut the turn's cover.
+   A turn runs, as the add-on sees it, while a local turn is open, a
+   started prompt is open, or an answered prompt waits for its `Stop`.
 3. `promptEnded(request, outcome, atMs, reason?)`: `error` and `timeout`
    settle at once, and so does `ok` with `final_text`, which arrives at the
    turn's `Stop`; `reason` goes on `end` (record version 2,
@@ -708,10 +771,18 @@ the factory and the events; its README says the same in operator terms.
    one Claude Code turn, and every prompt answered before it was answered
    in that turn, so two prompts answered in one turn share its end, and a
    prompt answered after this stop waits for the next.
-5. `aroundToolCall(request, …, run)`: bind the request's trace scope.
-6. `stopping()`: every pending turn ends at its reply's time, every turn
-   still open ends now with `error` and the reason `shutdown`; then
-   `flush()`.
+5. `aroundToolCall(work, …, run)`: bind the request's trace scope, or the
+   local turn's root.
+5a. `localTurnStarted(turn, atMs)`: mint a root (`rootTraceScope()`), open
+   the guard on it, and with a usable `turn.sessionId`
+   `beginTurn(root, "claude", atMs)` and `bind`, kept by `turn.id`;
+   `localTurnEnded(turn, outcome, atMs)`: `settle(outcome, atMs)`, close
+   the guard, then publish the held pairs. ScratchPad's variables are the
+   open local turn's, else the latest started prompt's.
+6. `stopping()`: the open local turn ends first, then the held pairs at the
+   same instant; every pending turn ends at its reply's time, every turn
+   still open ends now with `error` and the reason `shutdown`, one never
+   started getting its pair now; then `flush()`.
 
 **The tool-call ID** comes to the plugin from `PreToolUse` (§2.6) and to the
 edge through the helper's prompt context; the add-on has no part in it.
@@ -734,10 +805,14 @@ for the async tools (§3.5, gap 1).
 
 **What the console shows when it works.** The session's calls on the child
 thread, the closing call inside the window, the outcome and the duration
-from the pair; a subagent's calls as children of the session's thread.
-Everything the session does between the two records is filed under the
-prompt: local typing during a NATS-driven turn, and a second NATS prompt
-answered in the same turn, share the window.
+from the pair; a subagent's calls as children of the session's thread. A
+turn typed at the terminal is a task of its own, its root the local
+turn's, with the agents it prompts beneath it. Everything the session does
+between a pair's records is filed under that thread: local typing during a
+NATS-driven turn joins it, and a NATS prompt folded into a typed turn
+starts its window at the fold, so the rest of that turn's calls, its reply
+among them, are filed under the NATS thread (of two windows covering a
+call, the later one wins).
 
 **What the fabric's test system asserts.** A case still to come, Claude
 Code at the leaf: an SDK agent prompts Claude Code, which calls a tool and
@@ -1062,6 +1137,24 @@ on one machine (the examples' until 2026-09-26), measured on Claude Code
   releases that touch channels or gateways. The add-on is now measured
   against real turns (§6 step 8), in an interactive session only, and the
   call Claude Code makes after the turn's `Stop` falls outside the pair.
+- **Claude Code's turn boundaries, to the second.** A `served` record's `ts`
+  is in whole seconds, and the console cuts a window at the next `start`,
+  preferring the later one. A turn begun right after a `Stop` (waiting
+  text, or a held pair at a local turn's end) can take the previous turn's
+  closing call when both fall in the same second (measured 19 to 28 ms
+  apart): one call at a boundary may land in the neighbouring turn.
+- **Claude Code's folds.** A NATS prompt folded into a typed turn starts
+  its window at the fold, and the rest of that turn is filed under the NATS
+  thread; typed text folded into a NATS turn joins that turn, as in PI. An
+  interrupted turn ends at the next turn's first record, so the calls in
+  between stay in it. A prompt Claude Code takes after it was ended
+  (cancelled while it waited) runs as a served turn bound to nothing: no
+  pair covers it, and its calls fall outside every window.
+- **Claude Code without prompt ids** (a Claude Code that does not run the
+  `UserPromptSubmit` hook or give `prompt_id`): no local turns, a prompt's
+  pair starts at the accept, and the plugin's older guess decides which
+  turn is a prompt's: a typed turn still before its first tool call looks
+  idle to it.
 - **Claude Code without its hooks** (`disableAllHooks`): no `SessionStart`
   file, so a prompt after `/clear` files under the session the server
   started with; no `Stop`, so `end` carries the reply's time and the closing
@@ -1970,7 +2063,13 @@ run on it.
 > and asks `providerHeaders` for headers to add to each provider request of
 > its active turn, a served prompt or a local turn. OpenClaw runs the
 > turn's dispatch inside `aroundDispatch`. Claude Code reports `sessionStarted`
-> and `turnStopped` from its hooks, and passes `promptEnded` a fourth
+> and `turnStopped` from its hooks, and `promptStarted`, with the hook's
+> time and the session, when Claude Code takes a served prompt into a turn:
+> the turn the prompt starts, or, folded into a running turn, the fold. A
+> prompt accepted while a turn runs waits until then; one that ends while
+> it waits is never started. Until its hooks have reported a submitted
+> prompt with its id, the plugin starts a served prompt as it accepts it.
+> Claude Code also passes `promptEnded` a fourth
 > argument, the reason, when the model did not end the prompt with its own
 > reply: `final_text` (outcome `ok`: the turn ended without a reply, and the
 > plugin sent the turn's final text as the reply), `no_reply` (the turn

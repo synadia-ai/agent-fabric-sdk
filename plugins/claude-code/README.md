@@ -44,23 +44,36 @@ headers, so the add-on publishes the binding:
 | Event                                        | What the add-on does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `sessionStarted(session, source)`            | remembers the session Claude Code is in now, as the plugin's `SessionStart` hook reported it (also once at start, for the session recorded before the server came up)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `promptAccepted(request)`                    | keeps `activeTrace()`, the scope tracing bound for this request, by `request.id`; the session is `request.sessionId`, else the remembered one; when it is a Claude Code session id, `beginTurn(scope, "claude")` and `bind(session)` on the fabric package's served publisher, which publishes `start` stamped with the arrival                                                                                                                                                                                                                                                                                                                                    |
-| `aroundToolCall(request, tool, run)`         | binds the request's scope around `run`, so the edge of a `prompt_agent` Claude Code's model calls is filed under the served thread; the plugin already re-enters the handler's context through a snapshot before it calls this, so it is a no-op rebind                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `promptAccepted(request)`                    | keeps `activeTrace()`, the scope tracing bound for this request, by `request.id`, with the session known then (`request.sessionId`, else the remembered one), and nothing else: a prompt Claude Code queues behind a running turn starts no pair yet                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `promptStarted(request, at, session?)`       | Claude Code took the prompt into a turn, its own or, folded at a tool result, the running one: `beginTurn(scope, "claude", at)` and `bind(session)` (the submit's, else the one kept at the accept) when it is a Claude Code session id, so `start` is stamped with the time Claude Code took the prompt. Before Claude Code's hooks report prompt ids, the plugin calls it right after the accept                                                                                                                                                                                                                                                                 |
+| `aroundToolCall(request, tool, run)`         | binds the request's scope, or the local turn's root, around `run`, so the edge of a `prompt_agent` Claude Code's model calls is filed under the served thread or the local root; for a request the plugin already re-enters the handler's context through a snapshot before it calls this, so it is a no-op rebind                                                                                                                                                                                                                                                                                                                                                 |
 | `promptEnded(request, outcome, at, reason?)` | `error` and `timeout`: `settle(outcome, at, reason)` at once. `ok` with the reason `final_text`, which the plugin reports when the model never called `reply` and the plugin sent the turn's final text as the reply at the turn's `Stop`: at once too, the turn being over. Any other `ok`, which the plugin reports when `reply` completed the request: the turn is not over, since Claude Code makes at least one more model call after the reply to write its closing text, so the pair stays open until a `Stop` after `at`, or for at most `stopWaitMs` (120 s), then ends at `at`. The plugin's `reason` goes on `end` as the record's `reason` (version 2) |
 | `turnStopped(session, at)`                   | the `Stop` hook ran: every turn of that session answered before `at` ends with `ok` at `at`, the oldest first. So two prompts answered in one Claude Code turn share its end, and a prompt answered after this stop waits for the next                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `localTurnStarted(turn, at)`                 | a turn no served prompt started (typed at the terminal, or begun by Claude Code itself): mints a root (`rootTraceScope()`), opens the `409` guard on it, and with the turn's session publishes the root's `start` stamped `at`, so the turn's model calls are filed under the root and the agents it prompts hang beneath it                                                                                                                                                                                                                                                                                                                                       |
+| `localTurnEnded(turn, outcome, at)`          | settles the root's pair with `outcome` at `at`, closes the guard, then publishes the pairs of prompts that ended while they waited behind the turn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
-A prompt that arrives while no session is known gets no pair and one log
+A prompt started while no session is known gets no pair and one log
 line (`NO_SESSION_LINE`); its scope is still kept, so its model's
 delegations are still filed under the served thread. The session is bound
-at arrival: a `/clear` during a turn does not move the binding.
+at the start: a `/clear` during a turn does not move the binding.
+
+A prompt that ends before Claude Code took it (cancelled or expired while
+it waited) gets its pair too, `start` and `end` both stamped with the end
+of the turn running then, published after that turn's `end`, or at once at
+its own end when no turn runs: never a `start` inside a turn, which would
+cut that turn's window. A turn runs, as the add-on sees it, while a local
+turn is open, a started prompt is open, or an answered prompt waits for
+its `Stop`.
 
 The pair goes through the fabric package's `servedPublisher()`, made at
 `started` from the plugin's client: signed as the plugin's identity with the
 record id as the nonce and the `Nats-Msg-Id`, on the edge subject, in the
 order the records were due, so a pair's `end` never overtakes its `start`.
-`stopping` ends every open turn — an answered one at its reply's time, one
-still open now with `error` and the reason `shutdown` — and flushes. The plugin calls it before it
-fails the requests still open, and no `Stop` comes after it.
+`stopping` ends every open turn — the open local turn first, then the held
+pairs at the same instant, an answered prompt at its reply's time, one
+still open now with `error` and the reason `shutdown`, one never started
+with its pair now — and flushes. The plugin calls it before it fails the
+requests still open, and no `Stop` comes after it.
 
 **The `409` loop guard.** Claude Code cannot serve a prompt while its model
 waits on a call to another agent, so a prompt of a tree it is waiting in is
@@ -231,10 +244,13 @@ from `start` to `end`, `harness: claude` at depth `full` with both halves;
 a subagent's calls as children of the session's thread. A delegation
 Claude Code's model makes: it discovers and prompts another agent, whose
 thread sits under its `prompt_agent` tool call with Claude Code its
-verified caller. Everything the session
-does between the two records is filed under the prompt: local typing
-during a NATS-driven turn, and a second NATS prompt answered in the same
-turn, share the window.
+verified caller. A turn typed at the terminal is a task of its own,
+the local turn's root with no caller, its model calls in one thread and
+the agents it prompts beneath it. Everything the session does between a
+pair's records is filed under that thread: local typing during a
+NATS-driven turn joins it, and a NATS prompt folded into a typed turn
+starts its window at the fold, so the rest of that turn, the reply among
+it, is filed under the NATS thread.
 
 One call can fall outside the pair. At the end of each turn Claude Code
 asks its model what the user might type next; when that call's model
@@ -252,10 +268,18 @@ the reader infers nothing beyond it: a limit, not a bug.
   call falls outside the window.
 - **The bound delays `end`**: with no `Stop`, the pair stays open for
   `stopWaitMs` after the reply.
-- **A `Stop` names the turn it ended by time only.** Two prompts answered in
-  one turn share its end; a prompt answered after a stop that the server's
-  poll saw late (250 ms) could take that stop's time. Claude Code gives
-  nothing finer.
+- **A `Stop` names the turn it ended by time only** to the add-on. Two
+  prompts answered in one turn share its end; a prompt answered after a
+  stop that the server's poll saw late (250 ms) could take that stop's
+  time. The plugin follows the turns by their prompt ids, the add-on by the
+  plugin's events.
+- **One second at each boundary.** A `served` record's `ts` is in whole
+  seconds and the console cuts a window at the next `start`, preferring
+  the later one. A turn begun right after a `Stop` can take the previous
+  turn's closing call when both fall in the same second.
+- **Without prompt ids** (a Claude Code that does not run the
+  `UserPromptSubmit` hook or give `prompt_id`): no local turns, and a
+  prompt's pair starts when the plugin accepts it, as before.
 - **The two keys are what Claude Code's warning calls unsupported.** Both
   sent together, the virtual key as `Bearer` and the Anthropic key as
   `x-api-key`, was measured on 2.1.281; Claude Code does not

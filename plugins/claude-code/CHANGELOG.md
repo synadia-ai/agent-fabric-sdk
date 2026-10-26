@@ -6,7 +6,22 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A turn typed at the terminal is a thread of its own.** The Claude Code channel plugin
+  reports a turn no NATS prompt started as a local turn; the add-on mints a root for it, opens
+  the `409` guard on it, publishes the root's `served` pair on the turn's session from its start
+  to its end, and runs the turn's agent-tool calls in the root, so the agents it prompts hang
+  beneath it. ScratchPad's variables are the local turn's while it runs.
+
 ### Changed
+
+- **A prompt's pair starts when Claude Code takes it into a turn** (`promptStarted`, with the
+  time Claude Code took it and the session the turn runs in), no longer at the accept: a prompt
+  queued behind a running turn no longer cuts that turn's window, nor takes ScratchPad's
+  variables. A prompt that ends while it waits gets its pair stamped with the end of the turn
+  running then, after that turn's `end`; with no turn running, at its own end. `stopping` ends
+  the local turn first, then those pairs, then the served prompts.
 
 - ScratchPad's `sp` connects as the Claude Code channel does. A non-empty `NATS_CONTEXT` wins
   over `NATS_URL` and `NATS_CREDS` for `sp` too; with `NATS_CONTEXT` set but empty, or
@@ -26,6 +41,7 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   folder that Claude Code installs from a marketplace with an npm source (this repo's
   `.claude-plugin/marketplace.json`). Its `.mcp.json` names the add-on; its main export is the add-on,
   as before. This folder is the add-on's source and is not published alone.
+
 ## [0.1.0] — 2026-10-06
 
 ### Added
