@@ -4,6 +4,18 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## Typed turns as tasks, the add-ons 0.3.0
+
+[bundles-v0.1.3.json](bundles-v0.1.3.json) describes the prepared `bundles-v0.1.3` assets.
+The protocol source is `synadia-agents` main at `1ed73c1`: an explicit server in the environment beats a remembered context (#238); pi and Claude Code report a turn no NATS prompt started as a local turn, and Claude Code's channel follows its turns by prompt id and ends a prompt at once on a model API error (#239).
+The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7 (#234, first bundled here).
+The Fabric source is `e770d25`: the three add-ons at 0.3.0; a turn typed at pi or Claude Code is a task of its own, with the agents it prompts beneath it (#82); `sp` takes the connection the channel takes (#81); ScratchPad's reusable lifetimes, bootstrap import and admission slots (#67, #68, #69); the Claude Code marketplace range is `^0.3.0`.
+ScratchPad is unchanged from `bundles-v0.1.2`: `sp-v0.1.6`.
+Checked before publication with fabric v0.12.2 against staging, in a copy of a test home: each archive installed with `fabric plugins install --from`; a pi, an OpenClaw and a Claude Code agent connected with `fabric connect`, run the CLI's way, signed, each answering a console prompt; a turn typed at pi and at Claude Code each made one task rooted at the typed agent, its model calls in it and OpenClaw's thread beneath; a console prompt folded into a running Claude Code turn got its own reply, and the typed task kept its call from before the fold.
+Each npm package holds its archive's plugin folder file for file.
+The archives are `build.sh`'s, repacked with the headers above; their members and bytes are the build's.
+The repack also leaves out the build's pax headers (macOS provenance attributes and fractional times), as `bundles-v0.1.2`'s archives hold none.
+
 ## The channels from the environment, the whole-plugin packages
 
 [bundles-v0.1.2.json](bundles-v0.1.2.json) describes the prepared `bundles-v0.1.2` assets.
