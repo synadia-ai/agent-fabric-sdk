@@ -255,10 +255,13 @@ export interface LocalTurn {
 
 export type Outcome = "ok" | "error" | "timeout";
 
+/** Claude Code: how a prompt ended when the model did not end it with its own reply. */
+export type EndReason = "final_text" | "no_reply" | "shutdown" | "delivery" | "expired";
+
 export interface HarnessEvents {
   // Every harness.
   promptAccepted?(request: ServedRequest): void;
-  promptEnded?(request: ServedRequest, outcome: Outcome, atMs: number): void;
+  promptEnded?(request: ServedRequest, outcome: Outcome, atMs: number, reason?: EndReason): void;
   aroundToolCall?<T>(request: ServedRequest | LocalTurn | undefined, toolName: string, run: () => T): T;
   // PI and Claude Code.
   localTurnStarted?(turn: LocalTurn, atMs: number): void;
@@ -715,7 +718,17 @@ by the log (`src/turns.ts`), once a submit with a prompt id has been seen:
 - a `Stop` ends its turn, a `StopFailure` ends it with `error`, a turn
   begun without a `Stop` of the one before ends that one (an interrupt),
   and shutdown ends the open one before `stopping()`: `localTurnEnded`
-  for a local turn.
+  for a local turn;
+- channel prompts that waited together are taken together (measured
+  2026-10-26 with three NATS prompts queued behind a typed turn): each
+  fires its own `UserPromptSubmit`, one tag, its own `prompt_id`, about
+  20 ms apart, and one turn runs them all under the last id. So a channel
+  submit within a second of the one before, while the turn that one began
+  has no other record, joins that turn, which goes by the later id from
+  then on; the Stop hook reads the log the same way;
+- a channel prompt the server sent before it started (the tag's `ts`, on
+  the submit line) binds none of its requests: an earlier server's
+  request ids restart at 1 too.
 
 The served prompts' ends follow the binding too: a prompt owns the turn it
 was taken into, and is ended when that turn ends (at its `Stop` with the
@@ -726,8 +739,12 @@ a NATS prompt queued behind it, nor answered with the typed turn's text.
 The `Stop` hook works out the open prompts the stopping turn took in by
 itself, from `<pid>.open` and the log, never waiting for the server. An
 agent-tool call without `request_id` runs in the turn that made it, by its
-`PreToolUse` prompt id: a served turn's last open request, or the local
-turn. Before the first submit with a prompt id, and for a Claude Code that
+`PreToolUse` prompt id: in the last request taken into that turn that is
+still open, the one that started it or one folded into it, a local turn's
+too, so the agents prompted after a fold hang under the NATS task whose
+window the turn's model calls are filed in from the fold; with none open,
+in the local turn, or, for a served turn whose requests have all finished,
+in none. Before the first submit with a prompt id, and for a Claude Code that
 reports none, the plugin keeps its older guess: a prompt starts when it is
 accepted and no local turn is reported.
 
