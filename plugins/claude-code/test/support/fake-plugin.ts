@@ -5,13 +5,18 @@
 // (in order, in the caller's async context), and drives the events in the
 // MCP server's order (`server.ts` at `85a69c8`): `promptAccepted`
 // synchronously inside the handler, which then stays open until the model
-// calls `reply` with `done`; `promptEnded` as the handler closes, with the
-// reply's time for `ok`. An agent-tool call arrives as an MCP request of its
-// own, outside the handler's context, and is put back into it through the
-// snapshot the handler took, then run inside `aroundToolCall` — as the
-// plugin's `runAgentTool` does. The session events, `sessionStarted` and
-// `turnStopped`, are the test's to call. The served records go to a fake
-// client that keeps them. No server, no Claude Code.
+// calls `reply` with `done`; `promptStarted` when Claude Code takes the
+// prompt into a turn — right after the accept by default, as the plugin
+// does before Claude Code's hooks report prompt ids, or when the test says
+// (`start: false`, then `start()`); `promptEnded` as the handler closes,
+// with the reply's time for `ok`. An agent-tool call arrives as an MCP
+// request of its own, outside the handler's context, and is put back into
+// it through the snapshot the handler took, then run inside
+// `aroundToolCall` — as the plugin's `runAgentTool` does. A local turn's
+// events, `localTurnStarted` and `localTurnEnded`, and its tool calls,
+// outside any handler, come from `localTurn()`. The session events,
+// `sessionStarted` and `turnStopped`, are the test's to call. The served
+// records go to a fake client that keeps them. No server, no Claude Code.
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -33,6 +38,7 @@ import type {
   AgentExtension,
   AgentExtensionContext,
   EndReason,
+  LocalTurn,
   Outcome,
   ServedRequest,
 } from "@synadia-ai/agent-fabric";
@@ -224,6 +230,11 @@ export interface ServedPrompt {
    */
   toolCall<T>(toolName: string, fn: () => T): T;
   /**
+   * Claude Code took the prompt into a turn: `promptStarted` at `atMs`, now
+   * by default, with the session the turn runs in when given.
+   */
+  start(atMs?: number, sessionId?: string): void;
+  /**
    * End the request as the plugin would: `ok` when `reply` completed it
    * with `done`, `error` on a handler failure, `timeout` at the request
    * TTL; `promptEnded` with that outcome at `atMs`, now by default, and
@@ -238,12 +249,13 @@ let requestCounter = 0;
 /**
  * Serve one prompt as the MCP server does: through the extension's request
  * interceptors; in the handler `promptAccepted` with `sessionId` when the
- * plugin knows it, then open until `end()`, then `promptEnded`.
+ * plugin knows it, and `promptStarted` at once unless `start` is `false`,
+ * then open until `end()`, then `promptEnded`.
  */
 export function serve(
   ext: AgentExtension,
   extras: Readonly<Record<string, unknown>>,
-  opts: { readonly caller?: string; readonly sessionId?: string } = {},
+  opts: { readonly caller?: string; readonly sessionId?: string; readonly start?: boolean } = {},
 ): ServedPrompt {
   const { caller, sessionId } = opts;
   const request: ServedRequest = Object.freeze({
@@ -266,6 +278,7 @@ export function serve(
     async () => {
       enter = AsyncLocalStorage.snapshot();
       ext.events?.promptAccepted?.(request);
+      if (opts.start !== false) ext.events?.promptStarted?.(request, Date.now());
       accepted.resolve();
       const { outcome, atMs, reason } = await completion.promise;
       if (reason === undefined) ext.events?.promptEnded?.(request, outcome, atMs ?? Date.now());
@@ -288,11 +301,50 @@ export function serve(
         events?.aroundToolCall ? events.aroundToolCall(request, toolName, fn) : fn(),
       );
     },
+    start(atMs = Date.now(), startSession?: string) {
+      if (startSession === undefined) ext.events?.promptStarted?.(request, atMs);
+      else ext.events?.promptStarted?.(request, atMs, startSession);
+    },
     async end(outcome = "ok", atMs, reason) {
       completion.resolve({ outcome, atMs, reason });
       await done.catch((e: unknown) => {
         if (outcome === "ok") throw e;
       });
+    },
+  };
+}
+
+/** A local turn, as the MCP server reports one: no handler, no request. */
+export interface FakeLocalTurn {
+  readonly turn: LocalTurn;
+  /** `localTurnStarted` at `atMs`, now by default. */
+  start(atMs?: number): void;
+  /** `localTurnEnded` with `outcome` at `atMs`, now by default. */
+  end(outcome?: Outcome, atMs?: number): void;
+  /** An agent-tool call the turn's model makes: `fn` inside `aroundToolCall`, in no handler's context. */
+  toolCall<T>(toolName: string, fn: () => T): T;
+}
+
+let localCounter = 0;
+
+/** A local turn of `ext`'s plugin, with the session it runs in when given. */
+export function localTurn(ext: AgentExtension, sessionId?: string): FakeLocalTurn {
+  const turn: LocalTurn = Object.freeze({
+    id: `local-p${++localCounter}`,
+    local: true as const,
+    ...(sessionId === undefined ? {} : { sessionId }),
+  });
+  return {
+    turn,
+    start(atMs = Date.now()) {
+      ext.events?.localTurnStarted?.(turn, atMs);
+    },
+    end(outcome = "ok", atMs = Date.now()) {
+      ext.events?.localTurnEnded?.(turn, outcome, atMs);
+    },
+    toolCall<T>(toolName: string, fn: () => T): T {
+      const events = ext.events;
+      return events?.aroundToolCall ? events.aroundToolCall(turn, toolName, fn) : fn();
     },
   };
 }

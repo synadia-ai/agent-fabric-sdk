@@ -15,8 +15,23 @@
 // proxy files the calls under the session id; the plugin, an MCP server
 // inside the session, cannot touch those headers. So per served prompt the
 // add-on publishes the binding as the signed `served` pair on the edge
-// subject: `start` stamped with the arrival, naming the served thread and
-// the session the prompt was delivered to, and `end` with the outcome.
+// subject: `start` naming the served thread and the session, and `end` with
+// the outcome. The reader files the session's calls between the two under
+// the thread, and cuts a pair's cover at the next `start` on the session.
+//
+// When a prompt starts. Claude Code queues typed text and NATS prompts
+// alike behind its running turn, and takes a waiting one at that turn's
+// next tool result (folded into it) or after its `Stop` (a turn of its
+// own). The plugin follows that by the turns' prompt ids and reports
+// `promptStarted`, with the time Claude Code took the prompt and the
+// session the turn runs in: `start` is stamped there, not at the accept,
+// so a prompt queued behind a typed turn never cuts that turn's cover. A
+// prompt that ends before Claude Code took it (cancelled, expired while it
+// waited) gets its pair too, `start` and `end` both stamped with the end of
+// the turn running then, published after that turn's `end`, so no `start`
+// lands inside a turn; with no turn running, at once, at its own end. "A
+// turn runs", as the add-on sees it: a local turn is open, a started prompt
+// is open, or an answered prompt waits for its turn's `Stop`.
 //
 // The turn does not end with the reply. After `reply` completes the
 // request with `done`, Claude Code makes at least one more model call to
@@ -31,25 +46,38 @@
 // itself goes on `end` as the record's `reason`; the add-on's own end of
 // an open request at `stopping` carries `shutdown`.
 //
+// Local turns (§3.1, §3.4): a turn no served prompt started — typed at the
+// terminal, or begun by Claude Code itself — is a thread too. At
+// `localTurnStarted` the add-on mints a root for it (`rootTraceScope()`),
+// opens the loop guard on it and, with the turn's session, publishes the
+// root's `served` pair from the turn's start to its end
+// (`localTurnEnded`), so the turn's model calls are filed under the root;
+// its agent-tool calls run in the root's scope, so the agents it prompts
+// hang beneath it, and a child that prompts Claude Code back during the
+// turn is refused with `409`. No edge is written for the root itself: it is
+// implicit, without a caller.
+//
 // The served request's scope is kept by the plugin's request id from
-// `promptAccepted` to `promptEnded` and bound around every agent-tool
-// call. The plugin already re-enters the handler's async context (a
-// snapshot taken after the interceptors ran) before `aroundToolCall`, so
-// the binding is a no-op rebind the add-on makes anyway. The `409` loop
-// guard is the fabric package's two interceptors, after tracing's, and its
-// `aroundToolCall` inside the add-on's, which lifts the mark once the
-// request's calls have settled.
+// `promptAccepted` to `promptEnded`, a local turn's by its id, and bound
+// around every agent-tool call. For a served request the plugin already
+// re-enters the handler's async context (a snapshot taken after the
+// interceptors ran) before `aroundToolCall`, so the binding is a no-op
+// rebind the add-on makes anyway. The `409` loop guard is the fabric
+// package's two interceptors, after tracing's, and its `aroundToolCall`
+// inside the add-on's, which lifts the mark once the request's calls have
+// settled.
 //
 // ScratchPad (§9.13): when a volume is configured, the add-on keeps the
 // variables the package's skill (`skills/scratchpad`, loaded with the
 // package as a Claude Code plugin) reads through `scripts/sp` in a file the
 // package's SessionStart hook names to the Bash tool: the connection, the
-// workspace and the volume at start, the served prompt's trace and caller
-// from its arrival to its end (`scratchpad.ts`). It registers Claude Code as
-// reading references, hands the references Claude Code's model puts into
-// `prompt_agent` to the fabric package's ScratchPad extension, and answers
-// grant requests for what Claude Code published, by an SDK-built agent's
-// rule.
+// workspace and the volume at start, and the trace and caller of the turn
+// Claude Code runs (`scratchpad.ts`): the open local turn's, else the
+// latest started served prompt's. A prompt accepted but not yet taken into
+// a turn never holds them. It registers Claude Code as reading references,
+// hands the references Claude Code's model puts into `prompt_agent` to the
+// fabric package's ScratchPad extension, and answers grant requests for
+// what Claude Code published, by an SDK-built agent's rule.
 
 import {
   activeTrace,
@@ -57,10 +85,12 @@ import {
   fabricTracing,
   loopGuard,
   resolveEdgeSubject,
+  rootTraceScope,
   servedPublisher,
   type AgentExtension,
   type AgentExtensionContext,
   type EndReason,
+  type LocalTurn,
   type Outcome,
   type ServedPublisher,
   type ServedRequest,
@@ -116,10 +146,32 @@ interface Served {
   readonly request: ServedRequest;
   /** The scope tracing bound around the prompt's handler. */
   readonly scope: TraceScope;
+  /** The session known at the accept: the request's, else the one the hook last reported. */
+  readonly acceptedSession: string | undefined;
+  /** Set at `promptStarted`: the order Claude Code took the prompts in. */
+  started: number | undefined;
   /** The session the pair names; absent when none was known. */
-  readonly sessionId: string | undefined;
-  /** The pair; absent when the add-on publishes no records or knew no session. */
-  readonly turn: ServedTurn | undefined;
+  sessionId: string | undefined;
+  /** The pair, from the start; absent when the add-on publishes no records or knew no session. */
+  turn: ServedTurn | undefined;
+}
+
+/** A turn no served prompt started, from `localTurnStarted` to `localTurnEnded`. */
+interface Local {
+  readonly turn: LocalTurn;
+  /** The minted root, the turn's scope. */
+  readonly scope: TraceScope;
+  /** Closes the loop guard's registration. */
+  readonly close: () => void;
+  /** The root's pair; absent without a session or a publisher. */
+  readonly pair: ServedTurn | undefined;
+}
+
+/** A served prompt that ended before Claude Code took it into a turn. */
+interface Held {
+  readonly entry: Served;
+  readonly outcome: Outcome;
+  readonly reason: EndReason | undefined;
 }
 
 /** An answered prompt whose turn waits for the `Stop` hook. */
@@ -180,6 +232,12 @@ export function createFabricExtension(
   // reported it; the fallback when the plugin names none on a request.
   let currentSession: string | undefined;
   const served = new Map<string, Served>();
+  // The order Claude Code took the served prompts in.
+  let startCount = 0;
+  // The open local turns, by the plugin's turn id: one at a time in practice.
+  const locals = new Map<string, Local>();
+  // Prompts that ended before Claude Code took them, waiting for no turn to run.
+  const held: Held[] = [];
   // Answered turns in the order they were answered.
   const awaitingStop: AwaitingStop[] = [];
 
@@ -219,6 +277,73 @@ export function createFabricExtension(
   }
   const promptEnv = spEnv !== undefined ? new ServedPromptEnv(spEnv.vars) : undefined;
   const handOn = scratchPad !== undefined ? new ScratchPadHandOn() : undefined;
+
+  // ScratchPad's variables follow the turn Claude Code runs: the open local
+  // turn's, else the latest started served prompt's; none between turns.
+  let holderId: string | undefined;
+  const setHolder = (): void => {
+    if (promptEnv === undefined) return;
+    const local = [...locals.values()].at(-1);
+    let latest: Served | undefined;
+    for (const entry of served.values()) {
+      if (
+        entry.started !== undefined &&
+        (latest === undefined || entry.started > latest.started!)
+      ) {
+        latest = entry;
+      }
+    }
+    const next =
+      local !== undefined
+        ? { holder: local.turn, scope: local.scope }
+        : latest !== undefined
+          ? { holder: latest.request, scope: latest.scope }
+          : undefined;
+    if (next?.holder.id === holderId) return;
+    if (next !== undefined) promptEnv.enter(next.holder, next.scope);
+    else if (holderId !== undefined) promptEnv.leave({ id: holderId });
+    holderId = next?.holder.id;
+    writeSpEnv();
+  };
+
+  /**
+   * Begin a pair for `scope` on session `named`, `start` stamped `atMs`:
+   * the turn and the session it names, or `undefined` without a usable
+   * session (logged) or a publisher.
+   */
+  const beginPair = (
+    scope: TraceScope,
+    named: string | undefined,
+    atMs: number,
+  ): { turn: ServedTurn | undefined; sessionId: string } | undefined => {
+    if (!isClaudeSessionId(named)) {
+      log.warn(NO_SESSION_LINE);
+      return undefined;
+    }
+    // `beginTurn` stamps the start; `bind` publishes it. The session is
+    // bound now, so a `/clear` during the turn does not move the binding.
+    const turn = publisher?.beginTurn(scope, SERVED_HARNESS, atMs);
+    turn?.bind(named);
+    return { turn, sessionId: named };
+  };
+
+  /** A turn runs: a local turn is open, a started prompt is open, or an answered one waits for its `Stop`. */
+  const turnRuns = (): boolean =>
+    locals.size > 0 ||
+    awaitingStop.length > 0 ||
+    [...served.values()].some((entry) => entry.started !== undefined);
+
+  /**
+   * The pairs of the prompts that ended before Claude Code took them, once
+   * no turn runs (or `force`, at stopping): `start` and `end` both stamped
+   * `atMs`, the end of the turn that ran, oldest first.
+   */
+  const publishHeld = (atMs: number, force = false): void => {
+    if (held.length === 0 || (!force && turnRuns())) return;
+    for (const { entry, outcome, reason } of held.splice(0)) {
+      beginPair(entry.scope, entry.acceptedSession, atMs)?.turn?.settle(outcome, atMs, reason);
+    }
+  };
 
   return {
     name: EXTENSION_NAME,
@@ -283,15 +408,31 @@ export function createFabricExtension(
 
     async stopping() {
       // The plugin calls this before it fails the requests still open, and
-      // no `Stop` will come any more: every turn ends here, an answered one
-      // at its reply, an open one now.
+      // no `Stop` will come any more: every turn ends here. The open local
+      // turn first (the plugin has normally ended it already), then the
+      // prompts that ended before Claude Code took them, at the same
+      // instant, then the served ones: an answered one at its reply, an
+      // open one now; one never taken into a turn gets its pair now.
+      const now = Date.now();
+      for (const [id, local] of locals) {
+        locals.delete(id);
+        local.pair?.settle("ok", now);
+        local.close();
+      }
+      publishHeld(now, true);
       for (const waiting of [...awaitingStop]) {
         release(waiting);
         waiting.turn.settle("ok", waiting.repliedAtMs);
       }
       for (const [id, entry] of served) {
         served.delete(id);
-        entry.turn?.settle("error", undefined, "shutdown");
+        if (entry.started !== undefined) entry.turn?.settle("error", undefined, "shutdown");
+        else
+          beginPair(entry.scope, entry.acceptedSession, now)?.turn?.settle(
+            "error",
+            now,
+            "shutdown",
+          );
       }
       // No served prompt any more, and no server to serve one.
       spEnv?.remove();
@@ -305,48 +446,61 @@ export function createFabricExtension(
 
       promptAccepted(request) {
         // In the handler's async context, inside the scope tracing bound.
+        // Kept until Claude Code takes the prompt into a turn: a prompt that
+        // waits behind a running turn starts nothing yet, neither a pair nor
+        // ScratchPad's variables.
         const scope = activeTrace();
-        // From here to its end this prompt is the one Claude Code works on,
-        // and the one `scripts/sp` works for.
-        if (promptEnv !== undefined) {
-          promptEnv.enter(request, scope);
-          writeSpEnv();
-        }
         if (scope === undefined) return;
         const named = request.sessionId ?? currentSession;
-        const sessionId = isClaudeSessionId(named) ? named : undefined;
-        let turn: ServedTurn | undefined;
-        if (sessionId === undefined) {
-          log.warn(NO_SESSION_LINE);
-        } else {
-          // `beginTurn` stamps the arrival now; `bind` publishes `start`.
-          // The session is bound at arrival, so a `/clear` during the turn
-          // does not move the binding.
-          turn = publisher?.beginTurn(scope, SERVED_HARNESS);
-          turn?.bind(sessionId);
-        }
-        served.set(request.id, { request, scope, sessionId, turn });
+        served.set(request.id, {
+          request,
+          scope,
+          acceptedSession: isClaudeSessionId(named) ? named : undefined,
+          started: undefined,
+          sessionId: undefined,
+          turn: undefined,
+        });
+      },
+
+      promptStarted(request, atMs, sessionId) {
+        // Claude Code took the prompt into a turn: its own, or the running
+        // one at a fold. The pair starts here, on the turn's session.
+        const entry = served.get(request.id);
+        if (entry === undefined || entry.started !== undefined) return;
+        entry.started = ++startCount;
+        const pair = beginPair(
+          entry.scope,
+          isClaudeSessionId(sessionId) ? sessionId : entry.acceptedSession,
+          atMs,
+        );
+        entry.turn = pair?.turn;
+        entry.sessionId = pair?.sessionId;
+        setHolder();
       },
 
       promptEnded(request, outcome: Outcome, atMs, reason?: EndReason) {
         const entry = served.get(request.id);
         served.delete(request.id);
-        if (promptEnv !== undefined) {
-          // Claude Code may hold a second prompt in the same turn: the
-          // variables go back to the latest one still open.
-          promptEnv.leave(request);
-          const open = [...served.values()].at(-1);
-          if (open !== undefined) promptEnv.enter(open.request, open.scope);
-          writeSpEnv();
-        }
+        setHolder();
         if (entry === undefined) return;
+        if (entry.started === undefined) {
+          // Ended while it waited: its pair goes out once no turn runs, never
+          // with a `start` inside a turn.
+          held.push({ entry, outcome, reason });
+          publishHeld(atMs);
+          return;
+        }
         const { turn, sessionId } = entry;
-        if (turn === undefined || sessionId === undefined) return;
+        if (turn === undefined || sessionId === undefined) {
+          publishHeld(atMs);
+          return;
+        }
         // A failure ends at once, and so does an answer the plugin sent from
         // the turn's final text: it comes at the turn's `Stop`, so the turn
         // is already over.
         if (outcome !== "ok" || reason === "final_text") {
           turn.settle(outcome, atMs, reason);
+          publishHeld(atMs);
           return;
         }
         // Answered, but Claude Code is still writing its closing text.
@@ -357,6 +511,7 @@ export function createFabricExtension(
           timer: setTimeout(() => {
             release(waiting);
             turn.settle("ok", atMs);
+            publishHeld(atMs);
           }, stopWaitMs),
         };
         waiting.timer.unref?.();
@@ -374,10 +529,40 @@ export function createFabricExtension(
           release(waiting);
           waiting.turn.settle("ok", atMs);
         }
+        publishHeld(atMs);
       },
 
-      aroundToolCall(request: ServedRequest | undefined, _toolName, run) {
-        const scope = request === undefined ? undefined : served.get(request.id)?.scope;
+      localTurnStarted(turn, atMs) {
+        // A turn no served prompt started: a root of its own, guarded like a
+        // served request, its pair on the turn's session, until it ends.
+        if (locals.has(turn.id)) return;
+        const scope = rootTraceScope();
+        const close = guard.open(scope);
+        let pair: ServedTurn | undefined;
+        if (isClaudeSessionId(turn.sessionId)) {
+          pair = publisher?.beginTurn(scope, SERVED_HARNESS, atMs);
+          pair?.bind(turn.sessionId);
+        }
+        locals.set(turn.id, { turn, scope, close, pair });
+        setHolder();
+      },
+
+      localTurnEnded(turn, outcome, atMs) {
+        const local = locals.get(turn.id);
+        if (local === undefined) return;
+        locals.delete(turn.id);
+        local.pair?.settle(outcome, atMs);
+        local.close();
+        // After the local `end`: the prompts that ended while it ran.
+        publishHeld(atMs);
+        setHolder();
+      },
+
+      aroundToolCall(work: ServedRequest | LocalTurn | undefined, _toolName, run) {
+        const scope =
+          work === undefined
+            ? undefined
+            : (locals.get(work.id)?.scope ?? served.get(work.id)?.scope);
         return scope === undefined
           ? run()
           : bindActiveTrace(scope, () => guard.aroundToolCall(scope, run));
