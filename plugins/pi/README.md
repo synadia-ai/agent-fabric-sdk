@@ -35,16 +35,29 @@ async context, so the add-on keeps each served request's scope by the
 plugin's request id and binds it where the plugin says the request is being
 worked on:
 
-| Event                                | What the add-on does                                                                                                                                                                                                                                             |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `promptAccepted(request)`            | keeps `activeTrace()`, the scope tracing bound for this request, by `request.id`                                                                                                                                                                                 |
-| `aroundInject(request, run)`         | runs `run` inside `bindActiveTrace(scope, …)`, which replaces the ambient context: the plugin injects the next queued prompt from the previous turn's settle hook, whose context is the previous request's                                                       |
-| `providerHeaders(request)`           | returns `X-Synadia-Thread-ID` and `X-Synadia-Root-ID` for the request, so the proxy files PI's own model calls on the served thread; each call counts against the scope, so an edge PI's model spawns later says how many calls came before it, retries included |
-| `aroundToolCall(request, tool, run)` | binds the request's scope around `run`, so the edge of a `prompt_agent` PI's model calls is filed under the served thread even if PI's tool runner did not inherit the injected context                                                                          |
-| `promptEnded(request)`               | forgets the request                                                                                                                                                                                                                                              |
+| Event                                | What the add-on does                                                                                                                                                                                                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `promptAccepted(request)`            | keeps `activeTrace()`, the scope tracing bound for this request, by `request.id`                                                                                                                                                                                              |
+| `aroundInject(request, run)`         | runs `run` inside `bindActiveTrace(scope, …)`, which replaces the ambient context: the plugin injects the next queued prompt from the previous turn's settle hook, whose context is the previous request's                                                                    |
+| `providerHeaders(request)`           | returns `X-Synadia-Thread-ID` and `X-Synadia-Root-ID` for the request or the local turn, so the proxy files PI's own model calls on its thread; each call counts against the scope, so an edge PI's model spawns later says how many calls came before it, retries included   |
+| `aroundToolCall(request, tool, run)` | binds the request's or the local turn's scope around `run`, so the edge of a `prompt_agent` PI's model calls is filed under its thread even if PI's tool runner did not inherit the injected context; a local turn has no injection, so this binding is the one its calls get |
+| `promptEnded(request)`               | forgets the request                                                                                                                                                                                                                                                           |
+| `localTurnStarted(turn)`             | a run no NATS prompt started: mints a root for it (`rootTraceScope()`), keeps it by `turn.id` and opens the guard on it                                                                                                                                                       |
+| `localTurnEnded(turn)`               | forgets the turn and closes its guard                                                                                                                                                                                                                                         |
 
 A request the add-on never saw (no scope kept) is left alone: no headers,
 `run` called as it is.
+
+**Local turns.** A run no NATS prompt started, typed at PI's terminal, is a
+thread too. The plugin reports it as a local turn, from the run's
+`agent_start` to its `agent_settled`, and the add-on gives it a root of its
+own: its model calls carry the root's two headers, the agents its model
+prompts hang beneath it, and a child that prompts PI back during the turn
+is refused with `409`, as for a served request. No edge is written for the
+root itself: it is implicit, like the root minted for an envelope without
+the pair, and has no caller. Stated honestly: text typed while a run is
+going joins that run, a NATS prompt's or a local turn's; PI gives the
+plugin no way to tell the two apart.
 
 **The `409` loop guard.** PI serves one turn at a time and cannot serve a
 prompt while its model waits on a call to another agent, so a prompt of a
@@ -67,7 +80,9 @@ root is read from the scope tracing bound, never from the envelope. Stated
 honestly: this also refuses a legitimate second prompt of the same tree
 that arrives while PI waits in it, such as a sibling delegation issued with
 `wait: false` by the same coordinator; PI would have queued it anyway, and
-the guard turns the queue into a refusal the caller sees at once.
+the guard turns the queue into a refusal the caller sees at once. A local
+turn is guarded the same way: the add-on opens the guard on its root at the
+turn's start (`open(scope)`) and closes it at its end.
 
 **What it does not do.** No `served` record: PI's calls carry the headers,
 so they need none, and PI writes nothing to `TRACE.edges` but the edges of
@@ -164,15 +179,15 @@ off; without a URL and a credentials file it is off with a warning.
 **What `scripts/sp` gets.** The add-on sets these in PI's process, and PI's
 bash tool passes them to every command (measured on PI 0.85.1):
 
-| Variable                              | Set                                                           | `scripts/sp` adds                                                              |
-| ------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `SP_NATS_URL`, `SP_NATS_CREDS`        | at start                                                      | `--url`, `--creds`, every call                                                 |
-| `SCRATCHPAD_DIR`                      | at start                                                      | `--dir`, every call                                                            |
-| `SCRATCHPAD_VOLUME`                   | at start                                                      | `--volume`, on `init` only: a read refuses a volume other than the reference's |
-| `SP_CREATOR`                          | at start: PI's prompt address                                 | `--creator`, on `publish-file`                                                 |
-| `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its hand-over to PI's loop to its end | `--thread-id`, `--root-id`, every call                                         |
-| `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller                               | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file`     |
-| `SP_GRANTS_FILE`                      | at start: `<workspace>.grants`                                | nothing: it records there each grant sp confirmed, for grant requests          |
+| Variable                              | Set                                                                                                      | `scripts/sp` adds                                                              |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `SP_NATS_URL`, `SP_NATS_CREDS`        | at start                                                                                                 | `--url`, `--creds`, every call                                                 |
+| `SCRATCHPAD_DIR`                      | at start                                                                                                 | `--dir`, every call                                                            |
+| `SCRATCHPAD_VOLUME`                   | at start                                                                                                 | `--volume`, on `init` only: a read refuses a volume other than the reference's |
+| `SP_CREATOR`                          | at start: PI's prompt address                                                                            | `--creator`, on `publish-file`                                                 |
+| `SP_THREAD_ID`, `SP_ROOT_ID`          | per served prompt, from its hand-over to PI's loop to its end; per local turn, from its start to its end | `--thread-id`, `--root-id`, every call                                         |
+| `SP_CALLER_ACCOUNT`, `SP_CALLER_USER` | the same, for a verified caller; a local turn has none                                                   | `--grantee-account`, `--grantee-user`, on `grant` and after `publish-file`     |
+| `SP_GRANTS_FILE`                      | at start: `<workspace>.grants`                                                                           | nothing: it records there each grant sp confirmed, for grant requests          |
 
 The connection has names of its own, not `NATS_URL` and `NATS_CREDS`, which
 a plugin may read as its own connection. The model passes none of these
@@ -227,19 +242,21 @@ PI's model calls on the child thread the caller's edge created, PI the
 executor, its depth `full`; the caller's `asked` row names PI. A delegation
 PI's model makes is a grandchild under its tool call, PI's edge signed and
 verified. No outcome or duration from a pair: PI publishes none, and the
-thread's calls carry its timing.
+thread's calls carry its timing. A turn typed at PI's terminal is a task of
+its own: PI its root, asked by no caller, all its model calls in one
+thread, and the agents it prompts beneath it.
 
 ## Public API
 
-|                                                                                                                                                                               |                                                                                                                                                                       |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default`, `fabricExtension(ctx, env?)`                                                                                                                                       | the factory of the contract: resolves ScratchPad, then builds the extension; `env` is where the variables are read and ScratchPad's are set, `process.env` by default |
-| `createFabricExtension(ctx, env?, scratchPad?)`                                                                                                                               | the same, synchronous, from settings already resolved                                                                                                                 |
-| `resolveEdgeSubject(options, env?)`                                                                                                                                           | the setting's precedence, as above                                                                                                                                    |
-| `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                                           | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the packaged sp's path                                                                 |
-| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                           | the constants                                                                                                                                                         |
-| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                              | the guard on its own: `requestInterceptor`, `promptInterceptor`, `aroundToolCall(scope, run)`, `serving(rootId)`, `waiting(rootId)`                                   |
-| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI                                                                   |
+|                                                                                                                                                                                            |                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`, `fabricExtension(ctx, env?)`                                                                                                                                                    | the factory of the contract: resolves ScratchPad, then builds the extension; `env` is where the variables are read and ScratchPad's are set, `process.env` by default |
+| `createFabricExtension(ctx, env?, scratchPad?)`                                                                                                                                            | the same, synchronous, from settings already resolved                                                                                                                 |
+| `resolveEdgeSubject(options, env?)`                                                                                                                                                        | the setting's precedence, as above                                                                                                                                    |
+| `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                                                        | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the packaged sp's path                                                                 |
+| `EXTENSION_NAME`, `EDGE_SUBJECT_OPTION`, `EDGE_SUBJECT_VAR`, `IDENTITY_OFF_WARNING`                                                                                                        | the constants                                                                                                                                                         |
+| `loopGuard()`, `LOOP_GUARD_CODE`, `loopGuardDescription(rootId)`                                                                                                                           | the guard on its own: `requestInterceptor`, `promptInterceptor`, `aroundToolCall(scope, run)`, `open(scope)`, `serving(rootId)`, `waiting(rootId)`                    |
+| `AgentExtensionContext`, `AgentExtension`, `HarnessEvents`, `ServedRequest`, `LocalTurn`, `Outcome`, `AgentExtensionHandles`, `AgentExtensionSettings`, `Harness`, `AgentExtensionFactory` | the plugin's contract, declared structurally so this package imports nothing of the plugin or of PI                                                                   |
 
 The setting's precedence, the loop guard and the contract's types live in
 `@synadia-ai/agent-fabric`, shared by every add-on under `plugins/`; this

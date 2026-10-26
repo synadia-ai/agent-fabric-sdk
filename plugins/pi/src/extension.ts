@@ -20,6 +20,17 @@
 // the mark once the request's calls have settled (`loopGuard`, from the
 // fabric package).
 //
+// Local turns (§3.1, §3.2): a run no NATS prompt started, typed at PI's
+// terminal, is a thread too. At `localTurnStarted` the add-on mints a root
+// for it (`rootTraceScope()`), keeps it by the plugin's turn id as it keeps
+// a served request's scope, and opens the guard on it; the same
+// `providerHeaders` and `aroundToolCall` then file the turn's model calls
+// on that root and hang the agents it prompts beneath it, and a child that
+// prompts PI back during the turn is refused with `409`. At
+// `localTurnEnded` all of it goes. No edge is written for the root itself:
+// it is implicit, like a root minted for an envelope without the pair, and
+// has no caller.
+//
 // ScratchPad (§9): when a volume is configured, the add-on sets the
 // environment the package's skill (`skill/scratchpad`, given to PI with
 // `--skill`) reads through `scripts/sp`: the connection, the workspace and
@@ -36,9 +47,11 @@ import {
   fabricTracing,
   loopGuard,
   resolveEdgeSubject,
+  rootTraceScope,
   traceHeaders,
   type AgentExtension,
   type AgentExtensionContext,
+  type LocalTurn,
   type ServedRequest,
   type TraceScope,
   READS_REFERENCES_KEY,
@@ -101,9 +114,13 @@ export function createFabricExtension(
   // `pi.sendUserMessage()`, and when the plugin injects the next queued
   // prompt from the previous turn's settle hook that context is the
   // previous request's (measured on PI 0.85.1, `docs/plugins.md` §3.5 gap 3).
+  // A local turn's root is kept here too, by the plugin's turn id, which no
+  // request id equals, from `localTurnStarted` to `localTurnEnded`.
   const scopes = new Map<string, TraceScope>();
-  const scopeOf = (request: ServedRequest | undefined): TraceScope | undefined =>
+  const scopeOf = (request: ServedRequest | LocalTurn | undefined): TraceScope | undefined =>
     request === undefined ? undefined : scopes.get(request.id);
+  // Each open local turn's guard: the function that closes it.
+  const closeGuard = new Map<string, () => void>();
 
   let warnedIdentityOff = false;
   const scratchPadOn = scratchPad !== undefined;
@@ -180,6 +197,22 @@ export function createFabricExtension(
         scopes.delete(request.id);
         promptEnv.leave(request);
       },
+      localTurnStarted(turn) {
+        // A turn no served prompt started: a root of its own, guarded like
+        // a served request until the turn ends, and the one `scripts/sp`
+        // works for meanwhile, with no caller.
+        closeGuard.get(turn.id)?.();
+        const scope = rootTraceScope();
+        scopes.set(turn.id, scope);
+        closeGuard.set(turn.id, guard.open(scope));
+        if (scratchPadOn) promptEnv.enter(turn, scope);
+      },
+      localTurnEnded(turn) {
+        scopes.delete(turn.id);
+        closeGuard.get(turn.id)?.();
+        closeGuard.delete(turn.id);
+        promptEnv.leave(turn);
+      },
       aroundInject(request, run) {
         const scope = scopes.get(request.id);
         // The hand-over to PI's loop: from here to its end this prompt is
@@ -190,13 +223,15 @@ export function createFabricExtension(
       providerHeaders(request) {
         // One call per provider request: `traceHeaders()` counts each
         // against the scope, so an edge PI's model spawns later says how
-        // many calls came before it — retries included.
+        // many calls came before it — retries included. A served request's
+        // scope or a local turn's, by its id.
         const scope = scopes.get(request.id);
         return scope === undefined ? undefined : bindActiveTrace(scope, traceHeaders);
       },
       aroundToolCall(request, _toolName, run) {
         // The same binding as the injection's, for the case PI's tool
-        // runner does not inherit it; a no-op rebind when it does.
+        // runner does not inherit it; a no-op rebind when it does. A local
+        // turn has no injection, so this binding is the one its calls get.
         const scope = scopeOf(request);
         return scope === undefined
           ? run()

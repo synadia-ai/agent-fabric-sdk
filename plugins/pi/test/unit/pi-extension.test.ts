@@ -27,6 +27,7 @@ import {
   phaseOne,
   planOf,
   recordingLogger,
+  runLocalTurn,
   serve,
   servedRequest,
 } from "../support/fake-plugin.js";
@@ -55,6 +56,8 @@ describe("the factory", () => {
     expect(Object.keys(ext.events!).sort()).toEqual([
       "aroundInject",
       "aroundToolCall",
+      "localTurnEnded",
+      "localTurnStarted",
       "promptAccepted",
       "promptEnded",
       "providerHeaders",
@@ -208,6 +211,74 @@ describe("a served request without the pair", () => {
       code: 400,
     });
     expect(ext.events!.providerHeaders!(served.request)).toBeUndefined();
+  });
+});
+
+describe("a local turn, one no served prompt started", () => {
+  it("gives PI's provider requests the two headers of a root minted for it", () => {
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
+    const local = runLocalTurn(ext);
+    const headers = ext.events!.providerHeaders!(local.turn)!;
+    expect(isThreadId(headers[THREAD_ID_HEADER]!)).toBe(true);
+    expect(headers[ROOT_ID_HEADER]).toBe(headers[THREAD_ID_HEADER]);
+    expect(ext.events!.providerHeaders!(local.turn)).toEqual(headers);
+    local.end();
+  });
+
+  it("writes the edge of a prompt sent from its tool call under that root, with the tool-call ID", async () => {
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
+    const local = runLocalTurn(ext);
+    const root = ext.events!.providerHeaders!(local.turn)![THREAD_ID_HEADER]!;
+
+    // The turn has no injection: the tool call's own binding is what counts.
+    expect(activeTrace()).toBeUndefined();
+    const [tracing] = await ext.events!.aroundToolCall!(local.turn, "prompt_agent", () =>
+      phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_pi_local" }),
+    );
+    expect(tracing?.fields).toEqual({
+      thread_id: expect.stringMatching(/^[0-9a-f]{32}$/) as string,
+      root_id: root,
+    });
+    expect(planOf(tracing)).toMatchObject({
+      parentId: root,
+      rootId: root,
+      toolCallId: "toolu_pi_local",
+      turnCountHint: 1,
+    });
+    expect(planOf(tracing).threadId).not.toBe(root);
+    local.end();
+  });
+
+  it("forgets the turn at its end: no headers, and its tools run as they are", () => {
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
+    const local = runLocalTurn(ext);
+    expect(ext.events!.providerHeaders!(local.turn)).toBeDefined();
+    local.end();
+    expect(ext.events!.providerHeaders!(local.turn)).toBeUndefined();
+    expect(
+      ext.events!.aroundToolCall!(local.turn, "discover_agents", () => activeTrace()),
+    ).toBeUndefined();
+    // A second end is harmless.
+    expect(() => local.end()).not.toThrow();
+  });
+
+  it("mints a root per turn, and keeps it apart from a served request's", async () => {
+    const ext = createFabricExtension(extensionContext(), NO_ENV);
+    const first = runLocalTurn(ext, "local-1");
+    const firstRoot = ext.events!.providerHeaders!(first.turn)![ROOT_ID_HEADER];
+    first.end();
+    const second = runLocalTurn(ext, "local-2");
+    const secondRoot = ext.events!.providerHeaders!(second.turn)![ROOT_ID_HEADER];
+    expect(secondRoot).not.toBe(firstRoot);
+    second.end();
+
+    const served = serve(ext, "1", { thread_id: THREAD, root_id: ROOT });
+    await served.accepted;
+    const third = runLocalTurn(ext, "local-3");
+    expect(ext.events!.providerHeaders!(served.request)![ROOT_ID_HEADER]).toBe(ROOT);
+    expect(ext.events!.providerHeaders!(third.turn)![ROOT_ID_HEADER]).not.toBe(ROOT);
+    third.end();
+    await served.end();
   });
 });
 

@@ -6,6 +6,15 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A turn typed at PI's terminal is traced as a task of its own, with the agents it prompts
+  beneath it. The PI channel plugin reports a run no NATS prompt started as a local turn
+  (`localTurnStarted`, `localTurnEnded`); the add-on mints a root for it, puts the root's two
+  headers on the turn's model calls, runs its agent-tool calls inside it so their edges name it,
+  guards it with the `409` loop guard, and sets ScratchPad's trace variables for it, with no
+  caller. No edge is written for the root itself.
+
 ### Changed
 
 - ScratchPad's `sp` connects as PI's channel does. A non-empty `NATS_CONTEXT` wins over

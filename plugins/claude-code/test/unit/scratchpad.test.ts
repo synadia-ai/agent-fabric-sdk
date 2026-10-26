@@ -23,6 +23,7 @@ import {
   extensionContext,
   fakeClient,
   fakeService,
+  localTurn,
   recordingLogger,
   serve,
 } from "../support/fake-plugin.js";
@@ -172,6 +173,44 @@ describe("the file scripts/sp reads", () => {
     await first.end("error");
     expect(readVars()[SP_VARS.threadId]).toBe(THREAD_2);
     await second.end();
+  });
+
+  it("holds a local turn's root, with no caller, while it runs", async () => {
+    const { ext } = await started(configured());
+    const local = localTurn(ext, "0b5e7c0e-3f0a-4c55-9d0e-8b2f6a1d4c21");
+    local.start();
+    const vars = readVars();
+    expect(vars[SP_VARS.threadId]).toMatch(/^[0-9a-f]{32}$/);
+    expect(vars[SP_VARS.rootId]).toBe(vars[SP_VARS.threadId]);
+    expect(vars[SP_VARS.callerAccount]).toBeUndefined();
+    local.end();
+    expect(readVars()[SP_VARS.threadId]).toBeUndefined();
+  });
+
+  it("never gives them to a prompt waiting behind the turn: the local turn keeps them until it ends", async () => {
+    const { ext } = await started(configured());
+    const local = localTurn(ext, "0b5e7c0e-3f0a-4c55-9d0e-8b2f6a1d4c21");
+    local.start();
+    const root = readVars()[SP_VARS.threadId];
+    const waiting = serve(
+      ext,
+      { thread_id: THREAD, root_id: ROOT },
+      { caller: CALLER, start: false },
+    );
+    await waiting.accepted;
+    expect(readVars()[SP_VARS.threadId]).toBe(root);
+    // Another prompt waits and ends meanwhile: the local turn's stay.
+    const cancelled = serve(ext, { thread_id: THREAD_2, root_id: ROOT_2 }, { start: false });
+    await cancelled.accepted;
+    await cancelled.end("timeout");
+    expect(readVars()[SP_VARS.threadId]).toBe(root);
+    // The turn ends; the waiting prompt is taken into its own turn and takes them.
+    local.end();
+    expect(readVars()[SP_VARS.threadId]).toBeUndefined();
+    waiting.start();
+    expect(readVars()).toMatchObject({ SP_THREAD_ID: THREAD, SP_CALLER_USER: "UCALLERUSER" });
+    await waiting.end();
+    expect(readVars()[SP_VARS.threadId]).toBeUndefined();
   });
 
   it("is removed when the plugin stops", async () => {

@@ -17,6 +17,7 @@ import {
   loopGuard,
   loopGuardDescription,
   resolveEdgeSubject,
+  rootTraceScope,
   type TraceScope,
 } from "../../src/index.js";
 
@@ -75,6 +76,91 @@ describe("loopGuard", () => {
     });
     expect(ran).toBe(1);
     expect(guard.waiting(ROOT)).toBe(false);
+  });
+});
+
+describe("loopGuard: a local turn", () => {
+  it("guards an opened scope like a served request: refused while the turn's model waits, admitted once closed", async () => {
+    const tracing = fabricTracing({ edgeSubject: null });
+    const guard = loopGuard();
+    const turn = rootTraceScope();
+    const close = guard.open(turn);
+    expect(guard.serving(turn.rootId)).toBe(true);
+    expect(guard.waiting(turn.rootId)).toBe(false);
+
+    // The turn's model prompts a child, inside the turn's scope.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const call = guard.aroundToolCall(turn, () =>
+      bindActiveTrace(turn, async () => {
+        await guard.promptInterceptor.beforePrompt({} as PromptInterceptorContext);
+        await held;
+        return { status: "completed" };
+      }),
+    );
+    expect(guard.waiting(turn.rootId)).toBe(true);
+
+    // The child prompts back, in the turn's tree: refused at once.
+    const back = (threadId: string): Promise<void> =>
+      tracing.requestInterceptor.aroundRequest(ctxFor(threadId, turn.rootId), () =>
+        guard.requestInterceptor.aroundRequest(ctxFor(threadId, turn.rootId), () =>
+          Promise.resolve(),
+        ),
+      );
+    await expect(back("5".repeat(32))).rejects.toMatchObject({
+      name: "RequestRejectedError",
+      code: LOOP_GUARD_CODE,
+      description: loopGuardDescription(turn.rootId),
+    });
+
+    release();
+    await call;
+    expect(guard.waiting(turn.rootId)).toBe(false);
+    await back("6".repeat(32));
+
+    // Closed: the root is no longer served; a second close does nothing.
+    close();
+    expect(guard.serving(turn.rootId)).toBe(false);
+    close();
+    expect(guard.serving(turn.rootId)).toBe(false);
+  });
+
+  it("closing removes the turn's mark: a waiting turn's root is admitted after its close", async () => {
+    const guard = loopGuard();
+    const turn = rootTraceScope();
+    const close = guard.open(turn);
+    await bindActiveTrace(turn, () =>
+      guard.promptInterceptor.beforePrompt({} as PromptInterceptorContext),
+    );
+    expect(guard.waiting(turn.rootId)).toBe(true);
+    close();
+    expect(guard.waiting(turn.rootId)).toBe(false);
+    // A prompt from the closed turn's scope marks nothing any more.
+    await bindActiveTrace(turn, () =>
+      guard.promptInterceptor.beforePrompt({} as PromptInterceptorContext),
+    );
+    expect(guard.waiting(turn.rootId)).toBe(false);
+  });
+
+  it("a second close leaves a served request of the same root in place", async () => {
+    const tracing = fabricTracing({ edgeSubject: null });
+    const guard = loopGuard();
+    const turn = rootTraceScope();
+    const close = guard.open(turn);
+    close();
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const served = tracing.requestInterceptor.aroundRequest(
+      ctxFor("7".repeat(32), turn.rootId),
+      () => guard.requestInterceptor.aroundRequest(ctxFor("7".repeat(32), turn.rootId), () => held),
+    );
+    await Promise.resolve();
+    expect(guard.serving(turn.rootId)).toBe(true);
+    close();
+    expect(guard.serving(turn.rootId)).toBe(true);
+    release();
+    await served;
+    expect(guard.serving(turn.rootId)).toBe(false);
   });
 });
 

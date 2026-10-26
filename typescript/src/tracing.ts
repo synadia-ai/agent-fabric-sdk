@@ -33,6 +33,7 @@ import {
   DEFAULT_EDGE_SUBJECT,
   isThreadId,
   randomThreadId,
+  rootTraceScope,
   ROOT_ID_FIELD,
   THREAD_ID_FIELD,
   THREAD_ID_HEX_LEN,
@@ -242,8 +243,7 @@ function scopeFor(extras: Readonly<Record<string, unknown>>): TraceScope {
   if (threadId !== undefined && rootId !== undefined) {
     return { threadId, rootId, turnCountHint: 0 };
   }
-  const minted = randomThreadId();
-  return { threadId: minted, rootId: minted, turnCountHint: 0 };
+  return rootTraceScope();
 }
 
 /**

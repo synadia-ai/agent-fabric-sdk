@@ -263,6 +263,40 @@ describe("buildServedRecord", () => {
   });
 });
 
+describe("servedPublisher: the start's ts", () => {
+  it("is beginTurn's atMs floored to unix seconds, as settle floors its own; now without one", async () => {
+    const sent: Uint8Array[] = [];
+    const agents = {
+      selfId: () => Promise.resolve(AGENT),
+      publishSigned: (_subject: string, payload: Uint8Array) => {
+        sent.push(payload);
+        return Promise.resolve();
+      },
+    } as unknown as Agents;
+    const p = servedPublisher({ agents });
+    const scope = { threadId: THREAD, rootId: THREAD, turnCountHint: 0 };
+    const at = 1_761_400_000_999;
+
+    // Bound later than it arrived: the start still says when it arrived.
+    const stamped = p.beginTurn(scope, "claude", at);
+    stamped.bind(SESSION);
+    stamped.settle("ok", at + 5_500);
+
+    const before = unixSeconds();
+    const plain = p.beginTurn(scope, "claude");
+    plain.bind(SESSION);
+    const after = unixSeconds();
+    await p.flush();
+
+    const [start, end, now] = sent.map(decode);
+    expect(start).toMatchObject({ phase: "start", ts: 1_761_400_000, harness_thread_id: SESSION });
+    expect(end).toMatchObject({ phase: "end", status: "ok", ts: 1_761_400_006 });
+    expect(now).toMatchObject({ phase: "start" });
+    expect(now!["ts"]).toBeGreaterThanOrEqual(before);
+    expect(now!["ts"]).toBeLessThanOrEqual(after);
+  });
+});
+
 describe("servedPublisher over another copy of the SDK", () => {
   it("recognizes the missing signer by name: one warning, every record owed dropped", async () => {
     // A harness plugin's `Agents` runs on the plugin's copy of the SDK, so

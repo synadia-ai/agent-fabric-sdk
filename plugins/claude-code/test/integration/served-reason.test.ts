@@ -106,6 +106,7 @@ describe.skipIf(!bin)("Claude Code on the fabric: a turn that ends without a rep
         sessionId: SESSION,
       });
       ext.events!.promptAccepted!(served);
+      ext.events!.promptStarted!(served, Date.now(), SESSION);
       // The model works, writes plain text and stops; the plugin's hook
       // refuses the first stop, and the turn stops again without reply.
       await sleep(50);

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   activeTrace,
   bindActiveTrace,
+  isThreadId,
   ROOT_ID_HEADER,
+  rootTraceScope,
   THREAD_ID_HEADER,
   traceHeaders,
   type TraceScope,
@@ -90,5 +92,34 @@ describe("traceHeaders", () => {
       expect(after).toBe(scopes[i]);
     });
     expect(scopes.map((s) => s.turnCountHint)).toEqual([1, 2, 3]);
+  });
+});
+
+/**
+ * `rootTraceScope()` is the root a receiver mints for an envelope that
+ * names no thread, and the one a harness add-on binds around a local turn.
+ */
+describe("rootTraceScope", () => {
+  it("mints a thread that is its own root, with no call counted", () => {
+    const scope = rootTraceScope();
+    expect(isThreadId(scope.threadId)).toBe(true);
+    expect(scope.rootId).toBe(scope.threadId);
+    expect(scope.turnCountHint).toBe(0);
+  });
+
+  it("mints a fresh root and a fresh object each time", () => {
+    const a = rootTraceScope();
+    const b = rootTraceScope();
+    expect(a).not.toBe(b);
+    expect(a.threadId).not.toBe(b.threadId);
+  });
+
+  it("is what its model calls are filed under, once bound", () => {
+    const scope = rootTraceScope();
+    expect(bindActiveTrace(scope, traceHeaders)).toEqual({
+      [THREAD_ID_HEADER]: scope.threadId,
+      [ROOT_ID_HEADER]: scope.threadId,
+    });
+    expect(scope.turnCountHint).toBe(1);
   });
 });

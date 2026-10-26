@@ -26,6 +26,7 @@ import {
   extensionContext,
   fakeClient,
   fakeService,
+  localTurn,
   phaseOne,
   planOf,
   PLUGIN_AGENT_ID,
@@ -83,8 +84,11 @@ describe("the factory", () => {
     expect(typeof ext.stopping).toBe("function");
     expect(Object.keys(ext.events!).sort()).toEqual([
       "aroundToolCall",
+      "localTurnEnded",
+      "localTurnStarted",
       "promptAccepted",
       "promptEnded",
+      "promptStarted",
       "sessionStarted",
       "turnStopped",
     ]);
@@ -397,6 +401,265 @@ describe("the served pair", () => {
     await prompt.end("error");
     await ext.stopping!();
     expect(published).toEqual([]);
+  });
+});
+
+describe("when Claude Code takes the prompt into a turn", () => {
+  it("starts the pair at promptStarted, not at the accept, on the session the submit named", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(OTHER_SESSION, "startup");
+    const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT }, { start: false });
+    await prompt.accepted;
+    await settled();
+    expect(published).toEqual([]);
+    const takenAt = Date.now() - 4_000;
+    // A `/clear` between the accept and the start: the submit's session wins.
+    prompt.start(takenAt, SESSION);
+    await settled();
+    expect(published.map((p) => p.record)).toEqual([
+      expect.objectContaining({
+        phase: "start",
+        thread_id: THREAD,
+        harness_thread_id: SESSION,
+        ts: Math.floor(takenAt / 1000),
+      }),
+    ]);
+    // A second start does nothing.
+    prompt.start(Date.now(), OTHER_SESSION);
+    await prompt.end("error");
+    await settled();
+    expect(phases(published)).toEqual([
+      ["start", undefined],
+      ["end", "error"],
+    ]);
+  });
+
+  it("without a session on the start, the one known at the accept", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT }, { start: false });
+    await prompt.accepted;
+    ext.events!.sessionStarted!(OTHER_SESSION, "clear");
+    prompt.start();
+    await prompt.end("error");
+    await settled();
+    expect(published.map((p) => p.record["harness_thread_id"])).toEqual([SESSION, SESSION]);
+  });
+
+  it("gives a prompt that ends while it waits, with no turn running, its pair at once at its end", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT }, { start: false });
+    await prompt.accepted;
+    const endedAt = Date.now() - 2_000;
+    await prompt.end("timeout", endedAt, "expired");
+    await settled();
+    expect(published.map((p) => [p.record["phase"], p.record["ts"], p.record["reason"]])).toEqual([
+      ["start", Math.floor(endedAt / 1000), undefined],
+      ["end", Math.floor(endedAt / 1000), "expired"],
+    ]);
+  });
+});
+
+describe("a local turn", () => {
+  it("publishes its root's pair: start at the turn's start, end at its end, the thread its own root", async () => {
+    const { ext, published } = await started();
+    const local = localTurn(ext, SESSION);
+    const startAt = Date.now() - 9_000;
+    local.start(startAt);
+    await settled();
+    const endAt = Date.now() - 1_000;
+    local.end("ok", endAt);
+    await settled();
+    expect(phases(published)).toEqual([
+      ["start", undefined],
+      ["end", "ok"],
+    ]);
+    const [start, end] = published.map((p) => p.record);
+    expect(start).toMatchObject({
+      harness: "claude",
+      harness_thread_id: SESSION,
+      ts: Math.floor(startAt / 1000),
+    });
+    expect(end!["ts"]).toBe(Math.floor(endAt / 1000));
+    expect(start!["thread_id"]).toBe(start!["root_id"]);
+    expect(end!["thread_id"]).toBe(start!["thread_id"]);
+    for (const p of published) expect(servedSchemaErrors(p.record)).toEqual([]);
+    // Ended twice, or at stopping: nothing more.
+    local.end("ok");
+    await ext.stopping!();
+    expect(published).toHaveLength(2);
+  });
+
+  it("ends with an error when the turn failed", async () => {
+    const { ext, published } = await started();
+    const local = localTurn(ext, SESSION);
+    local.start();
+    local.end("error");
+    await settled();
+    expect(phases(published)).toEqual([
+      ["start", undefined],
+      ["end", "error"],
+    ]);
+  });
+
+  it("runs its agent-tool calls in its root: the edge's parent and root are the root, a new root per turn", async () => {
+    const { ext, published } = await started();
+    const first = localTurn(ext, SESSION);
+    first.start();
+    const [plan] = await first.toolCall("prompt_agent", () =>
+      phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_local" }),
+    );
+    await settled();
+    const root = published[0]!.record["thread_id"];
+    expect(planOf(plan)).toMatchObject({ parentId: root, rootId: root, toolCallId: "toolu_local" });
+    first.end();
+    const second = localTurn(ext, SESSION);
+    second.start();
+    const [next] = await second.toolCall("prompt_agent", () =>
+      phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_next" }),
+    );
+    expect(planOf(next).rootId).not.toBe(root);
+    second.end();
+    // After its end, no scope: the call runs as it is.
+    expect(first.toolCall("prompt_agent", () => activeTrace())).toBeUndefined();
+  });
+
+  it("guards its root: a prompt of that root while a call is open is refused with 409, and admitted after", async () => {
+    const { ext } = await started();
+    const local = localTurn(ext, SESSION);
+    local.start();
+    let settle!: (r: unknown) => void;
+    let sent!: (root: string) => void;
+    const prompted = new Promise<string>((r) => (sent = r));
+    const blocking = local.toolCall("prompt_agent", async () => {
+      const [plan] = await phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_g" });
+      sent(planOf(plan).rootId);
+      return new Promise((r) => (settle = r));
+    });
+    const root = await prompted;
+    await expect(serve(ext, { thread_id: THREAD, root_id: root }).accepted).rejects.toMatchObject({
+      code: LOOP_GUARD_CODE,
+      description: loopGuardDescription(root),
+    });
+    settle({ status: "completed", call_id: "c1", text: "done" });
+    await blocking;
+    local.end();
+    const later = serve(ext, { thread_id: THREAD, root_id: root });
+    await later.accepted;
+    await later.end("error");
+  });
+
+  it("without a session: no pair, and the scope and the guard still work", async () => {
+    const { ext, published } = await started();
+    const local = localTurn(ext);
+    local.start();
+    const [plan] = await local.toolCall("prompt_agent", () =>
+      phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_ns" }),
+    );
+    expect(planOf(plan).parentId).toBe(planOf(plan).rootId);
+    local.end();
+    await ext.stopping!();
+    expect(published).toEqual([]);
+  });
+
+  it("a NATS prompt accepted during it starts at its own turn after it, its start after the local end", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const local = localTurn(ext, SESSION);
+    const t0 = Date.now() - 20_000;
+    local.start(t0);
+    const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT }, { start: false });
+    await prompt.accepted;
+    local.end("ok", t0 + 9_000);
+    prompt.start(t0 + 9_030, SESSION);
+    await prompt.end("error", t0 + 9_500);
+    await settled();
+    const records = published.map((p) => p.record);
+    expect(records.map((r) => [r["thread_id"] === THREAD ? "nats" : "local", r["phase"]])).toEqual([
+      ["local", "start"],
+      ["local", "end"],
+      ["nats", "start"],
+      ["nats", "end"],
+    ]);
+    expect(records[2]!["ts"]).toBe(Math.floor((t0 + 9_030) / 1000));
+  });
+
+  it("holds the pair of a prompt that ended while it waited behind the turn: both records at the turn's end, after it", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const local = localTurn(ext, SESSION);
+    const t0 = Date.now() - 30_000;
+    local.start(t0);
+    const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT }, { start: false });
+    await prompt.accepted;
+    // Cancelled while it waited: nothing goes out inside the turn.
+    await prompt.end("timeout", t0 + 3_000, "expired");
+    await settled();
+    expect(published.map((p) => p.record["thread_id"] === THREAD)).toEqual([false]);
+    const endAt = t0 + 8_000;
+    local.end("ok", endAt);
+    await settled();
+    const records = published.map((p) => p.record);
+    expect(
+      records.map((r) => [r["thread_id"] === THREAD ? "nats" : "local", r["phase"], r["ts"]]),
+    ).toEqual([
+      ["local", "start", Math.floor(t0 / 1000)],
+      ["local", "end", Math.floor(endAt / 1000)],
+      ["nats", "start", Math.floor(endAt / 1000)],
+      ["nats", "end", Math.floor(endAt / 1000)],
+    ]);
+    expect(records[3]).toMatchObject({ status: "timeout", reason: "expired", version: 2 });
+  });
+
+  it("holds the pair until an answered prompt's turn has stopped, too", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const t0 = Date.now() - 30_000;
+    const running = serve(ext, { thread_id: THREAD, root_id: ROOT }, { start: false });
+    await running.accepted;
+    running.start(t0, SESSION);
+    const waiting = serve(ext, { thread_id: "c".repeat(32), root_id: ROOT }, { start: false });
+    await waiting.accepted;
+    await waiting.end("error", t0 + 1_000, "no_reply");
+    await running.end("ok", t0 + 2_000);
+    await settled();
+    expect(published.map((p) => p.record["thread_id"])).toEqual([THREAD]);
+    ext.events!.turnStopped!(SESSION, t0 + 3_000);
+    await settled();
+    expect(
+      published.map((p) => [p.record["thread_id"], p.record["phase"], p.record["ts"]]),
+    ).toEqual([
+      [THREAD, "start", Math.floor(t0 / 1000)],
+      [THREAD, "end", Math.floor((t0 + 3_000) / 1000)],
+      ["c".repeat(32), "start", Math.floor((t0 + 3_000) / 1000)],
+      ["c".repeat(32), "end", Math.floor((t0 + 3_000) / 1000)],
+    ]);
+  });
+
+  it("stopping: the local turn's end first, then the held pairs at the same instant, then the served ones", async () => {
+    const { ext, published } = await started();
+    ext.events!.sessionStarted!(SESSION, "startup");
+    const local = localTurn(ext, SESSION);
+    local.start(Date.now() - 10_000);
+    const held = serve(ext, { thread_id: "c".repeat(32), root_id: ROOT }, { start: false });
+    await held.accepted;
+    await held.end("timeout", Date.now() - 5_000, "expired");
+    const waiting = serve(ext, { thread_id: THREAD, root_id: ROOT }, { start: false });
+    await waiting.accepted;
+    await ext.stopping!();
+    const records = published.map((p) => p.record);
+    const name = (r: Record<string, unknown>): string =>
+      r["thread_id"] === THREAD ? "waiting" : r["thread_id"] === "c".repeat(32) ? "held" : "local";
+    expect(records.map((r) => [name(r), r["phase"], r["status"], r["reason"]])).toEqual([
+      ["local", "start", undefined, undefined],
+      ["local", "end", "ok", undefined],
+      ["held", "start", undefined, undefined],
+      ["held", "end", "timeout", "expired"],
+      ["waiting", "start", undefined, undefined],
+      ["waiting", "end", "error", "shutdown"],
+    ]);
+    expect(new Set(records.slice(1).map((r) => r["ts"])).size).toBe(1);
   });
 });
 

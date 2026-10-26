@@ -8,7 +8,8 @@
 // service is up — and the handler drives the events in the server's order,
 // standing in for Claude Code: `sessionStarted` from the hook's file before
 // the prompt, `promptAccepted` in the handler, which takes a snapshot of its
-// context and stays open; one `prompt_agent` arriving as a separate MCP
+// context and stays open, and `promptStarted` as Claude Code takes the
+// prompt into a turn of its own; one `prompt_agent` arriving as a separate MCP
 // call, re-entered through the snapshot and run inside `aroundToolCall`;
 // the reply; `promptEnded` with the reply's time; then the `Stop` hook's
 // `turnStopped` a moment later, the closing call written in between.
@@ -173,6 +174,8 @@ describe.skipIf(!bin)(
         const enter = AsyncLocalStorage.snapshot();
         // Synchronous, in the handler's context, after every interceptor.
         ext.events!.promptAccepted!(served);
+        // Claude Code takes the prompt into a turn of its own at once.
+        ext.events!.promptStarted!(served, Date.now(), SESSION);
         let outcome: Outcome = "ok";
         let endedAt: number | undefined;
         try {

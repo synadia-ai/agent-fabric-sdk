@@ -50,6 +50,7 @@ import {
   servedPublisher,
   type AgentExtension,
   type AgentExtensionContext,
+  type LocalTurn,
   type ServedPublisher,
   type ServedRequest,
   type ServedTurn,
@@ -126,7 +127,9 @@ export function createFabricExtension(
   // there is never one: no record of any kind is published.
   let publisher: ServedPublisher | undefined;
   const served = new Map<string, Served>();
-  const scopeOf = (request: ServedRequest | undefined): TraceScope | undefined =>
+  // The contract's `aroundToolCall` may name a local turn; OpenClaw is
+  // prompted over NATS only and never does, and no served id equals one.
+  const scopeOf = (request: ServedRequest | LocalTurn | undefined): TraceScope | undefined =>
     request === undefined ? undefined : served.get(request.id)?.scope;
 
   let warnedIdentityOff = false;

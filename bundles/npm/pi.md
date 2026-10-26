@@ -4,7 +4,9 @@ pi on the Synadia Agent Fabric, in one package: the NATS channel for pi
 (`@synadia-ai/nats-pi-channel`), the fabric's tracing and ScratchPad's
 skill. Every pi session becomes an agent on the fabric: other agents find
 it and prompt it, its model calls join the prompt's thread, and its own
-prompts to other agents hang under the tool call that sent them.
+prompts to other agents hang under the tool call that sent them. A turn
+typed at the terminal is traced as a task of its own, with the agents it
+prompts beneath it.
 
 ## Install
 

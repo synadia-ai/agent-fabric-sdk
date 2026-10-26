@@ -50,6 +50,16 @@
 // one value with one meaning. Without tracing's interceptor before it the
 // guard sees no scope and admits everything.
 //
+// A local turn, a turn the harness runs that no served prompt started (typed
+// at its terminal), is guarded like a served request. The add-on mints its
+// root (`rootTraceScope()`), binds it as the turn's scope, and registers it
+// with `open(scope)` from the turn's start to its end; the function `open`
+// returns removes it. The prompt interceptor and `aroundToolCall` key by the
+// bound scope object, so they work for it unchanged: a child the turn's
+// model prompts carries the turn's root, and a prompt of that root arriving
+// while the model waits is refused at once instead of queueing behind the
+// turn it would wait for.
+//
 // Stated honestly: the guard refuses a legitimate second prompt of the same
 // tree that arrives while the harness waits in it, a sibling delegation the
 // same coordinator issues with `wait: false`. The harness serves one turn at
@@ -94,13 +104,19 @@ export interface LoopGuard {
   /**
    * For the add-on's `aroundToolCall`: runs `run` once, synchronously, and
    * returns its value untouched, a promise included. `scope` is the served
-   * request's, the one tracing bound around its handler; with another or
-   * none the call is only run.
+   * request's, the one tracing bound around its handler, or an open local
+   * turn's; with another or none the call is only run.
    */
   aroundToolCall<T>(scope: TraceScope | undefined, run: () => T): T;
-  /** `true` while a served request of tree `rootId` is open. */
+  /**
+   * For a local turn: guard `scope`, the turn's own, as a served request is
+   * guarded, until the returned function is called. Calling it again does
+   * nothing.
+   */
+  open(scope: TraceScope): () => void;
+  /** `true` while a served request or a local turn of tree `rootId` is open. */
   serving(rootId: string): boolean;
-  /** `true` while a served request of tree `rootId` waits on a call it made. */
+  /** `true` while a served request or a local turn of tree `rootId` waits on a call it made. */
   waiting(rootId: string): boolean;
 }
 
@@ -134,6 +150,21 @@ export function loopGuard(): LoopGuard {
     return false;
   };
 
+  const register = (scope: TraceScope, entry: Served): void => {
+    byScope.set(scope, entry);
+    let ofRoot = byRoot.get(entry.rootId);
+    if (ofRoot === undefined) byRoot.set(entry.rootId, (ofRoot = new Set()));
+    ofRoot.add(entry);
+  };
+
+  const unregister = (scope: TraceScope, entry: Served): void => {
+    if (byScope.get(scope) === entry) byScope.delete(scope);
+    const ofRoot = byRoot.get(entry.rootId);
+    if (ofRoot === undefined) return;
+    ofRoot.delete(entry);
+    if (ofRoot.size === 0) byRoot.delete(entry.rootId);
+  };
+
   // One agent-tool call of `entry` has ended, with `result` when it returned.
   const toolCallEnded = (entry: Served, returned: boolean, result?: unknown): void => {
     entry.running -= 1;
@@ -157,16 +188,11 @@ export function loopGuard(): LoopGuard {
           throw new RequestRejectedError(LOOP_GUARD_CODE, loopGuardDescription(rootId));
         }
         const entry: Served = { rootId, waiting: false, running: 0, open: 0 };
-        byScope.set(scope, entry);
-        let ofRoot = byRoot.get(rootId);
-        if (ofRoot === undefined) byRoot.set(rootId, (ofRoot = new Set()));
-        ofRoot.add(entry);
+        register(scope, entry);
         try {
           await next();
         } finally {
-          byScope.delete(scope);
-          ofRoot.delete(entry);
-          if (ofRoot.size === 0) byRoot.delete(rootId);
+          unregister(scope, entry);
         }
       },
     },
@@ -199,6 +225,16 @@ export function loopGuard(): LoopGuard {
         toolCallEnded(entry, true, value);
       }
       return value;
+    },
+    open(scope) {
+      const entry: Served = { rootId: scope.rootId, waiting: false, running: 0, open: 0 };
+      register(scope, entry);
+      let closed = false;
+      return () => {
+        if (closed) return;
+        closed = true;
+        unregister(scope, entry);
+      };
     },
     serving: (rootId) => byRoot.has(rootId),
     waiting,

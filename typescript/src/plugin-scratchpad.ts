@@ -59,7 +59,7 @@ import {
   type Logger,
 } from "@synadia-ai/agents";
 import { grantRequestEndpoint } from "./grant-request.js";
-import type { AgentExtensionContext, ServedRequest } from "./plugin-contract.js";
+import type { AgentExtensionContext } from "./plugin-contract.js";
 import {
   findReferences,
   granteeFromIdentity,
@@ -279,16 +279,26 @@ export function exportScratchPad(settings: ScratchPadSettings, env: Env): void {
 }
 
 /**
- * The per-prompt variables, keyed to one request at a time: `enter` sets
- * them for a request, `leave` clears them only if that request still holds
- * them, so the end of a prompt never clears the next one's.
+ * What holds the per-prompt variables: a served request, or a local turn,
+ * which has no caller. Ids are the plugin's, distinct between the two.
+ */
+export interface PromptEnvHolder {
+  readonly id: string;
+  readonly caller?: string;
+}
+
+/**
+ * The per-prompt variables, keyed to one holder at a time: `enter` sets
+ * them for a served request or a local turn, `leave` clears them only if
+ * that holder still has them, so the end of a prompt never clears the next
+ * one's.
  */
 export class ServedPromptEnv {
   #holder: string | undefined;
 
   constructor(private readonly env: Env) {}
 
-  enter(request: ServedRequest, scope: TraceScope | undefined): void {
+  enter(request: PromptEnvHolder, scope: TraceScope | undefined): void {
     this.#clear();
     this.#holder = request.id;
     if (scope !== undefined) {
@@ -306,7 +316,7 @@ export class ServedPromptEnv {
     }
   }
 
-  leave(request: ServedRequest): void {
+  leave(request: PromptEnvHolder): void {
     if (this.#holder === request.id) {
       this.#clear();
       this.#holder = undefined;

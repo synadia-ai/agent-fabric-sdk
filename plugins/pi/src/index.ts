@@ -43,6 +43,7 @@ export {
   type AgentExtensionSettings,
   type PluginHarness as Harness,
   type HarnessEvents,
+  type LocalTurn,
   type Outcome,
   type ServedRequest,
 } from "@synadia-ai/agent-fabric";
