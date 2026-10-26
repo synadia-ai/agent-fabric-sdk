@@ -723,12 +723,17 @@ by the log (`src/turns.ts`), once a submit with a prompt id has been seen:
   2026-10-26 with three NATS prompts queued behind a typed turn): each
   fires its own `UserPromptSubmit`, one tag, its own `prompt_id`, about
   20 ms apart, and one turn runs them all under the last id. So a channel
-  submit within a second of the one before, while the turn that one began
-  has no other record, joins that turn, which goes by the later id from
-  then on; the Stop hook reads the log the same way;
+  submit that follows another with nothing of the turn that one began
+  between (no tool call, Stop, failure or other submit) joins that turn,
+  which goes by any of its ids from then on, however long the hooks took
+  (30 s bound it, against a lost Stop line); the Stop hook reads the log
+  the same way;
 - a channel prompt the server sent before it started (the tag's `ts`, on
   the submit line) binds none of its requests: an earlier server's
-  request ids restart at 1 too.
+  request ids restart at 1 too;
+- the hooks' records are read from a mark taken before the channel can
+  take a prompt, so a prompt Claude Code takes while the extensions start
+  is followed, and a log that already holds prompt ids binds from there.
 
 The served prompts' ends follow the binding too: a prompt owns the turn it
 was taken into, and is ended when that turn ends (at its `Stop` with the
