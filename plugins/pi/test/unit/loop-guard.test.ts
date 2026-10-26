@@ -10,7 +10,7 @@ import {
   loopGuard,
   loopGuardDescription,
 } from "../../src/index.js";
-import { extensionContext, phaseOne, serve } from "../support/fake-plugin.js";
+import { extensionContext, phaseOne, runLocalTurn, serve } from "../support/fake-plugin.js";
 
 const T1 = "1".repeat(32);
 const R = "2".repeat(32);
@@ -103,6 +103,57 @@ describe("the loop guard", () => {
     await toolCall("wait_agent", () => Promise.resolve({ status: "completed", call_id: "c2" }));
     await admitted("r6", "8");
     await first.end();
+  });
+
+  it("guards a local turn's root: a prompt of it is refused while the turn's model waits, admitted once the call returned", async () => {
+    const ext = createExtension(extensionContext(), NO_ENV);
+    const local = runLocalTurn(ext);
+    const root = ext.events!.providerHeaders!(local.turn)!["X-Synadia-Root-ID"]!;
+
+    // The turn's model prompts a child, which prompts PI back while the call is open.
+    let settle!: (r: unknown) => void;
+    let sent!: () => void;
+    const prompted = new Promise<void>((r) => (sent = r));
+    const call = ext.events!.aroundToolCall!(local.turn, "prompt_agent", async () => {
+      await phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_pi_local" });
+      sent();
+      return new Promise((r) => (settle = r));
+    });
+    await prompted;
+    const back = serve(ext, "r1", { thread_id: "4".repeat(32), root_id: root }, "ACME.child");
+    await expect(back.accepted).rejects.toMatchObject({
+      name: "RequestRejectedError",
+      code: LOOP_GUARD_CODE,
+      description: loopGuardDescription(root),
+    });
+
+    // Another tree is admitted meanwhile; the root once the call returned.
+    const other = serve(ext, "r2", { thread_id: "5".repeat(32), root_id: S });
+    await other.accepted;
+    await other.end();
+    settle({ status: "completed", call_id: "c1", text: "done" });
+    await call;
+    const after = serve(ext, "r3", { thread_id: "6".repeat(32), root_id: root });
+    await after.accepted;
+    await after.end();
+    local.end();
+  });
+
+  it("lifts a local turn's mark at its end, even with a call left open", async () => {
+    const ext = createExtension(extensionContext(), NO_ENV);
+    const local = runLocalTurn(ext);
+    const root = ext.events!.providerHeaders!(local.turn)!["X-Synadia-Root-ID"]!;
+    await ext.events!.aroundToolCall!(local.turn, "prompt_agent", async () => {
+      await phaseOne(ext.promptInterceptors!, { toolCallId: "toolu_pi_open" });
+      return { status: "running", call_id: "c2", open_calls: 1 };
+    });
+    await expect(
+      serve(ext, "r1", { thread_id: "7".repeat(32), root_id: root }).accepted,
+    ).rejects.toMatchObject({ code: LOOP_GUARD_CODE });
+    local.end();
+    const later = serve(ext, "r2", { thread_id: "8".repeat(32), root_id: root });
+    await later.accepted;
+    await later.end();
   });
 
   it("keeps the description on one line, under the SDK's cap", () => {

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, Agents, AgentToolsPromptContext } from "@synadia-ai/agents";
 import { READS_REFERENCES_KEY } from "@synadia-ai/agent-fabric";
 import createExtension, { SCRATCHPAD_OPTION, ScratchPadHandOn, SP_VARS } from "../../src/index.js";
-import { extensionContext, recordingLogger, serve } from "../support/fake-plugin.js";
+import { extensionContext, recordingLogger, runLocalTurn, serve } from "../support/fake-plugin.js";
 import { makeReference, MemoryScratchPad } from "../support/scratchpad-fake.js";
 
 const ADDRESS = "agents.prompt.pi.team.editor";
@@ -204,6 +204,21 @@ describe("per served prompt", () => {
     expect(env[SP_VARS.callerAccount]).toBe("AOTHER");
     await second.end();
     expect(env[SP_VARS.threadId]).toBeUndefined();
+  });
+
+  it("sets a local turn's trace, its own root, and no caller, from its start to its end", async () => {
+    const env = configured();
+    const { ext } = await started(env, { stateDir: home });
+    const local = runLocalTurn(ext);
+    const headers = ext.events!.providerHeaders!(local.turn)!;
+    expect(env[SP_VARS.threadId]).toBe(headers["X-Synadia-Thread-ID"]);
+    expect(env[SP_VARS.rootId]).toBe(env[SP_VARS.threadId]);
+    expect(env[SP_VARS.callerAccount]).toBeUndefined();
+    expect(env[SP_VARS.callerUser]).toBeUndefined();
+    local.end();
+    expect(env[SP_VARS.threadId]).toBeUndefined();
+    expect(env[SP_VARS.rootId]).toBeUndefined();
+    expect(env[SP_VARS.volume]).toBe("pivol7");
   });
 
   it("sets nothing per prompt while ScratchPad is off", async () => {

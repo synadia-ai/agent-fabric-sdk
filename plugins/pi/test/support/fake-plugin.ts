@@ -4,8 +4,9 @@
 // runs the client's prompt interceptors' first phase the way `Agents` does
 // (in order, in the caller's async context), and drives the events in the
 // plugin's order — `promptAccepted` inside the handler, the request open
-// until the plugin's completion promise settles, `promptEnded` after. No
-// server, no PI.
+// until the plugin's completion promise settles, `promptEnded` after — and
+// a local turn's two events, as the plugin calls them at PI's
+// `agent_start` and `agent_settled`. No server, no PI.
 
 import type { RequestInterceptor, RequestInterceptorContext } from "@synadia-ai/agent-service";
 import type {
@@ -19,6 +20,7 @@ import type {
 import type {
   AgentExtension,
   AgentExtensionContext,
+  LocalTurn,
   Outcome,
   ServedRequest,
 } from "../../src/index.js";
@@ -200,6 +202,29 @@ export function serve(
       completion.resolve();
       await done;
       ext.events?.promptEnded?.(request, outcome, Date.now());
+    },
+  };
+}
+
+/** A local turn, from `localTurnStarted` to `end()`. */
+export interface RunningLocalTurn {
+  readonly turn: LocalTurn;
+  /** End the turn as the plugin would, at PI's `agent_settled`. */
+  end(outcome?: Outcome): void;
+}
+
+/**
+ * Run a local turn as the plugin does: a run no served prompt started,
+ * named `local-<n>`, with `localTurnStarted` at its start and
+ * `localTurnEnded` at `end()`.
+ */
+export function runLocalTurn(ext: AgentExtension, id = "local-1"): RunningLocalTurn {
+  const turn: LocalTurn = Object.freeze({ id, local: true as const });
+  ext.events?.localTurnStarted?.(turn, Date.now());
+  return {
+    turn,
+    end(outcome: Outcome = "ok") {
+      ext.events?.localTurnEnded?.(turn, outcome, Date.now());
     },
   };
 }
