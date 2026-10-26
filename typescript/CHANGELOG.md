@@ -18,6 +18,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `aroundToolCall` and `providerHeaders` take a served request or a local turn.
   `ServedPromptEnv`'s `enter` and `leave` take any `{ id, caller? }` (`PromptEnvHolder`), so a
   local turn, which has no caller, holds the variables too.
+- The plugin contract gains Claude Code's `promptStarted(request, atMs, sessionId?)`: Claude Code
+  took the served prompt into a turn, its own or, folded, the running one. In step with
+  `synadia-agents`.
 
 ### Changed
 

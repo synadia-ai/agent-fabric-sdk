@@ -98,7 +98,8 @@ export type EndReason = "final_text" | "no_reply" | "shutdown" | "delivery" | "e
  * keeps its timing. Every harness calls the first three; PI and Claude Code
  * `localTurnStarted` and `localTurnEnded`; PI also `aroundInject` and
  * `providerHeaders`, OpenClaw `aroundDispatch`, Claude Code
- * `sessionStarted` and `turnStopped`. One shape serves all three.
+ * `promptStarted`, `sessionStarted` and `turnStopped`. One shape serves all
+ * three.
  */
 export interface HarnessEvents {
   /** Inside the prompt handler, after every interceptor ran. */
@@ -146,6 +147,16 @@ export interface HarnessEvents {
    * calls `run` once and returns its promise.
    */
   aroundDispatch?<T>(request: ServedRequest, run: () => Promise<T>): Promise<T>;
+  /**
+   * Claude Code: Claude Code took the served prompt into a turn, the turn
+   * it started or, folded into a running turn, at the fold; `atMs` the
+   * hook's time, `sessionId` the session the turn runs in, when known. A
+   * prompt accepted while a turn runs waits until then; one that ends while
+   * it waits is never started. Until Claude Code's hooks have reported a
+   * submitted prompt with its id, the plugin starts a prompt as it accepts
+   * it.
+   */
+  promptStarted?(request: ServedRequest, atMs: number, sessionId?: string): void;
   /** Claude Code: a session started, from its hook. */
   sessionStarted?(sessionId: string, source: string): void;
   /** Claude Code: a turn stopped, from its hook. */
