@@ -4,6 +4,15 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The `end` of a prompt whose OpenClaw run failed carries the reason `no_reply` (served
+  record version 2). The channel now ends such a prompt with an error and passes
+  `promptEnded` that reason; the add-on hands it to `settle`, as the Claude Code add-on does.
+  A dispatch that threw, or a dispatch error OpenClaw reported, still carries none.
+
 ## [0.3.0] — 2026-10-26
 
 ### Added
