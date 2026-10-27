@@ -1071,9 +1071,14 @@ one machine:
    by path (step 3), also `SCRATCHPAD_BIN=<add-on>/skill/scratchpad/bin/sp-<os>-<arch>`:
    2026.10's copy of that package holds only its `dist/` and `package.json`,
    so the add-on's own sp is not beside its module (seen 2026-10-27). Without
-   one the add-on warns once at start and leaves its own steps out, handing
-   on references and answering grant requests; the model's `scripts/sp` is
-   not affected. Installed as the one npm package, the copy holds the skill.
+   one the add-on warns once at start and leaves out its own steps (handing
+   on references, answering grant requests): it can grant nothing, so a
+   reference in `prompt_agent` is removed with a note, as for a receiver that
+   reads none, a prompt of nothing but references is refused, and grant
+   requests go unanswered. A `SCRATCHPAD_BIN` that is set but missing or not
+   executable gets a warning of its own: the add-on passes it over, but the
+   model's `scripts/sp` takes it with no fallback and refuses every call.
+   Installed as the one npm package, the copy holds the skill.
 
 **Claude Code**, from the harness configuration of the fabric's deployment
 on one machine (the examples' until 2026-09-26), measured on Claude Code

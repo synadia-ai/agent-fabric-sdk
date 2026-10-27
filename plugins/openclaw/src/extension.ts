@@ -161,7 +161,8 @@ export function createFabricExtension(
     ...(handOn !== undefined
       ? {
           // References in OpenClaw's `prompt_agent`: granted to a receiver
-          // that reads them, removed with a note for any other.
+          // that reads them, removed with a note for any other,
+          // and for every receiver while the add-on has no sp (no grant can be made).
           toolExtensions: [handOn],
           // So a caller's `prompt_agent` hands references to OpenClaw.
           metadata: { [READS_REFERENCES_KEY]: "true" },

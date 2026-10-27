@@ -26,7 +26,8 @@
 // so a caller's `prompt_agent` hands them to it. And references its model
 // puts into its own `prompt_agent` go through the ScratchPad extension, as
 // an SDK-built agent's do: granted to a receiver that reads references,
-// removed with a note for any other (`ScratchPadHandOn`). And it answers
+// removed with a note for any other, and for every receiver while the add-on
+// has no sp (`ScratchPadHandOn`). And it answers
 // grant requests for what it published, as an SDK-built agent does
 // (`grant-request.ts`): the grants its model made through `scripts/sp`, which
 // the extension does not see, are recorded by the wrapper in a file the
