@@ -4,7 +4,7 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2] — 2026-10-27
 
 ### Fixed
 
@@ -24,6 +24,12 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A `SCRATCHPAD_BIN` that is set but missing or not executable is warned about once at start,
   with its path and why: the add-on passes it over, but the skill's `scripts/sp` takes it as
   it is and refuses every call until it names an executable sp or is unset.
+- The bundled OpenClaw channel plugin from `synadia-agents` (#241) stops within about 3 s, inside
+  the 5 s OpenClaw gives it: its cleanup runs once and every step is bounded. Before, OpenClaw's
+  abort and its `stopAccount` both ran it, and the stop took 5 s or more, with "stopAccount
+  exceeded 5000ms" and "did not settle". A stop during a service start takes that service down
+  too, OpenClaw's abort ends a start that never settles, and a start a newer one overtook stops
+  only what it made itself.
 
 ## [0.3.1] — 2026-10-27
 
