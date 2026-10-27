@@ -213,10 +213,10 @@ text. The console shows the run under the tool call that started it.
 Their tests (`test/start-workflow.test.ts`, `tests/test_start_workflow.py`) run
 on a throwaway `nats-server` with JetStream and one account (file storage only,
 `max_bytes` required on every stream) and the durable engine spawned on it,
-standalone, on the prefix `de`: built from `../durable-engine` at the commit
-the thin SDK's `engine.pin` names, with a test licence the tests mint, or
-`DE_ENGINE` and `DE_LICENCE` (`test/harness/engine.ts`,
-`tests/harness/engine.py`). The engine provisions its resources at start. A
+standalone, on the prefix `de`. The engine comes from Synadia: `DE_ENGINE`
+is the path of its binary and `DE_LICENCE` its licence file
+(`test/harness/engine.ts`, `tests/harness/engine.py`); without `DE_ENGINE`
+these tests skip. The engine provisions its resources at start. A
 prompt's tool call starts the run, and the tests check that the journal's
 start entry has the run id `<served thread>-<tool call id>` and the trace in
 its input, that the step's model call reached the stub proxy with the two

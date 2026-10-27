@@ -65,7 +65,7 @@ else
     curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
       --output "$stage/download/$name" \
       "https://github.com/synadia-ai/agent-fabric-sdk/releases/download/$version/$name" \
-      || fail "download failed; use --download gh for an authenticated release"
+      || fail "download failed; check the version and the network, or use --download gh"
   done
 fi
 archive=$stage/download/$asset

@@ -8,9 +8,9 @@
 #   make agent-ts   run the TypeScript agent from typescript/.env
 #   make agent-py   run the Python agent from python/.env
 #   make test       both agents' tests (test-ts, test-py); nats-server on PATH.
-#                   The durable tests spawn the durable engine: DE_ENGINE (a
-#                   -dev build) and DE_LICENCE, or built from ../durable-engine
-#                   at the thin SDK's engine.pin with Go; they skip without it
+#                   The durable tests spawn the durable engine from Synadia:
+#                   DE_ENGINE (its binary) and DE_LICENCE (its licence file);
+#                   they skip without DE_ENGINE
 
 # Until the protocol SDK is published, it comes from this checkout, next to
 # this repository, on this branch. `make setup` refuses another branch unless
@@ -21,7 +21,7 @@ SDK_BRANCH    := main
 ANY_BRANCH    ?=
 # The thin durable SDK, for the durable workflows (AGENT_DURABLE=1, the
 # durable agent): from its checkout next to this repository, until it is
-# published. The engine behind it is ../durable-engine, built by the tests.
+# published. The engine behind it comes from Synadia (DE_ENGINE).
 DE_DIR        := durable-sdk
 
 .PHONY: setup agent-ts test-ts agent-py test-py test test-reply-controls

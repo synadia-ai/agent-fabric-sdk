@@ -11,11 +11,11 @@ TypeScript are proposals until they are built; where a hook the add-on
 needs does not exist yet, §3.5 names the gap.
 
 The repos: `synadia-agents` (public; the protocol SDKs and the plugins, on
-branch `sdk-release-rollout` at `40fab3a`), this repo (`agent-fabric-sdk`,
-private while it is built; the fabric package and, under `plugins/`, the
-add-ons), and the fabric's design documents (the contracts). The
-plugins' state before the SDK split is `synadia-agents` `fbd16ab` (PR #201,
-2026-09-21); the split is `f2ff6ed` (PR #205, 2026-09-22).
+branch `sdk-release-rollout` at `40fab3a`), this repo (`agent-fabric-sdk`;
+the fabric package and, under `plugins/`, the add-ons), and the fabric's
+design documents (the contracts). The plugins' state before the SDK split
+is `synadia-agents` `fbd16ab` (PR #201, 2026-09-21); the split is
+`f2ff6ed` (PR #205, 2026-09-22).
 
 ## 1. The shape in one screen
 
@@ -61,9 +61,8 @@ READMEs, not in doc names.
 The split removed it from both SDKs and from the plugins (the diff
 `fbd16ab..f2ff6ed` under `agents/` is 3266 lines, tests included) and
 rebuilt it here on the SDK's hooks. Since then the three harnesses are not
-traced at all: their model calls stand as one-call threads outside the tree
-(`reference-agents/docs/findings.md` F16). Full tracing for these
-three harnesses is the fabric's headline promise, so this work is
+traced at all: their model calls stand as one-call threads outside the
+tree. Full tracing for these three harnesses is the fabric's headline promise, so this work is
 release-critical.
 
 ## 2. The extension point the public plugin exposes
@@ -557,8 +556,9 @@ thread the caller's edge created, PI the executor, its depth `full` in the
 agents view; the `asked` row of the caller's story names PI. A delegation
 PI's model makes is a grandchild under its tool call. No outcome or
 duration from a pair: PI publishes none, and the thread's calls carry its
-timing. `reference-agents/docs/findings.md` F16 item 4 describes the
-picture without the add-on; the same run with the add-on is the check. A
+timing. Without the add-on, PI's child thread is empty, its model calls
+are a root of their own, and its depth is `basic`; the same run with the
+add-on is the check. A
 turn typed at PI's terminal is one task with PI as its root, asked by no
 known caller, all its model calls in one thread, and the agents it prompts
 beneath it.
@@ -911,7 +911,7 @@ and so on). One package would carry three harness pieces every SDK-built
 agent installs and never uses, its version would bump for a fix in one
 harness, and the OpenClaw symbol and the Claude Code session shape would
 sit in the package the Python twin mirrors, where they have no twin. Three
-packages, each a few hundred lines, cost three `package.json` files and
+packages, each a few hundred lines, take three `package.json` files and
 nothing else.
 
 **TypeScript only.** All three plugins are TypeScript; there is no Python
@@ -942,12 +942,13 @@ plugin installed apart from its add-on.
 0.3.1 is Claude Code's bundle, the plugin `nats-channel`, its `.mcp.json`
 naming the bundled add-on. Claude Code installs plugins from a marketplace,
 and a marketplace entry may have an npm source: this repo's
-`.claude-plugin/marketplace.json`, `agent-fabric`, names the package, and
-until the repo is public the same file in any folder serves (`claude
-plugin marketplace add <folder>`, `claude plugin install
-nats-channel@agent-fabric`). The channel is not on Claude Code's list, so it
-loads with `--dangerously-load-development-channels`, which shows a warning
-and works only in an interactive session: in a container Claude Code runs
+`.claude-plugin/marketplace.json`, `agent-fabric`, names the package
+(`claude plugin marketplace add synadia-ai/agent-fabric-sdk`, `claude plugin
+install nats-channel@agent-fabric`), and the same file in any folder serves
+as well (`claude plugin marketplace add <folder>`). The channel is not on
+Claude Code's list, so it loads with
+`--dangerously-load-development-channels`, which shows a warning and works
+only in an interactive session: in a container Claude Code runs
 in tmux and its dialogs are answered by attaching. Measured on 2026-10-11
 with Claude Code 2.1.296: installed from a local registry through such a
 marketplace, connected by environment alone, signed, traced, answering a
@@ -1242,7 +1243,7 @@ Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
 In a harness it does so through ScratchPad's skill and the sp command line,
 which the model runs through the harness's own shell tool. This section is
-the design, the answers it rests on per harness, what it costs, and what
+the design, the answers it rests on per harness, what it takes, and what
 the operator has to do. It replaces the "not in a harness" of §3.1 and §7
 for level B.
 
@@ -1490,7 +1491,7 @@ At that measurement, the add-ons' `dist/` directories were 36–64 KB each.
 The size estimates below come from that measurement; the current packaging
 choice includes all four executables in each add-on.
 
-| Option | Install cost | Publishing cost | Verdict |
+| Option | To install | To publish | Verdict |
 | --- | --- | --- | --- |
 | **All four in each add-on package** | 12.5 MB download, 30.0 MB on disk, three quarters of it for other platforms | none beyond the add-on | current choice: downloaded and verified during packaging, one pin |
 | **Per-platform optional packages** (`…-sp-<os>-<arch>`, with npm's `os` and `cpu` fields, as `optionalDependencies` of each add-on) | about 3 MB download, 7.5 MB on disk; shared by the three add-ons | four more packages per sp pin | earlier proposal, not implemented; omitted optional dependencies could leave the binary out |

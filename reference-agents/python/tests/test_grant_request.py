@@ -124,7 +124,7 @@ binary = nats_server_on_path()
 @pytest.mark.skipif(binary is None, reason="nats-server not on PATH")
 async def test_the_grant_request_between_two_agents() -> None:
     users = {name: new_user() for name in ("creator", "requester", "stranger", "third", "fourth")}
-    # On a server without accounts every user is in ``$G`` (``docs/findings.md`` F3).
+    # On a server without accounts every user is in ``$G``.
     identity = {name: f"$G.{u.public_key}" for name, u in users.items()}
     pad = MemoryPad()
 

@@ -52,7 +52,7 @@ npm run typecheck
 npm test
 ```
 
-`@synadia-ai/agents` and `@synadia-ai/agent-service` are the protocol SDK, the agent tools (`AgentTools`) among it; `@synadia-ai/agent-fabric` is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratchPadExtension`, the grant request), and the ScratchPad they run on (`scratchPadFromEnv`). The agent wires them in `src/agent.ts`: `fabricTracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, and the grant endpoint. Use npm, not bun (`../docs/findings.md` F2). The SDK keeps the served prompt's trace scope on `globalThis`, so a process that holds two copies of a package still hangs child threads under the right parent (F1).
+`@synadia-ai/agents` and `@synadia-ai/agent-service` are the protocol SDK, the agent tools (`AgentTools`) among it; `@synadia-ai/agent-fabric` is the fabric's tracing, which the SDK does not carry, the rules for ScratchPad references on the tools (`scratchPadExtension`, the grant request), and the ScratchPad they run on (`scratchPadFromEnv`). The agent wires them in `src/agent.ts`: `fabricTracing()`'s prompt interceptor on the `Agents` client; the ScratchPad from the environment; the extension and `AgentTools` over that client; on the `AgentService` the request interceptors of tracing, the tools and the extension, in that order, the heartbeat extras, and the grant endpoint. Use npm, not bun: bun cannot install a project that links both SDK packages from a checkout by `file:`. The SDK keeps the served prompt's trace scope on `globalThis`, so a process that holds two copies of a package still hangs child threads under the right parent.
 
 **Working on the packages themselves.** `make setup` in `reference-agents/` installs from npm and then links the four packages over that install, from their checkouts: the protocol SDK from `../../../synadia-agents` on its branch (the `Makefile` names it), the thin durable SDK from `../../../durable-sdk`, and this repository's fabric package, `../../typescript`, each built first. The links leave `package.json` and the lockfile as they are, so what you build there is what the agent runs next. A plain `npm install` here puts the published versions back; `make setup` again links them. It builds only what changed, so it is safe to run again.
 
@@ -84,7 +84,7 @@ The agent needs a fabric that already stands: a NATS server it has credentials f
 | `all` | the six: also `prompt_agent`'s `wait: false`, `wait_agent`, `cancel_agent` and `list_agent_calls`, for a model that runs prompts side by side |
 | `none` | nothing, for a role that must answer itself: a model with the tools in reach may delegate what it was asked, even back to its caller |
 
-Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six (`../docs/findings.md` F18).
+Every definition is input tokens on every model call. On an agent that delegates, the three are about 935 tokens a call lighter than the six.
 
 ## Your own tools
 

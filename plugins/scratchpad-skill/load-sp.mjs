@@ -294,7 +294,7 @@ async function publicDownload(url, redirects = 0) {
   }
   check(
     response.ok,
-    `download failed (${response.status}); use --download gh for an authenticated release`,
+    `download failed (${response.status}); check the version and the network, or use --download gh`,
   );
   const chunks = [];
   let count = 0;

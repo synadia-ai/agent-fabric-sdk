@@ -11,7 +11,7 @@ The protocol source is `synadia-agents` main at `a204518` (#240): OpenClaw's cha
 The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7.
 The Fabric source is `95f67d6`: the three add-ons at 0.3.1; OpenClaw's served `end` carries the reason `no_reply` in that case (#84).
 ScratchPad is unchanged from `bundles-v0.1.3`: `sp-v0.1.6`.
-Checked before publication with fabric v0.12.3 against staging, in a copy of a test home: each archive installed with `fabric plugins install --from`; a pi, an OpenClaw and a Claude Code agent connected with `fabric connect`, run the CLI's way, signed, each answering a console prompt.
+Checked before publication with fabric v0.12.3 against a test deployment, in a copy of a test home: each archive installed with `fabric plugins install --from`; a pi, an OpenClaw and a Claude Code agent connected with `fabric connect`, run the CLI's way, signed, each answering a console prompt.
 An OpenClaw turn the model proxy refused with `400` ended the console's prompt with the `500` error frame and no reply, its thread `error` and its served `end` with the reason `no_reply`; pi's and Claude Code's `prompt_agent` to it returned `failed` with the same error.
 A turn typed at pi and at Claude Code each made one task rooted at the typed agent, with OpenClaw's thread beneath; Claude Code's stored model calls name its requests `<8 hex>-<n>`; a console prompt folded into a running Claude Code turn got its own reply, and the typed task kept its call from before the fold.
 Each npm package holds its archive's plugin folder file for file.
@@ -24,7 +24,7 @@ The protocol source is `synadia-agents` main at `1ed73c1`: an explicit server in
 The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7 (#234, first bundled here).
 The Fabric source is `e770d25`: the three add-ons at 0.3.0; a turn typed at pi or Claude Code is a task of its own, with the agents it prompts beneath it (#82); `sp` takes the connection the channel takes (#81); ScratchPad's reusable lifetimes, bootstrap import and admission slots (#67, #68, #69); the Claude Code marketplace range is `^0.3.0`.
 ScratchPad is unchanged from `bundles-v0.1.2`: `sp-v0.1.6`.
-Checked before publication with fabric v0.12.2 against staging, in a copy of a test home: each archive installed with `fabric plugins install --from`; a pi, an OpenClaw and a Claude Code agent connected with `fabric connect`, run the CLI's way, signed, each answering a console prompt; a turn typed at pi and at Claude Code each made one task rooted at the typed agent, its model calls in it and OpenClaw's thread beneath; a console prompt folded into a running Claude Code turn got its own reply, and the typed task kept its call from before the fold.
+Checked before publication with fabric v0.12.2 against a test deployment, in a copy of a test home: each archive installed with `fabric plugins install --from`; a pi, an OpenClaw and a Claude Code agent connected with `fabric connect`, run the CLI's way, signed, each answering a console prompt; a turn typed at pi and at Claude Code each made one task rooted at the typed agent, its model calls in it and OpenClaw's thread beneath; a console prompt folded into a running Claude Code turn got its own reply, and the typed task kept its call from before the fold.
 Each npm package holds its archive's plugin folder file for file.
 The archives are `build.sh`'s, repacked with the headers above; their members and bytes are the build's.
 The repack also leaves out the build's pax headers (macOS provenance attributes and fractional times), as `bundles-v0.1.2`'s archives hold none.
@@ -36,7 +36,7 @@ The protocol source is `synadia-agents` main at `554414d`: the pi and Claude Cod
 The Fabric source is `bbd3128`: each bundle is also the npm package of its harness (#63, #64), and pi's and OpenClaw's manifests name an entry that loads the bundled add-on unless an extension variable is set.
 The fabric CLI is unaffected: it sets the variable and a NATS context, which wins, and it starts the files it always started.
 ScratchPad is unchanged from `bundles-v0.1.1`: `sp-v0.1.6`.
-Checked before publication: each archive installed with `fabric install-plugins` (v0.8.0), a pi and an OpenClaw agent connected with `fabric connect`, run the CLI's way against staging, signed, the add-on loaded, each answering a console prompt through another agent; Claude Code's bundle installed in the CLI's layout.
+Checked before publication: each archive installed with `fabric install-plugins` (v0.8.0), a pi and an OpenClaw agent connected with `fabric connect`, run the CLI's way against a test deployment, signed, the add-on loaded, each answering a console prompt through another agent; Claude Code's bundle installed in the CLI's layout.
 The archives are `build.sh`'s, repacked with the headers above; their members and bytes are the build's.
 
 ## ScratchPad 0.1.6 refresh
@@ -62,7 +62,7 @@ This branch name does not select a newer commit; verify the full recorded commit
 Use the matching protocol checkout next to the SDK checkout, as the development instructions describe.
 Build with `sh bundles/build.sh all /absolute/candidate-directory`.
 The shared release manifest selects and verifies `sp-v0.1.6`.
-For authenticated downloads, use `SP_RELEASE_DOWNLOAD=gh`; offline builds can use `SP_RELEASE_SOURCE_DIR`.
+`SP_RELEASE_DOWNLOAD=gh` downloads through the GitHub CLI instead; offline builds can use `SP_RELEASE_SOURCE_DIR`.
 
 Archive names record both source revisions.
 Build times, archive member times and ownership, and compression headers can vary across builds.

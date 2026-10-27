@@ -67,8 +67,9 @@ for pkg in client-sdk agent-sdk; do
   fi
 done
 # The thin durable SDK: built in place, like the protocol SDK; in its
-# checkout it writes build output and nothing else. The engine behind it is
-# built by the durable tests themselves (test/harness/engine.ts, tests/harness/engine.py).
+# checkout it writes build output and nothing else. The engine behind it
+# comes from Synadia; the durable tests take it from DE_ENGINE
+# (test/harness/engine.ts, tests/harness/engine.py).
 if stale "$de"; then
   echo "setup: building $de"
   (cd "$de" && { [ -d node_modules ] || bun install --frozen-lockfile; } && bun run build)

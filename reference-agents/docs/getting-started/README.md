@@ -28,4 +28,4 @@ Step 1 is a program of its own, the echo agent (`src/echo.ts`, `fabric_agent/ech
 
 - **A fabric:** its NATS URL, a user credentials file per agent from the console's onboarding, the model proxy's URL, and a virtual key per agent from the console's key manager. Each page's "What your fabric gives you" lists them.
 - **The packages,** installed by `make setup` in `reference-agents/`.
-- **A capable model.** The pages use Sonnet 5. With a small local model, steps 5 and 6 are where it shows: it invents addresses, asks back instead of answering, or changes a character of a reference (`docs/findings.md` F11).
+- **A capable model.** The pages use Sonnet 5. With a small local model, steps 5 and 6 are where it shows: it invents addresses, asks back instead of answering, or changes a character of a reference.
