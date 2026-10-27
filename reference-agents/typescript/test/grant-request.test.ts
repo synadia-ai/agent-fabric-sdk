@@ -66,7 +66,7 @@ describe.skipIf(binary === undefined)("the grant request between two agents", ()
   let third: Agents;
   let reference: string;
   const [creatorUser, requesterUser, strangerUser, thirdUser, fourthUser] = [newUser(), newUser(), newUser(), newUser(), newUser()];
-  // On a server without accounts every user is in `$G` (`docs/findings.md` F3).
+  // On a server without accounts every user is in `$G`.
   const identity = (user: { publicKey: string }): string => `$G.${user.publicKey}`;
 
   // The creator's ScratchPad, in memory: its volume is `vol-own`, and every

@@ -61,9 +61,8 @@ READMEs, not in doc names.
 The split removed it from both SDKs and from the plugins (the diff
 `fbd16ab..f2ff6ed` under `agents/` is 3266 lines, tests included) and
 rebuilt it here on the SDK's hooks. Since then the three harnesses are not
-traced at all: their model calls stand as one-call threads outside the tree
-(`reference-agents/docs/findings.md` F16). Full tracing for these
-three harnesses is the fabric's headline promise, so this work is
+traced at all: their model calls stand as one-call threads outside the
+tree. Full tracing for these three harnesses is the fabric's headline promise, so this work is
 release-critical.
 
 ## 2. The extension point the public plugin exposes
@@ -557,8 +556,9 @@ thread the caller's edge created, PI the executor, its depth `full` in the
 agents view; the `asked` row of the caller's story names PI. A delegation
 PI's model makes is a grandchild under its tool call. No outcome or
 duration from a pair: PI publishes none, and the thread's calls carry its
-timing. `reference-agents/docs/findings.md` F16 item 4 describes the
-picture without the add-on; the same run with the add-on is the check. A
+timing. Without the add-on, PI's child thread is empty, its model calls
+are a root of their own, and its depth is `basic`; the same run with the
+add-on is the check. A
 turn typed at PI's terminal is one task with PI as its root, asked by no
 known caller, all its model calls in one thread, and the agents it prompts
 beneath it.
