@@ -1,6 +1,6 @@
 {
   "name": "@synadia-ai/agent-fabric-claude-code",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "The Synadia Agent Fabric add-on for the Claude Code channel plugin: the fabric's tracing on the plugin's service and client, each served prompt bound to its Claude Code session by the signed served pair (end at the turn's Stop), and the loop guard, as one extension module the plugin loads.",
   "type": "module",
