@@ -22,8 +22,10 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   took the served prompt into a turn, its own or, folded, the running one. In step with
   `synadia-agents`.
 - `findSp(env, skillDir)` and `SpLookup`: the sp an add-on runs for its own ScratchPad steps,
-  with each candidate it passed over and why; `noSpWarning(name, lookup)`, the warning an
-  add-on logs once when there is none; `ScratchPadHandOn.startWithoutScratchPad()`, in place of
+  with each candidate it passed over and why, and a `SCRATCHPAD_BIN` it passed over
+  (`passedOver`); `noSpWarning(name, lookup)`, the warning an add-on logs once when there is
+  none; `spBinPassedOverWarning(name, lookup)`, the one it logs when `SCRATCHPAD_BIN` is set but
+  missing or not executable, since the skill's `scripts/sp` takes it with no fallback; `ScratchPadHandOn.startWithoutScratchPad()`, in place of
   `start` when there is none: nothing can be granted, so every reference in a prompt is removed
   with a note, as for a receiver that reads none, a prompt of nothing but references is
   refused, and no grant request is answered.

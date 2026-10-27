@@ -21,6 +21,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `prompt_agent` is removed with a note, as for a receiver that reads none, a prompt of nothing
   but references is refused, and grant requests are not answered. With `SCRATCHPAD_BIN` unset,
   the model's `scripts/sp` finds its own binary, as before.
+- A `SCRATCHPAD_BIN` that is set but missing or not executable is warned about once at start,
+  with its path and why: the add-on passes it over, but the skill's `scripts/sp` takes it as
+  it is and refuses every call until it names an executable sp or is unset.
 
 ## [0.3.1] — 2026-10-27
 

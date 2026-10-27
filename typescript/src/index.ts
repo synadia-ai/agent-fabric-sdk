@@ -232,6 +232,7 @@ export {
   ServedPromptEnv,
   SP_VARS,
   spBinary,
+  spBinPassedOverWarning,
   spPort,
   withRecordedGrants,
   type PromptEnvHolder,

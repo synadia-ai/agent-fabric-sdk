@@ -15,6 +15,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   receiver that reads none, a prompt of nothing but references is refused, and grant requests
   are not answered. Before, a missing binary showed only when a call to it failed,
   and on a platform the package ships no binary for, a prompt with references was refused.
+- A `SCRATCHPAD_BIN` that is set but missing or not executable is warned about once at start,
+  with its path and why: the add-on passes it over, but the skill's `scripts/sp` takes it as
+  it is and refuses every call until it names an executable sp or is unset.
 
 ## [0.3.1] — 2026-10-27
 

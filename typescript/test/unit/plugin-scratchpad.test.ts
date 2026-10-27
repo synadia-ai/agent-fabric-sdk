@@ -14,6 +14,7 @@ import {
   exportScratchPad,
   findSp,
   noSpWarning,
+  spBinPassedOverWarning,
   readRecordedGrants,
   resolveScratchPad,
   ScratchPadHandOn,
@@ -421,6 +422,7 @@ describe("findSp: the add-on's own sp, the first executable file", () => {
     expect(findSp({ SCRATCHPAD_BIN: missing }, skillDir)).toEqual({
       bin: shipped,
       tried: [`SCRATCHPAD_BIN ${missing} does not exist`],
+      passedOver: `${missing} does not exist`,
     });
     const notExecutable = file(join(root, "own", "sp"), 0o644);
     expect(findSp({ SCRATCHPAD_BIN: notExecutable }, skillDir).tried).toEqual([
@@ -443,6 +445,31 @@ describe("findSp: the add-on's own sp, the first executable file", () => {
       bin: undefined,
       tried: ["SCRATCHPAD_BIN is not set", `${shipped} is not executable`],
     });
+  });
+
+  it("a SCRATCHPAD_BIN set but passed over is warned about, since the skill's scripts/sp takes it as it is", () => {
+    const { root, skillDir, shipped, file } = layout();
+    const missing = join(root, "missing");
+    expect(spBinPassedOverWarning("agent-fabric", findSp({}, skillDir))).toBeUndefined();
+    expect(
+      spBinPassedOverWarning("agent-fabric", findSp({ SCRATCHPAD_BIN: missing }, skillDir)),
+    ).toBe(
+      `agent-fabric: SCRATCHPAD_BIN ${missing} does not exist, so it is passed over; the skill's scripts/sp ` +
+        "takes SCRATCHPAD_BIN as it is and refuses every call until it names an executable sp or is unset",
+    );
+    file(shipped, 0o755);
+    const notExecutable = file(join(root, "own", "sp"), 0o644);
+    expect(
+      spBinPassedOverWarning("agent-fabric", findSp({ SCRATCHPAD_BIN: notExecutable }, skillDir)),
+    ).toBe(
+      `agent-fabric: SCRATCHPAD_BIN ${notExecutable} is not executable, so it is passed over and the add-on ` +
+        `runs ${shipped}; the skill's scripts/sp takes SCRATCHPAD_BIN as it is and refuses every call until it ` +
+        "names an executable sp or is unset",
+    );
+    const own = file(join(root, "own", "sp-ok"), 0o755);
+    expect(
+      spBinPassedOverWarning("agent-fabric", findSp({ SCRATCHPAD_BIN: own }, skillDir)),
+    ).toBeUndefined();
   });
 
   it("the warning names what was tried, the variable that fixes it, and what is left out", () => {

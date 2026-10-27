@@ -110,13 +110,22 @@ describe("the add-on's own sp", () => {
     expect(warnings()).toEqual([]);
   });
 
-  it("is the shipped binary when SCRATCHPAD_BIN is not set, or names no file", async () => {
+  it("is the shipped binary when SCRATCHPAD_BIN is not set", async () => {
     shipped(0o755);
-    for (const env of [configured(), configured({ SCRATCHPAD_BIN: join(root, "missing") })]) {
-      const { endpoints, warnings } = await started(env);
-      expect(endpoints).toHaveLength(1);
-      expect(warnings()).toEqual([]);
-    }
+    const { endpoints, warnings } = await started(configured());
+    expect(endpoints).toHaveLength(1);
+    expect(warnings()).toEqual([]);
+  });
+
+  it("is the shipped binary when SCRATCHPAD_BIN names no file, with one warning: the skill's scripts/sp takes it as it is", async () => {
+    const bin = shipped(0o755);
+    const missing = join(root, "missing");
+    const { endpoints, warnings } = await started(configured({ SCRATCHPAD_BIN: missing }));
+    expect(endpoints).toHaveLength(1);
+    expect(warnings()).toEqual([
+      `agent-fabric: SCRATCHPAD_BIN ${missing} does not exist, so it is passed over and the add-on runs ${bin}; ` +
+        "the skill's scripts/sp takes SCRATCHPAD_BIN as it is and refuses every call until it names an executable sp or is unset",
+    ]);
   });
 
   it("passes over a file without the execute bit, as a copy may leave it: one warning says what was tried and how to fix it", async () => {
@@ -125,6 +134,8 @@ describe("the add-on's own sp", () => {
     const { endpoints, warnings } = await started(configured({ SCRATCHPAD_BIN: own }));
     expect(endpoints).toEqual([]);
     expect(warnings()).toEqual([
+      `agent-fabric: SCRATCHPAD_BIN ${own} is not executable, so it is passed over; the skill's scripts/sp ` +
+        "takes SCRATCHPAD_BIN as it is and refuses every call until it names an executable sp or is unset",
       `agent-fabric: no sp for the add-on's own ScratchPad steps (SCRATCHPAD_BIN ${own} is not executable; ` +
         `${bin} is not executable); set SCRATCHPAD_BIN to the path of an sp binary. Until then nothing ` +
         "is granted: references in prompt_agent are removed with a note, and grant requests are not answered",

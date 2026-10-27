@@ -85,6 +85,7 @@ import {
   fabricTracing,
   loopGuard,
   noSpWarning,
+  spBinPassedOverWarning,
   resolveEdgeSubject,
   rootTraceScope,
   servedPublisher,
@@ -394,11 +395,15 @@ export function createFabricExtension(
           writeSpEnv();
         }
         const port = spPort(scratchPad, service.subject.prompt, env);
+        const lookup = findSp(env);
+        // A SCRATCHPAD_BIN that is set but unusable breaks the skill's scripts/sp.
+        const passedOver = spBinPassedOverWarning(EXTENSION_NAME, lookup);
+        if (passedOver !== undefined) log.warn(passedOver);
         if (port !== undefined) handOn.start({ scratchPad: port, agents, service, logger: log });
         else {
-          // No sp of its own (`findSp`): its steps are left out, never a turn.
+          // No sp of its own (`findSp`): nothing can be granted, never a turn.
           handOn.startWithoutScratchPad();
-          log.warn(noSpWarning(EXTENSION_NAME, findSp(env)));
+          log.warn(noSpWarning(EXTENSION_NAME, lookup));
         }
         log.info(
           `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +

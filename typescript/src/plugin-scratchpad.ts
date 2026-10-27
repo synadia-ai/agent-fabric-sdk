@@ -349,6 +349,8 @@ export interface SpLookup {
   readonly bin: string | undefined;
   /** Each candidate passed over, in order, and why. */
   readonly tried: ReadonlyArray<string>;
+  /** A `SCRATCHPAD_BIN` that is set but passed over: its path and why; absent otherwise. */
+  readonly passedOver?: string;
 }
 
 /**
@@ -362,25 +364,32 @@ export interface SpLookup {
  */
 export function findSp(env: Env, skillDir: string): SpLookup {
   const tried: string[] = [];
+  let passedOver: string | undefined;
   const own = env[SCRATCHPAD_BIN_VAR];
   if (own === undefined || own === "") {
     tried.push(`${SCRATCHPAD_BIN_VAR} is not set`);
   } else {
     const why = notExecutable(own);
     if (why === undefined) return { bin: own, tried };
-    tried.push(`${SCRATCHPAD_BIN_VAR} ${own} ${why}`);
+    passedOver = `${own} ${why}`;
+    tried.push(`${SCRATCHPAD_BIN_VAR} ${passedOver}`);
   }
+  const found = (bin: string | undefined): SpLookup => ({
+    bin,
+    tried,
+    ...(passedOver !== undefined ? { passedOver } : {}),
+  });
   const os = platform() === "darwin" ? "darwin" : platform() === "linux" ? "linux" : undefined;
   const cpu = arch() === "arm64" ? "arm64" : arch() === "x64" ? "amd64" : undefined;
   if (os === undefined || cpu === undefined) {
     tried.push(`no sp is shipped for ${platform()} ${arch()}`);
-    return { bin: undefined, tried };
+    return found(undefined);
   }
   const shipped = join(skillDir, "bin", `sp-${os}-${cpu}`);
   const why = notExecutable(shipped);
-  if (why === undefined) return { bin: shipped, tried };
+  if (why === undefined) return found(shipped);
   tried.push(`${shipped} ${why}`);
-  return { bin: undefined, tried };
+  return found(undefined);
 }
 
 /** Why `path` is not an executable file, or `undefined` when it is one. */
@@ -401,6 +410,26 @@ function notExecutable(path: string): string | undefined {
 /** The sp binary of `findSp`, or `undefined` when there is none. */
 export function spBinary(env: Env, skillDir: string): string | undefined {
   return findSp(env, skillDir).bin;
+}
+
+/**
+ * The warning an add-on logs once at start when `SCRATCHPAD_BIN` is set
+ * but `findSp` passed it over, missing or not executable; `undefined`
+ * otherwise. The add-on may run another sp, but the skill's `scripts/sp`,
+ * which the model runs, takes `SCRATCHPAD_BIN` as it is, with no
+ * fallback, and refuses every call.
+ */
+export function spBinPassedOverWarning(
+  extensionName: string,
+  lookup: SpLookup,
+): string | undefined {
+  if (lookup.passedOver === undefined) return undefined;
+  return (
+    `${extensionName}: ${SCRATCHPAD_BIN_VAR} ${lookup.passedOver}, so it is passed over` +
+    (lookup.bin !== undefined ? ` and the add-on runs ${lookup.bin}` : "") +
+    `; the skill's scripts/sp takes ${SCRATCHPAD_BIN_VAR} as it is and refuses every call ` +
+    "until it names an executable sp or is unset"
+  );
 }
 
 /**
