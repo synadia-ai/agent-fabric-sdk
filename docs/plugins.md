@@ -1023,11 +1023,20 @@ test system:
 **OpenClaw**, from the harness configuration of the fabric's deployment on
 one machine:
 
-1. OpenClaw 2026.8 or later and a Node it accepts (`≥24.16 <25`, or
-   `≥26.1`; the examples pin 2026.9.4 with Node 24). The public plugin from
-   the checkout, both SDKs built, `npm install` in `agents/openclaw`; the
-   config's `plugins.load.paths` names its `index.ts`; when published,
-   `openclaw plugins install @synadia-ai/nats-channel`.
+1. OpenClaw 2026.8 or later and a Node it accepts (2026.10.8:
+   `≥24.22.1 <25`, or `≥26.12.1`; the examples pin 2026.10.8 with Node
+   24.22.1 since 2026-10-27, 2026.9.4 with Node 24 before). The public
+   plugin from the checkout, both SDKs built, `npm install` in
+   `agents/openclaw`; the config's `plugins.load.paths` names its
+   `index.ts`; when published, `openclaw plugins install
+   @synadia-ai/nats-channel`. Two things OpenClaw does that a checkout
+   meets (measured 2026-10-27): it loads the package's `dist/index.js`
+   (`openclaw.runtimeExtensions`) before the `index.ts` the config names,
+   on 2026.9.4 and 2026.10.8 alike, so a checkout's `dist/` must be built
+   from its source (`npm run build`); and 2026.10 copies a plugin and the
+   packages it imports before loading them, which fails on `file:`
+   dependencies that `npm install` links, so a plugin or an add-on from a
+   checkout is installed with `npm install --install-links`.
 2. The add-on: `npm install @synadia-ai/agent-fabric-openclaw`.
 3. `SYNADIA_OPENCLAW_EXTENSIONS=<path or name>`, or `"extensions": ["…"]`
    in `channels.nats.accounts.default`. The add-on's presence is the
@@ -1255,7 +1264,9 @@ terminal (§9.5).
 
 Every answer carries how it is known: **measured** (something was run on
 a development machine) or **read** (docs or code, with the place). The versions read
-and run: PI 0.85.1, OpenClaw 2026.9.4, Claude Code 2.1.282 (the test
+and run: PI 0.85.1, OpenClaw 2026.9.4 (the examples and the tests on
+2026.10.8 since 2026-10-27; these answers not measured again on it),
+Claude Code 2.1.282 (the test
 install) and 2.1.283 (the `claude` on `PATH`), the public plugins at
 `synadia-agents` `sdk-release-rollout` `e8355c3` (`3b9a20d` for Claude
 Code's run, §9.13), the sp command line at ScratchPad `79f8927`. Harness paths are relative to the harness's installed
