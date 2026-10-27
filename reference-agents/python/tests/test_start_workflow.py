@@ -3,9 +3,9 @@
 creates nothing: the engine owns every resource.
 
     server  — a nats-server with JetStream and one account, file storage
-              only, ``max_bytes`` required, room for the engine's seven
+              only, ``max_bytes`` required, room for the engine's eight
     engine  — ``durable-engine serve`` on that account, standalone, prefix
-              ``de`` (``harness/engine.py``): it provisions the seven at start
+              ``de`` (``harness/engine.py``): it provisions the eight at start
     tenant  — a user of that account. It watches the account's JetStream API
               advisories and reads the run's journal back
     agent   — ``start_agent()`` with ``durable=True``, pointed at the fake
@@ -20,7 +20,7 @@ the step's model call reached the proxy with the two headers equal to that
 trace; the agent's connection sent no JetStream API request at all, at its
 start or in the run (the worker's first poll bound its workflow on the
 engine, whose requests the advisories show); the account holds the engine's
-seven alone. The same test as the TypeScript agent's
+eight alone. The same test as the TypeScript agent's
 ``test/start-workflow.test.ts``.
 """
 
@@ -48,7 +48,7 @@ from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_
 
 binary = nats_server_on_path()
 
-SEVEN = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS"]
+EIGHT = ["DE_JOURNAL", "DE_WORK", "DE_TIMERS", "KV_DE_RUNS", "KV_DE_LEASES", "KV_DE_PARKED", "OBJ_DE_BLOBS", "KV_DE_TENANTS"]
 # A dot and a space, which a run id may not hold.
 TOOL_CALL_ID = "call.durable 1"
 SANITISED = "call_durable_1"
@@ -124,7 +124,7 @@ def _kinds(subjects: list[str]) -> list[str]:
 @pytest.mark.skipif(ENGINE_UNAVAILABLE is not None, reason=f"no durable engine: {ENGINE_UNAVAILABLE}")
 async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_sends_no_jetstream_request() -> None:
     users = {name: new_user() for name in ("caller", "agent", "tenant")}
-    server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=7)  # type: ignore[arg-type]
+    server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=len(EIGHT))  # type: ignore[arg-type]
     fake = _Fake()
     proxy_url = fake.start()
     #: The JetStream API requests of every connection but the tenant's and the engine's.
@@ -218,7 +218,7 @@ async def test_a_durable_run_names_the_served_thread_and_the_tool_call_and_sends
             await asyncio.sleep(0.5)
             assert engine_advisories
             assert advisories == []
-            assert sorted((await api("$JS.API.STREAM.NAMES"))["streams"]) == sorted(SEVEN)
+            assert sorted((await api("$JS.API.STREAM.NAMES"))["streams"]) == sorted(EIGHT)
 
             # The evidence, for whoever reads the run's output (pytest -s).
             print(

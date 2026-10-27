@@ -1,6 +1,6 @@
 """The durable engine for the durable tests: one ``durable-engine serve`` on the
 test's nats-server, standalone, in the test's one account, on the prefix
-``de``. The engine provisions its seven resources at start; the agent under
+``de``. The engine provisions its eight resources at start; the agent under
 test creates nothing and reaches it on ``de.api.v1.*`` alone. The twin of the
 TypeScript agent's ``test/harness/engine.ts``.
 
@@ -57,7 +57,7 @@ class LocalEngine:
     async def start(cls, url: str, *, ack_wait_ms: int | None = None) -> LocalEngine:
         """Start an engine on ``url`` (a user of the test's account, its
         password in the URL) and wait for its ``serving`` line: it has
-        provisioned the seven. Each is sized 256 MiB, so all of them fit a
+        provisioned the eight. Each is sized 256 MiB, so all of them fit a
         tenant's 4 GB of file storage."""
         if ENGINE_UNAVAILABLE is not None:
             raise RuntimeError(ENGINE_UNAVAILABLE)

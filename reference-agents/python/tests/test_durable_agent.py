@@ -110,7 +110,7 @@ def _label(e: dict[str, Any]) -> str:
 @pytest.mark.skipif(ENGINE_UNAVAILABLE is not None, reason=f"no durable engine: {ENGINE_UNAVAILABLE}")
 async def test_the_run_completes_after_a_kill_without_repeating_a_journaled_model_turn(tmp_path: Path) -> None:
     users = {name: new_user() for name in ("caller", "agent", "tenant")}
-    server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=7)  # type: ignore[arg-type]
+    server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=8)  # type: ignore[arg-type]
     fake = _Fake(marker=tmp_path / "release-the-second-turn")
     proxy_url = fake.start()
     engine: LocalEngine | None = None

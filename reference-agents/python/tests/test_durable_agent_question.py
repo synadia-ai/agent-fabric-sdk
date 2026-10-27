@@ -99,7 +99,7 @@ class _Fake:
 @pytest.mark.skipif(ENGINE_UNAVAILABLE is not None, reason=f"no durable engine: {ENGINE_UNAVAILABLE}")
 async def test_a_prompted_agents_question_is_relayed_to_the_caller_and_answered(tmp_path: Path) -> None:
     users = {name: new_user() for name in ("caller", "agent", "asker", "tenant")}
-    server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=7)  # type: ignore[arg-type]
+    server = LocalNatsServer.start_tenant(binary, list(users.values()), max_streams=8)  # type: ignore[arg-type]
     fake = _Fake()
     proxy_url = fake.start()
     engine: LocalEngine | None = None
