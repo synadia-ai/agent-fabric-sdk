@@ -26,11 +26,15 @@
 // so a caller's `prompt_agent` hands them to it. And references its model
 // puts into its own `prompt_agent` go through the ScratchPad extension, as
 // an SDK-built agent's do: granted to a receiver that reads references,
-// removed with a note for any other (`ScratchPadHandOn`). And it answers
+// removed with a note for any other, and for every receiver while the add-on
+// has no sp (`ScratchPadHandOn`). And it answers
 // grant requests for what it published, as an SDK-built agent does
 // (`grant-request.ts`): the grants its model made through `scripts/sp`, which
 // the extension does not see, are recorded by the wrapper in a file the
-// add-on reads (`SP_GRANTS_FILE`, `withRecordedGrants`).
+// add-on reads (`SP_GRANTS_FILE`, `withRecordedGrants`). Both run the
+// add-on's own sp (`findSp`). Without one, nothing can be granted: a
+// reference in `prompt_agent` is removed with a note, grant requests go
+// unanswered, and one warning says so.
 //
 // Per served prompt, from when the harness starts working on it to its end:
 // the prompt's trace (`SP_THREAD_ID`, `SP_ROOT_ID`) and its verified caller
@@ -39,7 +43,15 @@
 // harness that works on one served prompt at a time; each add-on says why
 // its harness does.
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { arch, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import type {
@@ -64,6 +76,7 @@ import {
   findReferences,
   granteeFromIdentity,
   readsReferences,
+  removeReferences,
   type GrantKind,
   type Grantee,
   type ScratchPad,
@@ -331,19 +344,105 @@ export class ServedPromptEnv {
   }
 }
 
+/** Where an add-on looked for its own sp, and what it found. */
+export interface SpLookup {
+  /** The first candidate that is an executable file; `undefined` when none is. */
+  readonly bin: string | undefined;
+  /** Each candidate passed over, in order, and why. */
+  readonly tried: ReadonlyArray<string>;
+  /** A `SCRATCHPAD_BIN` that is set but passed over: its path and why; absent otherwise. */
+  readonly passedOver?: string;
+}
+
 /**
- * The sp binary an add-on ships for this machine in `skillDir` (its
- * `skill/scratchpad`), or `SCRATCHPAD_BIN`; `undefined` on a platform it is
- * not built for. The add-on's own grants run it directly, with the flags
- * `scripts/sp` would add.
+ * The sp binary an add-on runs for its own ScratchPad steps, directly, with
+ * the flags `scripts/sp` would add: the first of these that is an executable
+ * file. `SCRATCHPAD_BIN`, a path; then the binary the add-on ships for this
+ * machine in `skillDir` (its `skill/scratchpad`), found from the add-on's
+ * module. A harness that loads the module from a copy of its own may leave
+ * the skill directory out of that copy, so the shipped path is looked at,
+ * not assumed.
  */
-export function spBinary(env: Env, skillDir: string): string | undefined {
+export function findSp(env: Env, skillDir: string): SpLookup {
+  const tried: string[] = [];
+  let passedOver: string | undefined;
   const own = env[SCRATCHPAD_BIN_VAR];
-  if (own !== undefined && own !== "") return own;
+  if (own === undefined || own === "") {
+    tried.push(`${SCRATCHPAD_BIN_VAR} is not set`);
+  } else {
+    const why = notExecutable(own);
+    if (why === undefined) return { bin: own, tried };
+    passedOver = `${own} ${why}`;
+    tried.push(`${SCRATCHPAD_BIN_VAR} ${passedOver}`);
+  }
+  const found = (bin: string | undefined): SpLookup => ({
+    bin,
+    tried,
+    ...(passedOver !== undefined ? { passedOver } : {}),
+  });
   const os = platform() === "darwin" ? "darwin" : platform() === "linux" ? "linux" : undefined;
   const cpu = arch() === "arm64" ? "arm64" : arch() === "x64" ? "amd64" : undefined;
-  if (os === undefined || cpu === undefined) return undefined;
-  return join(skillDir, "bin", `sp-${os}-${cpu}`);
+  if (os === undefined || cpu === undefined) {
+    tried.push(`no sp is shipped for ${platform()} ${arch()}`);
+    return found(undefined);
+  }
+  const shipped = join(skillDir, "bin", `sp-${os}-${cpu}`);
+  const why = notExecutable(shipped);
+  if (why === undefined) return found(shipped);
+  tried.push(`${shipped} ${why}`);
+  return found(undefined);
+}
+
+/** Why `path` is not an executable file, or `undefined` when it is one. */
+function notExecutable(path: string): string | undefined {
+  try {
+    if (!statSync(path).isFile()) return "is not a file";
+  } catch {
+    return "does not exist";
+  }
+  try {
+    accessSync(path, constants.X_OK);
+  } catch {
+    return "is not executable";
+  }
+  return undefined;
+}
+
+/** The sp binary of `findSp`, or `undefined` when there is none. */
+export function spBinary(env: Env, skillDir: string): string | undefined {
+  return findSp(env, skillDir).bin;
+}
+
+/**
+ * The warning an add-on logs once at start when `SCRATCHPAD_BIN` is set
+ * but `findSp` passed it over, missing or not executable; `undefined`
+ * otherwise. The add-on may run another sp, but the skill's `scripts/sp`,
+ * which the model runs, takes `SCRATCHPAD_BIN` as it is, with no
+ * fallback, and refuses every call.
+ */
+export function spBinPassedOverWarning(
+  extensionName: string,
+  lookup: SpLookup,
+): string | undefined {
+  if (lookup.passedOver === undefined) return undefined;
+  return (
+    `${extensionName}: ${SCRATCHPAD_BIN_VAR} ${lookup.passedOver}, so it is passed over` +
+    (lookup.bin !== undefined ? ` and the add-on runs ${lookup.bin}` : "") +
+    `; the skill's scripts/sp takes ${SCRATCHPAD_BIN_VAR} as it is and refuses every call ` +
+    "until it names an executable sp or is unset"
+  );
+}
+
+/**
+ * The warning an add-on logs once at start when `findSp` found no sp: what
+ * it tried, how to fix it, and what the add-on leaves out until then.
+ */
+export function noSpWarning(extensionName: string, lookup: SpLookup): string {
+  return (
+    `${extensionName}: no sp for the add-on's own ScratchPad steps (${lookup.tried.join("; ")}); ` +
+    `set ${SCRATCHPAD_BIN_VAR} to the path of an sp binary. Until then nothing is granted: ` +
+    "references in prompt_agent are removed with a note, and grant requests are not answered"
+  );
 }
 
 /**
@@ -362,12 +461,13 @@ export function spBinary(env: Env, skillDir: string): string | undefined {
 export class ScratchPadHandOn implements AgentToolsExtension {
   #inner: ScratchPadExtension | undefined;
   #scratchPad: ScratchPad | undefined;
+  #without = false;
   readonly #early: string[] = [];
 
   readonly requestInterceptor: RequestInterceptor = {
     aroundRequest: (ctx: RequestInterceptorContext, next: () => Promise<void>) => {
-      if (this.#inner === undefined) this.#early.push(ctx.envelope.prompt);
-      else this.#inner.remember(ctx.envelope.prompt);
+      if (this.#inner !== undefined) this.#inner.remember(ctx.envelope.prompt);
+      else if (!this.#without) this.#early.push(ctx.envelope.prompt);
       return next();
     },
   };
@@ -409,6 +509,18 @@ export class ScratchPadHandOn implements AgentToolsExtension {
     }
   }
 
+  /**
+   * Instead of `start`, when the add-on has no ScratchPad port of its own
+   * (no sp, `findSp`): nothing can be granted from here on. Every reference
+   * in a prompt is removed with a note, as for a receiver that reads none,
+   * and a prompt that held nothing but references is refused in the same
+   * words; no grant request is answered.
+   */
+  startWithoutScratchPad(): void {
+    this.#without = true;
+    this.#early.length = 0;
+  }
+
   discoveryFields(agent: Agent): Record<string, unknown> {
     return (
       this.#inner?.discoveryFields(agent) ?? {
@@ -421,7 +533,9 @@ export class ScratchPadHandOn implements AgentToolsExtension {
     const inner = this.#inner;
     const scratchPad = this.#scratchPad;
     if (inner === undefined || scratchPad === undefined) {
-      if (findReferences(ctx.prompt).length === 0) return;
+      const found = findReferences(ctx.prompt);
+      if (found.length === 0) return;
+      if (this.#without) return withoutSp(ctx.address, ctx.prompt, found.length);
       return {
         error: "the prompt was not sent: ScratchPad is not ready yet; try again in a moment",
       };
@@ -438,8 +552,35 @@ export class ScratchPadHandOn implements AgentToolsExtension {
 }
 
 /**
- * The ScratchPad port over the add-on's packaged sp, for its own grants and
- * the grant requests it answers, with the grants `scripts/sp` recorded.
+ * A prompt's references, when the add-on has no sp to grant read with: all
+ * removed with a note, or the prompt refused when it held nothing else, in
+ * the words of the extension's rule for a receiver that reads none.
+ */
+function withoutSp(address: string, text: string, found: number): AgentToolsPromptRewrite {
+  const why = `this agent has no sp of its own to grant read with (${SCRATCHPAD_BIN_VAR} names one)`;
+  const prompt = removeReferences(text);
+  if (prompt === "") {
+    return {
+      error:
+        `the prompt was not sent: ${why}, and the prompt held nothing but references; ` +
+        "put the content they point at into the prompt itself",
+    };
+  }
+  return {
+    prompt,
+    fields: {
+      references_removed: found,
+      note:
+        `${why}: ${found} reference(s) were removed from your prompt, "${address}" got only ` +
+        "the text, and nothing was granted",
+    },
+  };
+}
+
+/**
+ * The ScratchPad port over the add-on's sp (`findSp`), for its own grants and
+ * the grant requests it answers, with the grants `scripts/sp` recorded;
+ * `undefined` when there is no sp.
  */
 export function spPort(
   settings: ScratchPadSettings,

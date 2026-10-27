@@ -4,6 +4,27 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The add-on's own sp, for the references its model hands on and the grant requests it
+  answers, is the first executable file of `SCRATCHPAD_BIN` and the binary the package ships;
+  before, the shipped path was taken without a look. OpenClaw 2026.10 loads a plugin's code from
+  a copy of its own. Where the add-on is a package of its own, loaded by path
+  (`SYNADIA_OPENCLAW_EXTENSIONS`), the copy holds the add-on's `dist/` and `package.json` and no
+  `skill/`, so the add-on ran an sp that was not there. In that layout, set `SCRATCHPAD_BIN` to
+  the package's `skill/scratchpad/bin/sp-<os>-<arch>`. Installed as the one npm package, the
+  copy holds the skill, and nothing changes.
+- Without an sp, the add-on says so once at start, with what it tried and that
+  `SCRATCHPAD_BIN` fixes it, and grants nothing: a reference OpenClaw's model puts into
+  `prompt_agent` is removed with a note, as for a receiver that reads none, a prompt of nothing
+  but references is refused, and grant requests are not answered. With `SCRATCHPAD_BIN` unset,
+  the model's `scripts/sp` finds its own binary, as before.
+- A `SCRATCHPAD_BIN` that is set but missing or not executable is warned about once at start,
+  with its path and why: the add-on passes it over, but the skill's `scripts/sp` takes it as
+  it is and refuses every call until it names an executable sp or is unset.
+
 ## [0.3.1] — 2026-10-27
 
 ### Changed

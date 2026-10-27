@@ -21,6 +21,14 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The plugin contract gains Claude Code's `promptStarted(request, atMs, sessionId?)`: Claude Code
   took the served prompt into a turn, its own or, folded, the running one. In step with
   `synadia-agents`.
+- `findSp(env, skillDir)` and `SpLookup`: the sp an add-on runs for its own ScratchPad steps,
+  with each candidate it passed over and why, and a `SCRATCHPAD_BIN` it passed over
+  (`passedOver`); `noSpWarning(name, lookup)`, the warning an add-on logs once when there is
+  none; `spBinPassedOverWarning(name, lookup)`, the one it logs when `SCRATCHPAD_BIN` is set but
+  missing or not executable, since the skill's `scripts/sp` takes it with no fallback; `ScratchPadHandOn.startWithoutScratchPad()`, in place of
+  `start` when there is none: nothing can be granted, so every reference in a prompt is removed
+  with a note, as for a receiver that reads none, a prompt of nothing but references is
+  refused, and no grant request is answered.
 
 ### Changed
 
@@ -35,6 +43,11 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   then the plugin's own `url` and `credentials`, as before. `NATS_CREDENTIALS` is read as
   `NATS_CREDS`'s alias, in the order the channel reads them: a third argument,
   `{ credsVariables }` (`ResolveScratchPadOptions`), gives it, `NATS_CREDS` first by default.
+- `spBinary` and `spPort` take the first sp that is an executable file: `SCRATCHPAD_BIN`, then
+  the binary the add-on ships for this machine. Before, `SCRATCHPAD_BIN` was taken as set, and
+  the shipped path without a look, so a harness that loads the add-on's module from a copy
+  without its `skill/` directory got a path that did not exist, and the add-on's own `sp` calls
+  failed. Without either, both return `undefined`.
 
 ## [0.2.0] — 2026-10-21
 

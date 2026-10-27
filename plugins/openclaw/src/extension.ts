@@ -46,6 +46,8 @@ import {
   bindActiveTrace,
   fabricTracing,
   loopGuard,
+  noSpWarning,
+  spBinPassedOverWarning,
   resolveEdgeSubject,
   servedPublisher,
   type AgentExtension,
@@ -63,6 +65,7 @@ import {
   ScratchPadHandOn,
   ServedPromptEnv,
   SP_VARS,
+  findSp,
   spPort,
   type ScratchPadSettings,
 } from "./scratchpad.js";
@@ -158,7 +161,8 @@ export function createFabricExtension(
     ...(handOn !== undefined
       ? {
           // References in OpenClaw's `prompt_agent`: granted to a receiver
-          // that reads them, removed with a note for any other.
+          // that reads them, removed with a note for any other,
+          // and for every receiver while the add-on has no sp (no grant can be made).
           toolExtensions: [handOn],
           // So a caller's `prompt_agent` hands references to OpenClaw.
           metadata: { [READS_REFERENCES_KEY]: "true" },
@@ -182,12 +186,16 @@ export function createFabricExtension(
       if (scratchPad !== undefined && handOn !== undefined) {
         env[SP_VARS.creator] = service.subject.prompt;
         const port = spPort(scratchPad, service.subject.prompt, env);
+        const lookup = findSp(env);
+        // A SCRATCHPAD_BIN that is set but unusable breaks the skill's scripts/sp.
+        const passedOver = spBinPassedOverWarning(EXTENSION_NAME, lookup);
+        if (passedOver !== undefined) log.warn(passedOver);
         if (port !== undefined) handOn.start({ scratchPad: port, agents, service, logger: log });
-        else
-          log.warn(
-            `${EXTENSION_NAME}: no sp for this platform (set SCRATCHPAD_BIN); ` +
-              "references in prompt_agent are not handed on, and grant requests not answered",
-          );
+        else {
+          // No sp of its own (`findSp`): nothing can be granted, never a turn.
+          handOn.startWithoutScratchPad();
+          log.warn(noSpWarning(EXTENSION_NAME, lookup));
+        }
         log.info(
           `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +
             (scratchPad.dir !== undefined ? `, workspace ${scratchPad.dir}` : ", no workspace") +

@@ -223,6 +223,8 @@ export { EDGE_SUBJECT_OPTION, EDGE_SUBJECT_VAR, resolveEdgeSubject } from "./plu
 
 export {
   exportScratchPad,
+  findSp,
+  noSpWarning,
   readRecordedGrants,
   resolveScratchPad,
   SCRATCHPAD_OPTION,
@@ -230,12 +232,14 @@ export {
   ServedPromptEnv,
   SP_VARS,
   spBinary,
+  spBinPassedOverWarning,
   spPort,
   withRecordedGrants,
   type PromptEnvHolder,
   type RecordedGrant,
   type ResolveScratchPadOptions,
   type ScratchPadSettings,
+  type SpLookup,
 } from "./plugin-scratchpad.js";
 
 export type {

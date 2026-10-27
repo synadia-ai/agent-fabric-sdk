@@ -4,7 +4,7 @@
 // the ScratchPad extension behind its wrapper, with the grant requests it
 // answers. The add-ons' own suites drive them through their factories.
 
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,9 @@ import type { Logger } from "@synadia-ai/agents";
 import type { AgentService } from "@synadia-ai/agent-service";
 import {
   exportScratchPad,
+  findSp,
+  noSpWarning,
+  spBinPassedOverWarning,
   readRecordedGrants,
   resolveScratchPad,
   ScratchPadHandOn,
@@ -387,14 +390,99 @@ describe("ServedPromptEnv", () => {
   });
 });
 
-describe("spBinary", () => {
-  it("names the binary for this machine in the add-on's skill directory, or SCRATCHPAD_BIN", () => {
-    const os = platform() === "darwin" ? "darwin" : "linux";
-    const cpu = arch() === "arm64" ? "arm64" : "amd64";
-    expect(spBinary({}, "/addon/skill/scratchpad")).toBe(
-      `/addon/skill/scratchpad/bin/sp-${os}-${cpu}`,
+describe("findSp: the add-on's own sp, the first executable file", () => {
+  const os = platform() === "darwin" ? "darwin" : "linux";
+  const cpu = arch() === "arm64" ? "arm64" : "amd64";
+  const layout = () => {
+    const root = mkdtempSync(join(tmpdir(), "fabric-find-sp-"));
+    const skillDir = join(root, "skill", "scratchpad");
+    const shipped = join(skillDir, "bin", `sp-${os}-${cpu}`);
+    const file = (path: string, mode: number): string => {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, "#!/bin/sh\nexit 0\n");
+      chmodSync(path, mode);
+      return path;
+    };
+    return { root, skillDir, shipped, file };
+  };
+
+  it("takes SCRATCHPAD_BIN when it is an executable file", () => {
+    const { root, skillDir, file } = layout();
+    const own = file(join(root, "own", "sp"), 0o755);
+    expect(findSp({ SCRATCHPAD_BIN: own }, skillDir)).toEqual({ bin: own, tried: [] });
+    expect(spBinary({ SCRATCHPAD_BIN: own }, skillDir)).toBe(own);
+  });
+
+  it("else the binary shipped for this machine, saying why SCRATCHPAD_BIN was passed over", () => {
+    const { root, skillDir, shipped, file } = layout();
+    file(shipped, 0o755);
+    expect(findSp({}, skillDir)).toEqual({ bin: shipped, tried: ["SCRATCHPAD_BIN is not set"] });
+    expect(findSp({ SCRATCHPAD_BIN: "" }, skillDir).bin).toBe(shipped);
+    const missing = join(root, "missing");
+    expect(findSp({ SCRATCHPAD_BIN: missing }, skillDir)).toEqual({
+      bin: shipped,
+      tried: [`SCRATCHPAD_BIN ${missing} does not exist`],
+      passedOver: `${missing} does not exist`,
+    });
+    const notExecutable = file(join(root, "own", "sp"), 0o644);
+    expect(findSp({ SCRATCHPAD_BIN: notExecutable }, skillDir).tried).toEqual([
+      `SCRATCHPAD_BIN ${notExecutable} is not executable`,
+    ]);
+    expect(findSp({ SCRATCHPAD_BIN: root }, skillDir).tried).toEqual([
+      `SCRATCHPAD_BIN ${root} is not a file`,
+    ]);
+  });
+
+  it("none, when neither is there: a module copied without its skill directory, or without the modes", () => {
+    const { skillDir, shipped, file } = layout();
+    expect(findSp({}, skillDir)).toEqual({
+      bin: undefined,
+      tried: ["SCRATCHPAD_BIN is not set", `${shipped} does not exist`],
+    });
+    expect(spBinary({}, skillDir)).toBeUndefined();
+    file(shipped, 0o600);
+    expect(findSp({}, skillDir)).toEqual({
+      bin: undefined,
+      tried: ["SCRATCHPAD_BIN is not set", `${shipped} is not executable`],
+    });
+  });
+
+  it("a SCRATCHPAD_BIN set but passed over is warned about, since the skill's scripts/sp takes it as it is", () => {
+    const { root, skillDir, shipped, file } = layout();
+    const missing = join(root, "missing");
+    expect(spBinPassedOverWarning("agent-fabric", findSp({}, skillDir))).toBeUndefined();
+    expect(
+      spBinPassedOverWarning("agent-fabric", findSp({ SCRATCHPAD_BIN: missing }, skillDir)),
+    ).toBe(
+      `agent-fabric: SCRATCHPAD_BIN ${missing} does not exist, so it is passed over; the skill's scripts/sp ` +
+        "takes SCRATCHPAD_BIN as it is and refuses every call until it names an executable sp or is unset",
     );
-    expect(spBinary({ SCRATCHPAD_BIN: "/opt/sp" }, "/addon/skill/scratchpad")).toBe("/opt/sp");
+    file(shipped, 0o755);
+    const notExecutable = file(join(root, "own", "sp"), 0o644);
+    expect(
+      spBinPassedOverWarning("agent-fabric", findSp({ SCRATCHPAD_BIN: notExecutable }, skillDir)),
+    ).toBe(
+      `agent-fabric: SCRATCHPAD_BIN ${notExecutable} is not executable, so it is passed over and the add-on ` +
+        `runs ${shipped}; the skill's scripts/sp takes SCRATCHPAD_BIN as it is and refuses every call until it ` +
+        "names an executable sp or is unset",
+    );
+    const own = file(join(root, "own", "sp-ok"), 0o755);
+    expect(
+      spBinPassedOverWarning("agent-fabric", findSp({ SCRATCHPAD_BIN: own }, skillDir)),
+    ).toBeUndefined();
+  });
+
+  it("the warning names what was tried, the variable that fixes it, and what is left out", () => {
+    expect(
+      noSpWarning("agent-fabric", {
+        bin: undefined,
+        tried: ["SCRATCHPAD_BIN is not set", "/a/sp does not exist"],
+      }),
+    ).toBe(
+      "agent-fabric: no sp for the add-on's own ScratchPad steps (SCRATCHPAD_BIN is not set; /a/sp does not exist); " +
+        "set SCRATCHPAD_BIN to the path of an sp binary. Until then nothing is granted: references in prompt_agent " +
+        "are removed with a note, and grant requests are not answered",
+    );
   });
 });
 
@@ -407,6 +495,89 @@ describe("ScratchPadHandOn", () => {
     const pad = new MemoryScratchPad("vol-own");
     const rewrite = await handOn.beforePrompt(promptContext(reader, `see ${pad.commit()}`));
     expect((rewrite as { error: string }).error).toContain("ScratchPad is not ready yet");
+  });
+
+  describe("started without ScratchPad (no sp): nothing can be granted, so every reference is removed with a note", () => {
+    const own = new MemoryScratchPad("vol-own", "agents.prompt.h.team.agent");
+    const other = new MemoryScratchPad("vol-other", "agents.prompt.h.team.other");
+    const nonReader = stubAgent({
+      address: "agents.prompt.r.team.plain",
+      identity: "APLAIN.UPLAIN",
+      readsReferences: false,
+    });
+    const without = async (given: string[]) => {
+      const agents = stubAgents([reader, nonReader]);
+      const handOn = new ScratchPadHandOn();
+      for (const reference of given) {
+        await handOn.requestInterceptor.aroundRequest(
+          { envelope: { prompt: `take ${reference}` } } as never,
+          () => Promise.resolve(),
+        );
+      }
+      handOn.startWithoutScratchPad();
+      return { handOn, agents };
+    };
+    const noted = (address: string, n: number) => ({
+      references_removed: n,
+      note:
+        "this agent has no sp of its own to grant read with (SCRATCHPAD_BIN names one): " +
+        `${n} reference(s) were removed from your prompt, "${address}" got only the text, and nothing was granted`,
+    });
+
+    it("a reader: its own reference is removed with a note, and nothing is granted", async () => {
+      const reference = own.commit();
+      const { handOn } = await without([reference]);
+      expect(await handOn.beforePrompt(promptContext(reader, `summarise ${reference}`))).toEqual({
+        prompt: "summarise",
+        fields: noted(reader.promptSubject, 1),
+      });
+      expect(own.grants).toEqual([]);
+      expect(handOn.discoveryFields(reader)).toEqual({ reads_scratchpad_references: true });
+    });
+
+    it("a non-reader: the references are removed with the same note", async () => {
+      const reference = own.commit();
+      const { handOn } = await without([reference]);
+      expect(
+        await handOn.beforePrompt(promptContext(nonReader, `see ${reference} twice ${reference}`)),
+      ).toEqual({
+        prompt: "see  twice",
+        fields: noted(nonReader.promptSubject, 2),
+      });
+    });
+
+    it("a token the agent was not given never goes out", async () => {
+      const { handOn } = await without([]);
+      const stray = other.commit();
+      expect(await handOn.beforePrompt(promptContext(reader, `look ${stray}`))).toEqual({
+        prompt: "look",
+        fields: noted(reader.promptSubject, 1),
+      });
+    });
+
+    it("another agent's sp-ref: is removed, and its creator is not asked", async () => {
+      const reference = other.commit();
+      const { handOn, agents } = await without([reference]);
+      expect(await handOn.beforePrompt(promptContext(reader, `read ${reference}`))).toEqual({
+        prompt: "read",
+        fields: noted(reader.promptSubject, 1),
+      });
+      expect(agents.requests).toEqual([]);
+      expect(other.grants).toEqual([]);
+    });
+
+    it("a prompt of nothing but references is refused, in the words of the non-reader rule", async () => {
+      const reference = own.commit();
+      const { handOn } = await without([reference]);
+      expect(await handOn.beforePrompt(promptContext(reader, reference))).toEqual({
+        error:
+          "the prompt was not sent: this agent has no sp of its own to grant read with (SCRATCHPAD_BIN names one), " +
+          "and the prompt held nothing but references; put the content they point at into the prompt itself",
+      });
+      expect(
+        await handOn.beforePrompt(promptContext(reader, "no references here")),
+      ).toBeUndefined();
+    });
   });
 
   it("hands on a reference into the agent's own volume as given, with a first-hand grant", async () => {
