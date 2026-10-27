@@ -72,7 +72,7 @@ The agent needs a fabric that already stands, exactly as the TypeScript agent do
 | `all` | the six: also `prompt_agent`'s `wait: false`, `wait_agent`, `cancel_agent` and `list_agent_calls`, for a model that runs prompts side by side |
 | `none` | nothing, for a role that must answer itself: a model with the tools in reach may delegate what it was asked, even back to its caller |
 
-Every definition is input tokens on every model call. On an agent that delegates, the three cost about 935 tokens a call less than the six.
+Every definition is input tokens on every model call. On an agent that delegates, the three are about 935 tokens a call lighter than the six.
 
 ## How it reads
 

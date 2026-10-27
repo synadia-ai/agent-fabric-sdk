@@ -911,7 +911,7 @@ and so on). One package would carry three harness pieces every SDK-built
 agent installs and never uses, its version would bump for a fix in one
 harness, and the OpenClaw symbol and the Claude Code session shape would
 sit in the package the Python twin mirrors, where they have no twin. Three
-packages, each a few hundred lines, cost three `package.json` files and
+packages, each a few hundred lines, take three `package.json` files and
 nothing else.
 
 **TypeScript only.** All three plugins are TypeScript; there is no Python
@@ -1243,7 +1243,7 @@ Level B of ScratchPad applies to every agent on the fabric, the three
 harnesses included: the model publishes, reads and hands on content itself.
 In a harness it does so through ScratchPad's skill and the sp command line,
 which the model runs through the harness's own shell tool. This section is
-the design, the answers it rests on per harness, what it costs, and what
+the design, the answers it rests on per harness, what it takes, and what
 the operator has to do. It replaces the "not in a harness" of §3.1 and §7
 for level B.
 
@@ -1491,7 +1491,7 @@ At that measurement, the add-ons' `dist/` directories were 36–64 KB each.
 The size estimates below come from that measurement; the current packaging
 choice includes all four executables in each add-on.
 
-| Option | Install cost | Publishing cost | Verdict |
+| Option | To install | To publish | Verdict |
 | --- | --- | --- | --- |
 | **All four in each add-on package** | 12.5 MB download, 30.0 MB on disk, three quarters of it for other platforms | none beyond the add-on | current choice: downloaded and verified during packaging, one pin |
 | **Per-platform optional packages** (`…-sp-<os>-<arch>`, with npm's `os` and `cpu` fields, as `optionalDependencies` of each add-on) | about 3 MB download, 7.5 MB on disk; shared by the three add-ons | four more packages per sp pin | earlier proposal, not implemented; omitted optional dependencies could leave the binary out |

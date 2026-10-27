@@ -9,7 +9,7 @@ __pycache__/
 
 # Plugin bundles built by bundles/*/build.sh
 bundles/out/
-# Local engine binaries for the reference agents' durable tests (DE_ENGINE)
+# Local engine builds
 .engine-bin/
 # Session notes and handoffs, never committed
 local/

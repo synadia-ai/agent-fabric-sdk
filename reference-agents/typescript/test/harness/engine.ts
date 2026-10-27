@@ -16,7 +16,7 @@
 // skip. A `DE_ENGINE` that is not an executable fails the run.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 
 /** The engine's binary, or why there is none. */
 function resolve(): { bin: string } | string {
@@ -24,11 +24,14 @@ function resolve(): { bin: string } | string {
   if (given === undefined || given === "") {
     return "DE_ENGINE is not set: the path of the engine from Synadia (and DE_LICENCE, its licence file)";
   }
+  let executable: boolean;
   try {
     accessSync(given, constants.X_OK);
+    executable = statSync(given).isFile();
   } catch {
-    throw new Error(`DE_ENGINE=${given}: not an executable file`);
+    executable = false;
   }
+  if (!executable) throw new Error(`DE_ENGINE=${given}: not an executable file`);
   return { bin: given };
 }
 

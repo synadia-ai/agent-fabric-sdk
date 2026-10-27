@@ -185,4 +185,4 @@ Measured against the reference agents' own tools (the examples repository at `1e
 - **The ScratchPad extension's own client.** A hook sees the target's
   handle but not the helper's client or the handles its discovery found,
   so the extension takes `agents` in its options and keeps its own map
-  from the discovery hook; a creator it has not seen costs one discovery.
+  from the discovery hook; a creator it has not seen takes one discovery.
