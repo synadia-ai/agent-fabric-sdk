@@ -89,7 +89,7 @@ reference-agents/    the two reference agents, the package's worked example — 
   typescript/        the TypeScript agent: src/agent.ts (the five behaviours), its caller, its echo; vitest
                      src/durable.ts, start_workflow and the workflows it hosts behind AGENT_DURABLE=1, on the thin durable SDK
                      src/durable-agent.ts, src/durable-main.ts: the durable agent, the model loop as the workflow (npm run start:durable)
-                     test/harness/engine.ts: the durable engine its durable tests spawn (tests/harness/engine.py in python/)
+                     test/harness/engine.ts: the durable engine its durable tests spawn, DE_ENGINE (tests/harness/engine.py in python/)
   python/            the Python agent: fabric_agent/agent.py, the same, and fabric_agent/durable.py; pytest, with the interop of the two
                      fabric_agent/durable_agent.py, durable_main.py: the durable agent (python -m fabric_agent.durable_main)
   docs/              getting-started/ (the walkthrough, one page per language) and findings.md (F1–F29)
@@ -184,13 +184,13 @@ the checkout of `synadia-agents` on `main` (everything of the rollout merged the
   durable SDK (`../../../durable-sdk`) over that install with
   `npm install --no-save`, so the tests run the checkouts. Python takes them
   by uv path sources (`path = "../../python"`, the SDK's, and an editable
-  source to `../durable-sdk/python`) until they are on PyPI. Its durable tests spawn the engine, `durable-engine
-serve`, standalone on the test's nats-server: `DE_ENGINE` (a `-dev` build)
-  and `DE_LICENCE` when given, else built with Go from `../durable-engine` at
-  the commit the SDK's `engine.pin` names, into `reference-agents/.engine-bin/`,
-  with a test licence it mints; without either they skip. Those checkouts
-  are read, built and imported, never edited; the package itself depends on
-  nothing durable. Like the packages they
+  source to `../durable-sdk/python`) until they are on PyPI. Their durable
+  tests spawn the engine, `durable-engine serve`, standalone on the test's
+  nats-server. The engine is not in a public repository: it comes from
+  Synadia, with a licence. `DE_ENGINE` is the path of its binary and
+  `DE_LICENCE` its licence file; without `DE_ENGINE` the durable tests
+  skip. Those checkouts are read, built and imported, never edited; the
+  package itself depends on nothing durable. Like the packages they
   commit their lockfiles, `package-lock.json` and `uv.lock`, as they did in
   the examples repository. `make setup` in `reference-agents/` does the
   builds above and installs both.
