@@ -25,7 +25,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-/** The symbol OpenClaw keeps its trace scope store under (2026.5.4 through 2026.9.x). */
+/** The symbol OpenClaw keeps its trace scope store under (2026.5.4 through 2026.10.8). */
 export const OPENCLAW_TRACE_SCOPE_KEY = Symbol.for("openclaw.diagnosticTraceScope.state.v1");
 
 /** What OpenClaw puts in the scope: its diagnostic trace context. */
