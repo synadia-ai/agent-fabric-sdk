@@ -17,7 +17,7 @@ Tracing and the agent tools' ScratchPad extension today; the proxy helpers
 later. Under `reference-agents/` sit the two reference agents, TypeScript
 and Python, the worked example of the package, as the protocol SDK keeps
 its examples beside each package (moved from the examples repository on
-2026-09-27). Private while it is built, public at the release.
+2026-09-27).
 
 Under `plugins/` sit the fabric add-ons for the harness plugins, one small
 TypeScript package per harness: `plugins/pi`, `plugins/openclaw`, and

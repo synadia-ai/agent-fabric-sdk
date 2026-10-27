@@ -27,14 +27,14 @@ fallback instead of requiring a new identity or workspace.
   `--dest` selects a directory inside the add-on; `--allowed-tools` adds
   Claude Code's exact wrapper permission to the generated skill.
 - `get-sp.sh` installs one explicit standalone release during onboarding
-  or image creation. It uses public HTTPS or explicit `--download gh`
-  authentication. Tool calls never invoke it.
+  or image creation. It downloads over HTTPS, or through the GitHub
+  CLI with `--download gh`. Tool calls never invoke it.
 
 For local or offline packaging, set `SP_RELEASE_SOURCE_DIR` to the directory
 with the four pinned archives. The loader also accepts `--source-dir`.
 That directory must contain the bytes named by `release.json`; this option
-does not bypass any checks. `SP_RELEASE_DOWNLOAD=gh` selects authenticated
-downloads while repository access requires authentication.
+does not bypass any checks. `SP_RELEASE_DOWNLOAD=gh` downloads through the
+GitHub CLI instead.
 
 The wrapper tests are in `plugins/pi/test/unit/scripts-sp.test.ts`.
 The source-independent distribution suite requires the TypeScript SDK and

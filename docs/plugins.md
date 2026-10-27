@@ -11,11 +11,11 @@ TypeScript are proposals until they are built; where a hook the add-on
 needs does not exist yet, §3.5 names the gap.
 
 The repos: `synadia-agents` (public; the protocol SDKs and the plugins, on
-branch `sdk-release-rollout` at `40fab3a`), this repo (`agent-fabric-sdk`,
-private while it is built; the fabric package and, under `plugins/`, the
-add-ons), and the fabric's design documents (the contracts). The
-plugins' state before the SDK split is `synadia-agents` `fbd16ab` (PR #201,
-2026-09-21); the split is `f2ff6ed` (PR #205, 2026-09-22).
+branch `sdk-release-rollout` at `40fab3a`), this repo (`agent-fabric-sdk`;
+the fabric package and, under `plugins/`, the add-ons), and the fabric's
+design documents (the contracts). The plugins' state before the SDK split
+is `synadia-agents` `fbd16ab` (PR #201, 2026-09-21); the split is
+`f2ff6ed` (PR #205, 2026-09-22).
 
 ## 1. The shape in one screen
 
@@ -942,12 +942,13 @@ plugin installed apart from its add-on.
 0.3.1 is Claude Code's bundle, the plugin `nats-channel`, its `.mcp.json`
 naming the bundled add-on. Claude Code installs plugins from a marketplace,
 and a marketplace entry may have an npm source: this repo's
-`.claude-plugin/marketplace.json`, `agent-fabric`, names the package, and
-until the repo is public the same file in any folder serves (`claude
-plugin marketplace add <folder>`, `claude plugin install
-nats-channel@agent-fabric`). The channel is not on Claude Code's list, so it
-loads with `--dangerously-load-development-channels`, which shows a warning
-and works only in an interactive session: in a container Claude Code runs
+`.claude-plugin/marketplace.json`, `agent-fabric`, names the package
+(`claude plugin marketplace add synadia-ai/agent-fabric-sdk`, `claude plugin
+install nats-channel@agent-fabric`), and the same file in any folder serves
+as well (`claude plugin marketplace add <folder>`). The channel is not on
+Claude Code's list, so it loads with
+`--dangerously-load-development-channels`, which shows a warning and works
+only in an interactive session: in a container Claude Code runs
 in tmux and its dialogs are answered by attaching. Measured on 2026-10-11
 with Claude Code 2.1.296: installed from a local registry through such a
 marketplace, connected by environment alone, signed, traced, answering a

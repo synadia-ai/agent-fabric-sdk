@@ -15,8 +15,8 @@ or service source checkout.
 
 Run [get-sp.sh](../plugins/scratchpad-skill/get-sp.sh) during onboarding or
 image creation. It needs a POSIX shell, `curl`, `tar`, and `sha256sum` or
-`shasum`. Public downloads use HTTPS. While repository access requires
-authentication, add `--download gh` and authenticate the GitHub CLI.
+`shasum`. Downloads use HTTPS. `--download gh` downloads through the
+GitHub CLI instead.
 
 ```sh
 : "${VERSION:?Set the operator-selected sp release}"
@@ -84,7 +84,7 @@ Each add-on's `npm run build:sp` and `npm pack` run the shared
 20 or newer. It downloads the four selected archives over HTTPS, verifies
 them against the checked-in manifest, and installs identical executable
 bytes, license text, and dependency notices into PI, OpenClaw, and Claude
-Code. `SP_RELEASE_DOWNLOAD=gh` selects authenticated GitHub CLI downloads.
+Code. `SP_RELEASE_DOWNLOAD=gh` downloads through the GitHub CLI instead.
 
 The loader checks every cached archive again before reuse, including its
 member types, identities, full license, and executable hash. It rejects a
@@ -131,7 +131,6 @@ an upload quota refusal does not authorize a writer reset.
 The checks need Node 20+, npm, a POSIX shell, and the standalone installer's
 archive and hash tools. They do not need a service checkout or Go.
 Set `SP_RELEASE_SOURCE_DIR` for local release candidates or offline checks.
-Use `SP_RELEASE_DOWNLOAD=gh` while authenticated access is required.
 
 Build the TypeScript SDK and **all three harness add-ons** before running
 the distribution suite. It creates real npm archives and checks their
