@@ -4,6 +4,15 @@ All notable changes to `@synadia-ai/agent-fabric-claude-code` are recorded here.
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-10-27
+
+### Changed
+
+- The bundled Claude Code channel plugin from `synadia-agents` makes its request ids unique per
+  server start (`<8 hex>-<n>`), so a message an earlier server sent no longer reaches the new
+  server's request of the same number, and a new Claude Code process clears its pid's earlier
+  hook files at startup.
+
 ## [0.3.0] — 2026-10-26
 
 ### Added
