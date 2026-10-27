@@ -176,6 +176,27 @@ describe("the served pair", () => {
     ]);
   });
 
+  it("a failed OpenClaw run: end carries the reason the plugin passes, no_reply", async () => {
+    const { ext, published } = await started();
+    const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT });
+    await prompt.dispatched;
+    await prompt.end("error", undefined, "no_reply");
+    await expect(prompt.done).rejects.toThrow("the turn failed");
+    await ext.stopping!();
+    const end = published.find((p) => p.record["phase"] === "end")!.record;
+    expect(end).toMatchObject({ phase: "end", status: "error", reason: "no_reply", version: 2 });
+    expect(servedSchemaErrors(end)).toEqual([]);
+    // Without a reason, as for a dispatch that threw: none on the record.
+    const other = serve(ext, { thread_id: THREAD, root_id: ROOT });
+    await other.dispatched;
+    await other.end("error");
+    await expect(other.done).rejects.toThrow("the turn failed");
+    await ext.stopping!();
+    const otherEnd = published.filter((p) => p.record["phase"] === "end").at(-1)!.record;
+    expect(otherEnd["status"]).toBe("error");
+    expect(otherEnd["reason"]).toBeUndefined();
+  });
+
   it("mints a fresh trace id per prompt, a root's included", async () => {
     const { ext, published, lines } = await started();
     const a = serve(ext, { thread_id: THREAD, root_id: ROOT });

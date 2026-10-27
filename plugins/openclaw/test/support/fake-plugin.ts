@@ -29,6 +29,7 @@ import {
 import type {
   AgentExtension,
   AgentExtensionContext,
+  EndReason,
   Outcome,
   ServedRequest,
 } from "@synadia-ai/agent-fabric";
@@ -217,9 +218,11 @@ export interface ServedPrompt {
   /**
    * End the turn as OpenClaw would: the dispatch resolves (`ok`), or
    * rejects (`error`); the handler then calls `promptEnded` with that
-   * outcome at `atMs`, now by default, and settles.
+   * outcome at `atMs`, now by default, and settles. With `reason`, the
+   * fourth argument as the plugin passes it: `no_reply` for a run that
+   * failed and whose last reply said so.
    */
-  end(outcome?: Exclude<Outcome, "timeout">, atMs?: number): Promise<void>;
+  end(outcome?: Exclude<Outcome, "timeout">, atMs?: number, reason?: EndReason): Promise<void>;
 }
 
 let requestCounter = 0;
@@ -242,15 +245,21 @@ export function serve(
   });
   const accepted = deferred();
   const dispatched = deferred();
-  const turnEnd = deferred<{ outcome: Exclude<Outcome, "timeout">; atMs: number | undefined }>();
+  const turnEnd = deferred<{
+    outcome: Exclude<Outcome, "timeout">;
+    atMs: number | undefined;
+    reason: EndReason | undefined;
+  }>();
   let enterTurn: (<T>(fn: () => T) => T) | undefined;
   let endedAt: number | undefined;
+  let endReason: EndReason | undefined;
 
   const turn = async (): Promise<void> => {
     enterTurn = AsyncLocalStorage.snapshot();
     dispatched.resolve();
-    const { outcome, atMs } = await turnEnd.promise;
+    const { outcome, atMs, reason } = await turnEnd.promise;
     endedAt = atMs;
+    endReason = reason;
     if (outcome === "error") throw new Error("the turn failed");
   };
 
@@ -267,7 +276,12 @@ export function serve(
         outcome = "error";
         throw e;
       } finally {
-        ext.events?.promptEnded?.(request, outcome, endedAt ?? Date.now());
+        // The reason only when there is one, as the plugin passes it.
+        if (endReason === undefined) {
+          ext.events?.promptEnded?.(request, outcome, endedAt ?? Date.now());
+        } else {
+          ext.events?.promptEnded?.(request, outcome, endedAt ?? Date.now(), endReason);
+        }
       }
     },
   );
@@ -288,8 +302,8 @@ export function serve(
       if (enterTurn === undefined) throw new Error("the turn was not dispatched");
       return enterTurn(fn);
     },
-    async end(outcome = "ok", atMs) {
-      turnEnd.resolve({ outcome, atMs });
+    async end(outcome = "ok", atMs, reason) {
+      turnEnd.resolve({ outcome, atMs, reason });
       await done.catch((e: unknown) => {
         if (outcome !== "error") throw e;
       });
