@@ -216,7 +216,8 @@ export function createFabricExtension(
         const entry = served.get(request.id);
         if (entry === undefined) return;
         served.delete(request.id);
-        // `no_reply` when OpenClaw's run failed: the `end` record says so.
+        // `no_reply` when the run ended on a reply OpenClaw marked as an
+        // error, a failed run's among them: the `end` record says so.
         entry.turn?.settle(outcome, atMs, reason);
         promptEnv.leave(request);
       },

@@ -255,7 +255,7 @@ export interface LocalTurn {
 
 export type Outcome = "ok" | "error" | "timeout";
 
-/** Claude Code: how a prompt ended when the model did not end it with its own reply. OpenClaw: `no_reply` when its run failed. */
+/** Claude Code: how a prompt ended when the model did not end it with its own reply. OpenClaw: `no_reply` when the run ended on a reply it marked as an error. */
 export type EndReason = "final_text" | "no_reply" | "shutdown" | "delivery" | "expired";
 
 export interface HarnessEvents {
@@ -281,7 +281,7 @@ export interface HarnessEvents {
 | Event | Harness | Kind | When the plugin calls it | Pre-split need it replaces |
 | --- | --- | --- | --- | --- |
 | `promptAccepted` | all | notification, synchronous | inside the prompt handler, in the request's async context, after every interceptor has run. An extension reads here what its own request interceptor bound | PI: `activeTrace()` captured at `enqueue` (`nats-channel.ts` `fbd16ab`); OpenClaw: `activeTrace()` at `beginTurn` (`gateway.ts`); Claude Code: the same plus `resolveClaudeSessionId` (`server.ts`) |
-| `promptEnded` | all | notification, synchronous | when the plugin settles the request: PI at `agent_settled`, or a failure or expiry; OpenClaw when the dispatch resolved, `error` when it threw or reported a dispatch error, and `error` with the reason `no_reply` when the run ended on OpenClaw's reply to a failed run; Claude Code when `reply` completed with `done`, on a handler failure, or on the 30-minute request TTL (`timeout`) | OpenClaw's `turn.settle(status)`; Claude Code's `pending.outcome` |
+| `promptEnded` | all | notification, synchronous | when the plugin settles the request: PI at `agent_settled`, or a failure or expiry; OpenClaw when the dispatch resolved, `error` when it threw or reported a dispatch error, and `error` with the reason `no_reply` when the run ended on a reply OpenClaw marked as an error, a failed run's among them; Claude Code when `reply` completed with `done`, on a handler failure, or on the 30-minute request TTL (`timeout`) | OpenClaw's `turn.settle(status)`; Claude Code's `pending.outcome` |
 | `aroundToolCall` | all | wrapper, synchronous | around every `tools.execute()`, with the request or the local turn the plugin believes the model is working in: PI's active NATS prompt, else its open local turn; OpenClaw's active turn; Claude Code's `request_id` argument, else the turn that made the call by its prompt id (§3.4) | `activeTrace() ?? promptQueue.active?.trace` in PI, `associateAgentTraceScope` in OpenClaw, `lastActiveRequestId` in Claude Code |
 | `localTurnStarted` | PI, Claude Code | notification, synchronous | a turn no served prompt started began (§3.1): PI at the run's `agent_start` when no NATS prompt is active and no local turn is open; Claude Code when its channel sees the turn begin | none: before, such a turn was no thread |
 | `localTurnEnded` | PI, Claude Code | notification, synchronous | the local turn ended: PI at the run's `agent_settled`, before the plugin completes the active request and hands PI the next queued prompt, or at `session_shutdown`; Claude Code when its channel sees the turn end. `outcome` is `error` when the harness reports the turn failed, else `ok` | none |
@@ -605,12 +605,16 @@ README says the same in operator terms.
    the header carries an id of OpenClaw's own.
 3. `promptEnded(request, outcome, atMs, reason?)`: publish `served` `end`
    with that outcome, time and reason. OpenClaw's outcomes are `ok` and
-   `error`; its one reason is `no_reply`, for a run that ended on
-   OpenClaw's reply to a failed run (OpenClaw marks it `isError`; the
-   channel's `transformReplyPayload` keeps the mark in
+   `error`; its one reason is `no_reply`, for a run that ended on a reply
+   OpenClaw marked `isError`. Any such reply ends the prompt this way, a
+   failed run's among them, and others besides: a rejected directive, a
+   failed `/btw`, a persistence or model-lock rejection, a fallback that
+   produced no visible reply, a tool's failure when the run has no other
+   reply. The channel's `transformReplyPayload` keeps the mark in
    `channelData.nats.isError`, and the channel ends the prompt with a §9
-   `500` carrying that reply's text instead of sending it). A dispatch
-   that threw, or a dispatch error OpenClaw reported, carries none.
+   `500`, `OpenClaw replied with an error: <its text>`, instead of sending
+   the reply. A dispatch that threw, or a dispatch error OpenClaw
+   reported, carries none.
 4. `aroundToolCall(request, …, run)`: bind the request's trace scope, so
    `prompt_agent` from OpenClaw's tool runner writes its edge under the
    served thread. OpenClaw serves one turn at a time per account, so the
@@ -2109,8 +2113,9 @@ run on it.
 > Code), all with outcome `error`, or `expired` (the prompt outlived the
 > plugin's limit, outcome `timeout`). The argument is left out when the
 > model replied, and a prompt that failed otherwise carries none. OpenClaw
-> passes `no_reply` when its run failed and its last reply said so: the
-> caller gets an error, not that reply. Its prompts carry no other reason. A wrapper must call its `run` argument
+> passes `no_reply` when the run ended on a reply OpenClaw marked as an
+> error, a failed run among them: the caller gets an error, not that reply.
+> Its prompts carry no other reason. A wrapper must call its `run` argument
 > once, synchronously, and return its value. A wrapper may be an async
 > function: the plugin still takes `run`'s own value, and the wrapper must
 > call `run` once, before its first `await`, so the step keeps its timing.

@@ -176,7 +176,7 @@ describe("the served pair", () => {
     ]);
   });
 
-  it("a failed OpenClaw run: end carries the reason the plugin passes, no_reply", async () => {
+  it("a reply OpenClaw marked as an error ended the run: end carries the reason the plugin passes, no_reply", async () => {
     const { ext, published } = await started();
     const prompt = serve(ext, { thread_id: THREAD, root_id: ROOT });
     await prompt.dispatched;

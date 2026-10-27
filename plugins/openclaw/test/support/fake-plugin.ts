@@ -220,7 +220,7 @@ export interface ServedPrompt {
    * rejects (`error`); the handler then calls `promptEnded` with that
    * outcome at `atMs`, now by default, and settles. With `reason`, the
    * fourth argument as the plugin passes it: `no_reply` for a run that
-   * failed and whose last reply said so.
+   * ended on a reply OpenClaw marked as an error.
    */
   end(outcome?: Exclude<Outcome, "timeout">, atMs?: number, reason?: EndReason): Promise<void>;
 }
