@@ -4,6 +4,21 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## OpenClaw's stop and the add-ons' own sp, the add-ons 0.3.2
+
+[bundles-v0.1.5.json](bundles-v0.1.5.json) describes the prepared `bundles-v0.1.5` assets.
+The protocol source is `synadia-agents` main at `ed9aefb` (#241): OpenClaw's channel stops within about 3 s, inside the 5 s OpenClaw gives it; its cleanup runs once with every step bounded, a stop during a service start takes that service down too, OpenClaw's abort ends a start that never settles, and a stale start touches nothing of a newer one's.
+The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7.
+The Fabric source is `983c4c3`: the three add-ons at 0.3.2; each finds its own `sp` as the first executable of `SCRATCHPAD_BIN`, then the binary it ships; without one it warns once, removes every reference with a note, refuses a prompt of references alone and answers no grant request; a `SCRATCHPAD_BIN` it cannot use is warned about (#88).
+ScratchPad is unchanged from `bundles-v0.1.4`: `sp-v0.1.6`.
+Checked before publication with fabric v0.12.4 against a test deployment, in a copy of a test home: its migration set the five settings that keep an OpenClaw agent to NATS prompts in the copy's OpenClaw agent, its other settings kept; each archive installed with `fabric plugins install --from`; a pi, an OpenClaw and a Claude Code agent connected with `fabric connect`, run the CLI's way, signed, each answering a console prompt, OpenClaw a second one too.
+The new OpenClaw agent's config held the same five settings, and three minutes idle after its turns left no task of it without a caller.
+Stopped with Ctrl-C four times, the OpenClaw gateway exited 0.6 s to 1.5 s after the signal, its connection drained, with none of OpenClaw's lines for a stop past its 5 s bound.
+The test deployment gave the agents no ScratchPad volume; started with a volume named and `SCRATCHPAD_BIN` naming no file, each add-on warned that it passes the variable over and runs the `sp` its bundle ships, and none said it had no `sp` (Claude Code's, read from its bundle's server started as its `.mcp.json` starts it, since Claude Code keeps only the server's first line of output).
+A turn typed at pi and at Claude Code each made one task rooted at the typed agent, with OpenClaw's thread beneath; Claude Code's stored model calls name its requests `<8 hex>-<n>`.
+Each npm package holds its archive's plugin folder file for file.
+The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
+
 ## OpenClaw's error replies, the add-ons 0.3.1
 
 [bundles-v0.1.4.json](bundles-v0.1.4.json) describes the prepared `bundles-v0.1.4` assets.
