@@ -4,6 +4,19 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## OpenClaw's error replies, the add-ons 0.3.1
+
+[bundles-v0.1.4.json](bundles-v0.1.4.json) describes the prepared `bundles-v0.1.4` assets.
+The protocol source is `synadia-agents` main at `a204518` (#240): OpenClaw's channel ends a prompt whose run ended on a reply OpenClaw marked as an error with `500 OpenClaw replied with an error: <text>`, no longer as a reply; Claude Code's request ids are `<8 hex>-<n>`, unique per server start, with no wall-clock guards, and a new Claude Code process clears its pid's earlier hook files at startup; `docs/agent-tools.md` §7 says a result counts the calls open when it is built.
+The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7.
+The Fabric source is `95f67d6`: the three add-ons at 0.3.1; OpenClaw's served `end` carries the reason `no_reply` in that case (#84).
+ScratchPad is unchanged from `bundles-v0.1.3`: `sp-v0.1.6`.
+Checked before publication with fabric v0.12.3 against staging, in a copy of a test home: each archive installed with `fabric plugins install --from`; a pi, an OpenClaw and a Claude Code agent connected with `fabric connect`, run the CLI's way, signed, each answering a console prompt.
+An OpenClaw turn the model proxy refused with `400` ended the console's prompt with the `500` error frame and no reply, its thread `error` and its served `end` with the reason `no_reply`; pi's and Claude Code's `prompt_agent` to it returned `failed` with the same error.
+A turn typed at pi and at Claude Code each made one task rooted at the typed agent, with OpenClaw's thread beneath; Claude Code's stored model calls name its requests `<8 hex>-<n>`; a console prompt folded into a running Claude Code turn got its own reply, and the typed task kept its call from before the fold.
+Each npm package holds its archive's plugin folder file for file.
+The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
+
 ## Typed turns as tasks, the add-ons 0.3.0
 
 [bundles-v0.1.3.json](bundles-v0.1.3.json) describes the prepared `bundles-v0.1.3` assets.
