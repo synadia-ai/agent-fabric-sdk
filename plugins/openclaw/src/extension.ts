@@ -212,11 +212,13 @@ export function createFabricExtension(
         turn?.bind(traceId);
         served.set(request.id, { scope, traceId, turn });
       },
-      promptEnded(request, outcome, atMs) {
+      promptEnded(request, outcome, atMs, reason) {
         const entry = served.get(request.id);
         if (entry === undefined) return;
         served.delete(request.id);
-        entry.turn?.settle(outcome, atMs);
+        // `no_reply` when the run ended on a reply OpenClaw marked as an
+        // error, a failed run's among them: the `end` record says so.
+        entry.turn?.settle(outcome, atMs, reason);
         promptEnv.leave(request);
       },
       aroundDispatch(request, run) {

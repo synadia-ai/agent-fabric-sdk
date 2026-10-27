@@ -85,6 +85,8 @@ export type Outcome = "ok" | "error" | "timeout";
  * no final text; `shutdown`: the plugin stopped with the prompt open;
  * `delivery`: the prompt could not be handed to the harness (all three
  * `error`); `expired`: the prompt outlived the plugin's limit (`timeout`).
+ * OpenClaw passes `no_reply` when the run ended on a reply OpenClaw marked
+ * as an error, a failed run among them (outcome `error`), and no other.
  * The same values as the served record's `reason`.
  */
 export type EndReason = "final_text" | "no_reply" | "shutdown" | "delivery" | "expired";
@@ -106,7 +108,8 @@ export interface HarnessEvents {
   promptAccepted?(request: ServedRequest): void;
   /**
    * When the plugin settles the request. Claude Code passes `reason` when
-   * the model did not end the prompt with its own reply.
+   * the model did not end the prompt with its own reply; OpenClaw passes
+   * `no_reply` when the run ended on a reply it marked as an error.
    */
   promptEnded?(request: ServedRequest, outcome: Outcome, atMs: number, reason?: EndReason): void;
   /**
