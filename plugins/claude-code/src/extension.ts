@@ -84,6 +84,7 @@ import {
   bindActiveTrace,
   fabricTracing,
   loopGuard,
+  noSpWarning,
   resolveEdgeSubject,
   rootTraceScope,
   servedPublisher,
@@ -107,6 +108,7 @@ import {
   SP_VARS,
   SpEnvFile,
   spEnvFilePath,
+  findSp,
   spPort,
   type ScratchPadSettings,
 } from "./scratchpad.js";
@@ -393,11 +395,11 @@ export function createFabricExtension(
         }
         const port = spPort(scratchPad, service.subject.prompt, env);
         if (port !== undefined) handOn.start({ scratchPad: port, agents, service, logger: log });
-        else
-          log.warn(
-            `${EXTENSION_NAME}: no sp for this platform (set SCRATCHPAD_BIN); ` +
-              "references in prompt_agent are not handed on, and grant requests not answered",
-          );
+        else {
+          // No sp of its own (`findSp`): its steps are left out, never a turn.
+          handOn.startWithoutScratchPad();
+          log.warn(noSpWarning(EXTENSION_NAME, findSp(env)));
+        }
         log.info(
           `${EXTENSION_NAME}: ScratchPad volume ${scratchPad.volume}` +
             (scratchPad.dir !== undefined ? `, workspace ${scratchPad.dir}` : ", no workspace") +

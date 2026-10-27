@@ -4,6 +4,17 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The add-on's own sp, for the references its model hands on and the grant requests it
+  answers, is the first executable file of `SCRATCHPAD_BIN` and the binary the package ships.
+  Without one, the add-on says so once at start, with what it tried and that `SCRATCHPAD_BIN`
+  fixes it, and leaves its own steps out: a reference in `prompt_agent` goes as it is, and grant
+  requests are not answered. Before, a missing binary showed only when a call to it failed,
+  and on a platform the package ships no binary for, a prompt with references was refused.
+
 ## [0.3.1] — 2026-10-27
 
 ### Changed

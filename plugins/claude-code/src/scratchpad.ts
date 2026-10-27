@@ -19,11 +19,13 @@ import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  findSp as sharedFindSp,
   spBinary as sharedSpBinary,
   spPort as sharedSpPort,
   SP_VARS,
   type ScratchPad,
   type ScratchPadSettings,
+  type SpLookup,
 } from "@synadia-ai/agent-fabric";
 
 export {
@@ -42,7 +44,16 @@ export const SKILL_DIR = fileURLToPath(new URL("../skills/scratchpad", import.me
 /** The variable that names the file to `scripts/sp`, set by the package's hook. */
 export const SP_ENV_FILE_VAR = "SP_ENV_FILE";
 
-/** The sp binary this package ships for this machine, or `SCRATCHPAD_BIN`. */
+/**
+ * The sp the add-on runs for its own ScratchPad steps: `SCRATCHPAD_BIN`, else
+ * the binary this package ships for this machine, the first that is an
+ * executable file, with what was passed over and why.
+ */
+export function findSp(env: Record<string, string | undefined>): SpLookup {
+  return sharedFindSp(env, SKILL_DIR);
+}
+
+/** The sp of `findSp`, or `undefined` when there is none. */
 export function spBinary(env: Record<string, string | undefined>): string | undefined {
   return sharedSpBinary(env, SKILL_DIR);
 }

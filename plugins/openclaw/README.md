@@ -251,13 +251,26 @@ see, so `scripts/sp` records each one sp confirms in `SP_GRANTS_FILE`
 (`<workspace>.grants`), and the add-on counts a live one as first-hand: it
 went to the agent whose prompt OpenClaw was serving.
 
+**The add-on's own sp.** Handing on references and answering grant requests
+run sp from the add-on itself: `SCRATCHPAD_BIN` when it names an executable
+file, else the binary the package ships for this machine,
+`skill/scratchpad/bin/sp-<os>-<arch>`, found from the add-on's module.
+OpenClaw 2026.10 loads a plugin's code from a copy of its own. Installed as
+the one npm package, that copy holds the skill. Where the add-on is a package
+of its own, loaded by path (`SYNADIA_OPENCLAW_EXTENSIONS`), the copy holds
+only its `dist/` and `package.json`: set `SCRATCHPAD_BIN` to the package's
+`skill/scratchpad/bin/sp-<os>-<arch>` there. Without an sp the add-on says
+so once at start, with what it tried, and leaves these two steps out: a
+reference in `prompt_agent` goes as it is, and grant requests are not
+answered. The model's `scripts/sp` finds its own binary either way.
+
 ## Public API
 
 |                                                                                                                                                      |                                                                                                                                                                       |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `default`, `fabricExtension(ctx, env?)`                                                                                                              | the factory of the contract: resolves ScratchPad, then builds the extension; `env` is where the variables are read and ScratchPad's are set, `process.env` by default |
 | `createFabricExtension(ctx, env?, scratchPad?)`                                                                                                      | the same, synchronous, from settings already resolved                                                                                                                 |
-| `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                  | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the packaged sp's path                                                                 |
+| `SCRATCHPAD_OPTION`, `SP_VARS`, `ScratchPadHandOn`, `spBinary(env)`                                                                                  | ScratchPad's option key, the variables `scripts/sp` reads, the tool extension, the add-on's own sp (`SCRATCHPAD_BIN`, else the packaged one, if executable)           |
 | `EXTENSION_NAME`, `IDENTITY_OFF_WARNING`, `SERVED_HARNESS`                                                                                           | the constants                                                                                                                                                         |
 | `newTraceId()`, `validTraceId(v)`, `runWithTraceId(id, fn, scope?)`, `openClawTraceScope(root?)`, `OPENCLAW_TRACE_SCOPE_KEY`, `OpenClawTraceContext` | the trace scope seed on its own                                                                                                                                       |
 

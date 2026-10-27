@@ -4,7 +4,7 @@
 // the ScratchPad extension behind its wrapper, with the grant requests it
 // answers. The add-ons' own suites drive them through their factories.
 
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,8 @@ import type { Logger } from "@synadia-ai/agents";
 import type { AgentService } from "@synadia-ai/agent-service";
 import {
   exportScratchPad,
+  findSp,
+  noSpWarning,
   readRecordedGrants,
   resolveScratchPad,
   ScratchPadHandOn,
@@ -387,14 +389,73 @@ describe("ServedPromptEnv", () => {
   });
 });
 
-describe("spBinary", () => {
-  it("names the binary for this machine in the add-on's skill directory, or SCRATCHPAD_BIN", () => {
-    const os = platform() === "darwin" ? "darwin" : "linux";
-    const cpu = arch() === "arm64" ? "arm64" : "amd64";
-    expect(spBinary({}, "/addon/skill/scratchpad")).toBe(
-      `/addon/skill/scratchpad/bin/sp-${os}-${cpu}`,
+describe("findSp: the add-on's own sp, the first executable file", () => {
+  const os = platform() === "darwin" ? "darwin" : "linux";
+  const cpu = arch() === "arm64" ? "arm64" : "amd64";
+  const layout = () => {
+    const root = mkdtempSync(join(tmpdir(), "fabric-find-sp-"));
+    const skillDir = join(root, "skill", "scratchpad");
+    const shipped = join(skillDir, "bin", `sp-${os}-${cpu}`);
+    const file = (path: string, mode: number): string => {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, "#!/bin/sh\nexit 0\n");
+      chmodSync(path, mode);
+      return path;
+    };
+    return { root, skillDir, shipped, file };
+  };
+
+  it("takes SCRATCHPAD_BIN when it is an executable file", () => {
+    const { root, skillDir, file } = layout();
+    const own = file(join(root, "own", "sp"), 0o755);
+    expect(findSp({ SCRATCHPAD_BIN: own }, skillDir)).toEqual({ bin: own, tried: [] });
+    expect(spBinary({ SCRATCHPAD_BIN: own }, skillDir)).toBe(own);
+  });
+
+  it("else the binary shipped for this machine, saying why SCRATCHPAD_BIN was passed over", () => {
+    const { root, skillDir, shipped, file } = layout();
+    file(shipped, 0o755);
+    expect(findSp({}, skillDir)).toEqual({ bin: shipped, tried: ["SCRATCHPAD_BIN is not set"] });
+    expect(findSp({ SCRATCHPAD_BIN: "" }, skillDir).bin).toBe(shipped);
+    const missing = join(root, "missing");
+    expect(findSp({ SCRATCHPAD_BIN: missing }, skillDir)).toEqual({
+      bin: shipped,
+      tried: [`SCRATCHPAD_BIN ${missing} does not exist`],
+    });
+    const notExecutable = file(join(root, "own", "sp"), 0o644);
+    expect(findSp({ SCRATCHPAD_BIN: notExecutable }, skillDir).tried).toEqual([
+      `SCRATCHPAD_BIN ${notExecutable} is not executable`,
+    ]);
+    expect(findSp({ SCRATCHPAD_BIN: root }, skillDir).tried).toEqual([
+      `SCRATCHPAD_BIN ${root} is not a file`,
+    ]);
+  });
+
+  it("none, when neither is there: a module copied without its skill directory, or without the modes", () => {
+    const { skillDir, shipped, file } = layout();
+    expect(findSp({}, skillDir)).toEqual({
+      bin: undefined,
+      tried: ["SCRATCHPAD_BIN is not set", `${shipped} does not exist`],
+    });
+    expect(spBinary({}, skillDir)).toBeUndefined();
+    file(shipped, 0o600);
+    expect(findSp({}, skillDir)).toEqual({
+      bin: undefined,
+      tried: ["SCRATCHPAD_BIN is not set", `${shipped} is not executable`],
+    });
+  });
+
+  it("the warning names what was tried, the variable that fixes it, and what is left out", () => {
+    expect(
+      noSpWarning("agent-fabric", {
+        bin: undefined,
+        tried: ["SCRATCHPAD_BIN is not set", "/a/sp does not exist"],
+      }),
+    ).toBe(
+      "agent-fabric: no sp for the add-on's own ScratchPad steps (SCRATCHPAD_BIN is not set; /a/sp does not exist); " +
+        "set SCRATCHPAD_BIN to the path of an sp binary. Until then references in prompt_agent are sent as they are, " +
+        "and grant requests are not answered",
     );
-    expect(spBinary({ SCRATCHPAD_BIN: "/opt/sp" }, "/addon/skill/scratchpad")).toBe("/opt/sp");
   });
 });
 
@@ -407,6 +468,20 @@ describe("ScratchPadHandOn", () => {
     const pad = new MemoryScratchPad("vol-own");
     const rewrite = await handOn.beforePrompt(promptContext(reader, `see ${pad.commit()}`));
     expect((rewrite as { error: string }).error).toContain("ScratchPad is not ready yet");
+  });
+
+  it("started without ScratchPad (no sp): a prompt with references goes as it is, never refused", async () => {
+    const handOn = new ScratchPadHandOn();
+    const pad = new MemoryScratchPad("vol-own");
+    const reference = pad.commit();
+    await handOn.requestInterceptor.aroundRequest(
+      { envelope: { prompt: `take ${reference}` } } as never,
+      () => Promise.resolve(),
+    );
+    handOn.startWithoutScratchPad();
+    expect(await handOn.beforePrompt(promptContext(reader, `see ${reference}`))).toBeUndefined();
+    expect(handOn.discoveryFields(reader)).toEqual({ reads_scratchpad_references: true });
+    expect(pad.grants).toEqual([]);
   });
 
   it("hands on a reference into the agent's own volume as given, with a first-hand grant", async () => {
