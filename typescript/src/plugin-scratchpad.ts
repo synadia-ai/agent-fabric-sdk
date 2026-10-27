@@ -31,8 +31,9 @@
 // (`grant-request.ts`): the grants its model made through `scripts/sp`, which
 // the extension does not see, are recorded by the wrapper in a file the
 // add-on reads (`SP_GRANTS_FILE`, `withRecordedGrants`). Both run the
-// add-on's own sp (`findSp`); without one they are left out, with one
-// warning, and the model's `scripts/sp` is not affected.
+// add-on's own sp (`findSp`). Without one, nothing can be granted: a
+// reference in `prompt_agent` is removed with a note, grant requests go
+// unanswered, and one warning says so.
 //
 // Per served prompt, from when the harness starts working on it to its end:
 // the prompt's trace (`SP_THREAD_ID`, `SP_ROOT_ID`) and its verified caller
@@ -74,6 +75,7 @@ import {
   findReferences,
   granteeFromIdentity,
   readsReferences,
+  removeReferences,
   type GrantKind,
   type Grantee,
   type ScratchPad,
@@ -403,14 +405,13 @@ export function spBinary(env: Env, skillDir: string): string | undefined {
 
 /**
  * The warning an add-on logs once at start when `findSp` found no sp: what
- * it tried, how to fix it, and what the add-on leaves out until then. The
- * skill's `scripts/sp`, which the model runs, finds its binary on its own.
+ * it tried, how to fix it, and what the add-on leaves out until then.
  */
 export function noSpWarning(extensionName: string, lookup: SpLookup): string {
   return (
     `${extensionName}: no sp for the add-on's own ScratchPad steps (${lookup.tried.join("; ")}); ` +
-    `set ${SCRATCHPAD_BIN_VAR} to the path of an sp binary. Until then references in ` +
-    "prompt_agent are sent as they are, and grant requests are not answered"
+    `set ${SCRATCHPAD_BIN_VAR} to the path of an sp binary. Until then nothing is granted: ` +
+    "references in prompt_agent are removed with a note, and grant requests are not answered"
   );
 }
 
@@ -480,9 +481,10 @@ export class ScratchPadHandOn implements AgentToolsExtension {
 
   /**
    * Instead of `start`, when the add-on has no ScratchPad port of its own
-   * (no sp, `findSp`): its own steps are left out from here on. A prompt
-   * goes as it is, references and all, and no grant request is answered.
-   * Never a refusal, so no turn fails for it.
+   * (no sp, `findSp`): nothing can be granted from here on. Every reference
+   * in a prompt is removed with a note, as for a receiver that reads none,
+   * and a prompt that held nothing but references is refused in the same
+   * words; no grant request is answered.
    */
   startWithoutScratchPad(): void {
     this.#without = true;
@@ -501,7 +503,9 @@ export class ScratchPadHandOn implements AgentToolsExtension {
     const inner = this.#inner;
     const scratchPad = this.#scratchPad;
     if (inner === undefined || scratchPad === undefined) {
-      if (this.#without || findReferences(ctx.prompt).length === 0) return;
+      const found = findReferences(ctx.prompt);
+      if (found.length === 0) return;
+      if (this.#without) return withoutSp(ctx.address, ctx.prompt, found.length);
       return {
         error: "the prompt was not sent: ScratchPad is not ready yet; try again in a moment",
       };
@@ -515,6 +519,32 @@ export class ScratchPadHandOn implements AgentToolsExtension {
   afterReply(ctx: AgentToolsReplyContext): void {
     this.#inner?.afterReply(ctx);
   }
+}
+
+/**
+ * A prompt's references, when the add-on has no sp to grant read with: all
+ * removed with a note, or the prompt refused when it held nothing else, in
+ * the words of the extension's rule for a receiver that reads none.
+ */
+function withoutSp(address: string, text: string, found: number): AgentToolsPromptRewrite {
+  const why = `this agent has no sp of its own to grant read with (${SCRATCHPAD_BIN_VAR} names one)`;
+  const prompt = removeReferences(text);
+  if (prompt === "") {
+    return {
+      error:
+        `the prompt was not sent: ${why}, and the prompt held nothing but references; ` +
+        "put the content they point at into the prompt itself",
+    };
+  }
+  return {
+    prompt,
+    fields: {
+      references_removed: found,
+      note:
+        `${why}: ${found} reference(s) were removed from your prompt, "${address}" got only ` +
+        "the text, and nothing was granted",
+    },
+  };
 }
 
 /**

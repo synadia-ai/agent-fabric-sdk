@@ -11,8 +11,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The add-on's own sp, for the references its model hands on and the grant requests it
   answers, is the first executable file of `SCRATCHPAD_BIN` and the binary the package ships.
   Without one, the add-on says so once at start, with what it tried and that `SCRATCHPAD_BIN`
-  fixes it, and leaves its own steps out: a reference in `prompt_agent` goes as it is, and grant
-  requests are not answered. Before, a missing binary showed only when a call to it failed,
+  fixes it, and grants nothing: a reference in `prompt_agent` is removed with a note, as for a
+  receiver that reads none, a prompt of nothing but references is refused, and grant requests
+  are not answered. Before, a missing binary showed only when a call to it failed,
   and on a platform the package ships no binary for, a prompt with references was refused.
 
 ## [0.3.1] — 2026-10-27

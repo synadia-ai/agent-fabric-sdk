@@ -24,8 +24,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `findSp(env, skillDir)` and `SpLookup`: the sp an add-on runs for its own ScratchPad steps,
   with each candidate it passed over and why; `noSpWarning(name, lookup)`, the warning an
   add-on logs once when there is none; `ScratchPadHandOn.startWithoutScratchPad()`, in place of
-  `start` when there is none: a prompt goes as it is, references and all, and no grant request
-  is answered.
+  `start` when there is none: nothing can be granted, so every reference in a prompt is removed
+  with a note, as for a receiver that reads none, a prompt of nothing but references is
+  refused, and no grant request is answered.
 
 ### Changed
 

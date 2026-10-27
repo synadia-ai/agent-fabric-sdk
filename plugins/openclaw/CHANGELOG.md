@@ -17,9 +17,10 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the package's `skill/scratchpad/bin/sp-<os>-<arch>`. Installed as the one npm package, the
   copy holds the skill, and nothing changes.
 - Without an sp, the add-on says so once at start, with what it tried and that
-  `SCRATCHPAD_BIN` fixes it, and leaves its own steps out: a reference OpenClaw's model puts
-  into `prompt_agent` goes as it is, and grant requests are not answered. The model's
-  `scripts/sp` finds its own binary, as before.
+  `SCRATCHPAD_BIN` fixes it, and grants nothing: a reference OpenClaw's model puts into
+  `prompt_agent` is removed with a note, as for a receiver that reads none, a prompt of nothing
+  but references is refused, and grant requests are not answered. With `SCRATCHPAD_BIN` unset,
+  the model's `scripts/sp` finds its own binary, as before.
 
 ## [0.3.1] — 2026-10-27
 

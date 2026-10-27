@@ -453,8 +453,8 @@ describe("findSp: the add-on's own sp, the first executable file", () => {
       }),
     ).toBe(
       "agent-fabric: no sp for the add-on's own ScratchPad steps (SCRATCHPAD_BIN is not set; /a/sp does not exist); " +
-        "set SCRATCHPAD_BIN to the path of an sp binary. Until then references in prompt_agent are sent as they are, " +
-        "and grant requests are not answered",
+        "set SCRATCHPAD_BIN to the path of an sp binary. Until then nothing is granted: references in prompt_agent " +
+        "are removed with a note, and grant requests are not answered",
     );
   });
 });
@@ -470,18 +470,87 @@ describe("ScratchPadHandOn", () => {
     expect((rewrite as { error: string }).error).toContain("ScratchPad is not ready yet");
   });
 
-  it("started without ScratchPad (no sp): a prompt with references goes as it is, never refused", async () => {
-    const handOn = new ScratchPadHandOn();
-    const pad = new MemoryScratchPad("vol-own");
-    const reference = pad.commit();
-    await handOn.requestInterceptor.aroundRequest(
-      { envelope: { prompt: `take ${reference}` } } as never,
-      () => Promise.resolve(),
-    );
-    handOn.startWithoutScratchPad();
-    expect(await handOn.beforePrompt(promptContext(reader, `see ${reference}`))).toBeUndefined();
-    expect(handOn.discoveryFields(reader)).toEqual({ reads_scratchpad_references: true });
-    expect(pad.grants).toEqual([]);
+  describe("started without ScratchPad (no sp): nothing can be granted, so every reference is removed with a note", () => {
+    const own = new MemoryScratchPad("vol-own", "agents.prompt.h.team.agent");
+    const other = new MemoryScratchPad("vol-other", "agents.prompt.h.team.other");
+    const nonReader = stubAgent({
+      address: "agents.prompt.r.team.plain",
+      identity: "APLAIN.UPLAIN",
+      readsReferences: false,
+    });
+    const without = async (given: string[]) => {
+      const agents = stubAgents([reader, nonReader]);
+      const handOn = new ScratchPadHandOn();
+      for (const reference of given) {
+        await handOn.requestInterceptor.aroundRequest(
+          { envelope: { prompt: `take ${reference}` } } as never,
+          () => Promise.resolve(),
+        );
+      }
+      handOn.startWithoutScratchPad();
+      return { handOn, agents };
+    };
+    const noted = (address: string, n: number) => ({
+      references_removed: n,
+      note:
+        "this agent has no sp of its own to grant read with (SCRATCHPAD_BIN names one): " +
+        `${n} reference(s) were removed from your prompt, "${address}" got only the text, and nothing was granted`,
+    });
+
+    it("a reader: its own reference is removed with a note, and nothing is granted", async () => {
+      const reference = own.commit();
+      const { handOn } = await without([reference]);
+      expect(await handOn.beforePrompt(promptContext(reader, `summarise ${reference}`))).toEqual({
+        prompt: "summarise",
+        fields: noted(reader.promptSubject, 1),
+      });
+      expect(own.grants).toEqual([]);
+      expect(handOn.discoveryFields(reader)).toEqual({ reads_scratchpad_references: true });
+    });
+
+    it("a non-reader: the references are removed with the same note", async () => {
+      const reference = own.commit();
+      const { handOn } = await without([reference]);
+      expect(
+        await handOn.beforePrompt(promptContext(nonReader, `see ${reference} twice ${reference}`)),
+      ).toEqual({
+        prompt: "see  twice",
+        fields: noted(nonReader.promptSubject, 2),
+      });
+    });
+
+    it("a token the agent was not given never goes out", async () => {
+      const { handOn } = await without([]);
+      const stray = other.commit();
+      expect(await handOn.beforePrompt(promptContext(reader, `look ${stray}`))).toEqual({
+        prompt: "look",
+        fields: noted(reader.promptSubject, 1),
+      });
+    });
+
+    it("another agent's sp-ref: is removed, and its creator is not asked", async () => {
+      const reference = other.commit();
+      const { handOn, agents } = await without([reference]);
+      expect(await handOn.beforePrompt(promptContext(reader, `read ${reference}`))).toEqual({
+        prompt: "read",
+        fields: noted(reader.promptSubject, 1),
+      });
+      expect(agents.requests).toEqual([]);
+      expect(other.grants).toEqual([]);
+    });
+
+    it("a prompt of nothing but references is refused, in the words of the non-reader rule", async () => {
+      const reference = own.commit();
+      const { handOn } = await without([reference]);
+      expect(await handOn.beforePrompt(promptContext(reader, reference))).toEqual({
+        error:
+          "the prompt was not sent: this agent has no sp of its own to grant read with (SCRATCHPAD_BIN names one), " +
+          "and the prompt held nothing but references; put the content they point at into the prompt itself",
+      });
+      expect(
+        await handOn.beforePrompt(promptContext(reader, "no references here")),
+      ).toBeUndefined();
+    });
   });
 
   it("hands on a reference into the agent's own volume as given, with a first-hand grant", async () => {

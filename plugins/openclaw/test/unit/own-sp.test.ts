@@ -1,7 +1,8 @@
 // The add-on's own sp, for its own ScratchPad steps (the references its
 // model hands on, the grant requests it answers): `SCRATCHPAD_BIN`, else the
 // binary the package ships, the first that is an executable file. Without
-// one the steps are left out with one warning, and no prompt fails for it.
+// one nothing is granted: references are removed with a note, one warning
+// says so, and no prompt fails for it.
 // OpenClaw may load the add-on's module from a copy of its own that has no
 // `skill/`, or whose files lost their mode; the tests lay out the shipped
 // binary in a directory of their own, the fabric package's lookup pointed
@@ -125,26 +126,35 @@ describe("the add-on's own sp", () => {
     expect(endpoints).toEqual([]);
     expect(warnings()).toEqual([
       `agent-fabric: no sp for the add-on's own ScratchPad steps (SCRATCHPAD_BIN ${own} is not executable; ` +
-        `${bin} is not executable); set SCRATCHPAD_BIN to the path of an sp binary. Until then ` +
-        "references in prompt_agent are sent as they are, and grant requests are not answered",
+        `${bin} is not executable); set SCRATCHPAD_BIN to the path of an sp binary. Until then nothing ` +
+        "is granted: references in prompt_agent are removed with a note, and grant requests are not answered",
     ]);
   });
 
-  it("is none when the copy has no skill directory: the steps are left out, the prompts go as they are and end ok", async () => {
+  it("is none when the copy has no skill directory: nothing is granted, references are removed with a note, prompts end ok", async () => {
     const { ext, endpoints, warnings } = await started(configured());
     expect(warnings()).toEqual([
       "agent-fabric: no sp for the add-on's own ScratchPad steps (SCRATCHPAD_BIN is not set; " +
         `${join(skill.dir, "bin", SHIPPED)} does not exist); set SCRATCHPAD_BIN to the path of an sp ` +
-        "binary. Until then references in prompt_agent are sent as they are, and grant requests are not answered",
+        "binary. Until then nothing is granted: references in prompt_agent are removed with a note, and grant " +
+        "requests are not answered",
     ]);
     // No grant requests answered: no endpoint for them.
     expect(endpoints).toEqual([]);
     // Still a reader of references: the model reads with the skill's scripts/sp.
     expect(ext.metadata).toEqual({ [READS_REFERENCES_KEY]: "true" });
-    // A reference the model hands on goes as it is, never refused.
+    // A reference the model hands on is removed with a note: nothing can be granted.
     const handOn = ext.toolExtensions![0] as ScratchPadHandOn;
     const prompt = `see ${makeReference("OcVol", "/out/a.txt", ADDRESS)}`;
-    expect(await handOn.beforePrompt(promptTo(prompt))).toBeUndefined();
+    expect(await handOn.beforePrompt(promptTo(prompt))).toEqual({
+      prompt: "see",
+      fields: {
+        references_removed: 1,
+        note:
+          "this agent has no sp of its own to grant read with (SCRATCHPAD_BIN names one): 1 reference(s) were " +
+          `removed from your prompt, "${reader.promptSubject}" got only the text, and nothing was granted`,
+      },
+    });
     // A served prompt is served and ends ok, and the warning is not repeated.
     const served = serve(ext, {}, "ACALLER.UCALLER");
     await served.dispatched;

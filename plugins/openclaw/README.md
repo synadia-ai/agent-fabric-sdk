@@ -260,9 +260,11 @@ the one npm package, that copy holds the skill. Where the add-on is a package
 of its own, loaded by path (`SYNADIA_OPENCLAW_EXTENSIONS`), the copy holds
 only its `dist/` and `package.json`: set `SCRATCHPAD_BIN` to the package's
 `skill/scratchpad/bin/sp-<os>-<arch>` there. Without an sp the add-on says
-so once at start, with what it tried, and leaves these two steps out: a
-reference in `prompt_agent` goes as it is, and grant requests are not
-answered. The model's `scripts/sp` finds its own binary either way.
+so once at start, with what it tried, and grants nothing: a reference in
+`prompt_agent` is removed with a note, as for a receiver that reads none, a
+prompt of nothing but references is refused, and grant requests are not
+answered. With `SCRATCHPAD_BIN` unset, the model's `scripts/sp` finds its
+own binary either way.
 
 ## Public API
 
