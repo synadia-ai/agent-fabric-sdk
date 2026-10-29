@@ -1,6 +1,6 @@
 {
   "name": "@synadia-ai/agent-fabric-pi",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "The Synadia Agent Fabric add-on for the PI channel plugin: the fabric's tracing on PI's service, its client and its own model calls, the loop guard, and ScratchPad's skill with the sp command line, as one extension module the plugin loads.",
   "type": "module",
