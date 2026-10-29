@@ -26,7 +26,9 @@
 # One exception: a `publish-file` while a prompt with a verified caller is
 # served also grants that caller read on what it published, first-hand, as
 # an SDK-built agent grants the caller its reply. The grant's operation id
-# is the publication's with `-caller`, its expiry the publication's. The
+# is the publication's with `-caller`; it lasts the publication's
+# `--ttl-seconds`, or 600 seconds without it (sp ends it no later than the
+# publication's own deadline). The
 # result is the publication's JSON with `granted_to_caller` (the grant's
 # result) or `caller_grant_error` (sp's error) added; the exit code is the
 # publication's.

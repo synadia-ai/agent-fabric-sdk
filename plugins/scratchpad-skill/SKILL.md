@@ -27,7 +27,8 @@ the NATS server, this agent's credentials, its workspace, its volume on
 creator of what you publish, and the agent that prompted you as the grantee
 of a grant. Never pass `--url`, `--creds`, `--dir`, `--volume`, `--bootstrap-file`,
 `--thread-id`, `--root-id`, `--creator`, `--grantee-account` or
-`--grantee-user` yourself; `scripts/sp` refuses them.
+`--grantee-user` yourself; `scripts/sp` refuses them. It also refuses
+`--workflow`: your workspace stays unbound.
 
 ## Keep identity and recovery state
 
@@ -162,8 +163,9 @@ In this harness, `scripts/sp release` frees a slot early only after the publicat
 The caller grant from `publish-file` lasts for the publication's `--ttl-seconds`, or 600 seconds without that flag.
 While that grant lives, `release --apply` fails with `conflict`.
 So a publication with the 24-hour default can be released once its grant has expired, after 600 seconds, when no reader still needs it.
-After the retention deadline, a short reference no longer resolves, so `release --apply` fails with `not_found`, or reports `absent` when housekeeping already cleared the pin.
-Do not repeat a release that failed with `conflict` or `not_found`; run `scripts/sp maintain --apply` after the deadline.
+After the retention deadline, a short reference no longer resolves, so `release --apply` fails with `not_found` (a full `sp-ref:` reference fails with `expired`), or reports `absent` when housekeeping already cleared the pin.
+A release that failed with `conflict` can be repeated once the caller grant has expired: its `expires_at` is in the publication's `granted_to_caller`.
+Do not repeat a release that failed with `not_found` or `expired`; run `scripts/sp maintain --apply` after the deadline.
 
 Use `release` only for a publication without a live grant, when no reader still needs it:
 
@@ -216,13 +218,13 @@ Another writer's publication can produce an explicit conflict; the command does 
 The error object's `outcome` field classifies a failure that sp reports.
 A refusal by `scripts/sp` itself exits 2 and has no `outcome`.
 
-| `outcome`    | Next step                                                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `unresolved` | Run `scripts/sp recover`, or inspect the reset plan that the message names. Start no other mutation.                       |
-| `conflict`   | After `release`, do not repeat it; see [Free a retention slot](#free-a-retention-slot). Otherwise read the message.        |
-| `capacity`   | Free the named resource: run `maintain --apply` after a retention deadline, remove a path, or renew an expired lease.      |
-| `retry`      | Repeat the same command later. Hydrate into a new destination; keep a partial one for inspection. For `closed`, see below. |
-| `refused`    | Correct the input or the policy before trying again.                                                                       |
+| `outcome`    | Next step                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unresolved` | Run `scripts/sp recover`, or inspect the reset plan that the message names. Start no other mutation.                                              |
+| `conflict`   | After `release`, repeat it only once the live grant has expired; see [Free a retention slot](#free-a-retention-slot). Otherwise read the message. |
+| `capacity`   | Free the named resource: run `maintain --apply` after a retention deadline, remove a path, or renew an expired lease.                             |
+| `retry`      | Repeat the same command later. Hydrate into a new destination; keep a partial one for inspection. For `closed`, see below.                        |
+| `refused`    | Correct the input or the policy before trying again.                                                                                              |
 
 An expired or released reference needs a new reference.
 `closed` is temporary during maintenance and during a removal.
