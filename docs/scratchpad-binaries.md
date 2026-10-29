@@ -37,6 +37,15 @@ compatible. If an explicit `SCRATCHPAD_BIN` selects an older executable that
 reports `info` as unknown, continue with its existing commands and obtain the
 allowances from the operator.
 
+Going back to an older executable is limited. `sp-v0.1.6` and `sp-v0.1.7`
+refuse a workspace that `sp-v0.1.8` left with a workflow binding or a
+retention above 3,600 seconds, its 24-hour default among them. `sp-v0.1.6`
+also refuses a new workspace on a reusable deployment, which saves its
+admission binding. Their refusals ("workspace state is malformed",
+"managed publication is inconsistent") do not mean corruption: keep
+`sp-v0.1.8` or later for that workspace, and never reset or delete it.
+The `sp-v0.1.8` release notes say how an unbound workspace can return.
+
 Without a checkout, download `get-sp.sh` and `SHA256SUMS` from the selected
 release. Verify the script against its single checksum entry before running
 it. The installer downloads the selected archive and checks its SHA-256,

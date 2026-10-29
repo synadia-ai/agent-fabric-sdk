@@ -4,6 +4,21 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- ScratchPad's `sp` is `sp-v0.1.8`, before `sp-v0.1.6`, and its skill teaches what the release
+  added: `read --text` windows, `list` for one page of a referenced directory, `bytes` as the
+  file size, the 24-hour retention a publication without `--ttl-seconds` gets, the 8 retention
+  slots of a volume and `maintain --apply` to free one after its deadline, `release`, and the
+  `outcome` class of every error. The skill keeps `--ttl-seconds` on publications and leaves the
+  workspace bound to no workflow.
+- The way back is limited: `sp-v0.1.6` and `sp-v0.1.7` refuse a workspace this `sp` left with a
+  retention above 3,600 seconds, and `sp-v0.1.6` also a new one on a reusable deployment, which
+  saves its admission binding. An earlier add-on, or a `SCRATCHPAD_BIN` naming an older `sp`,
+  then fails on that workspace; keep `sp-v0.1.8` or later for it and never reset or delete it.
+
 ## [0.3.2] — 2026-10-27
 
 ### Fixed

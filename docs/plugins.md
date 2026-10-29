@@ -1321,8 +1321,9 @@ exit codes 0–3 and the JSON on stdout and stderr pass through unchanged:
   as an SDK-built agent grants the caller its reply (§9.12); each such
   grant sp confirms is recorded in `SP_GRANTS_FILE` (§9.14);
 - it refuses, with exit 2 and sp's own error shape, a call that passes any
-  of those flags itself, and a `grant` when no served prompt has a verified
-  caller.
+  of those flags itself, a call with `--workflow` (a binding is permanent,
+  and the add-on's own commits need an unbound workspace), and a `grant`
+  when no served prompt has a verified caller.
 
 The rules come from the command line itself:
 

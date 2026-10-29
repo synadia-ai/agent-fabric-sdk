@@ -362,6 +362,16 @@ describe("the flags from the environment", () => {
     expect(r.error?.message).toMatch(/is set by the agent, not passed/);
   });
 
+  it.each([["--workflow", "project"], ["--workflow=artifacts"]])(
+    "refuses %s: a binding is permanent",
+    (...given) => {
+      const r = run(["init", ...given]);
+      expect(r.status).toBe(2);
+      expect(r.binary).toBeUndefined();
+      expect(r.error?.message).toMatch(/--workflow binds the workspace for good/);
+    },
+  );
+
   it("passes sp's exit code through", () => {
     expect(run(["recover"], { ...CONNECTION, FAKE_EXIT: "3" }).status).toBe(3);
     expect(run(["recover"], { ...CONNECTION, FAKE_EXIT: "1" }).status).toBe(1);

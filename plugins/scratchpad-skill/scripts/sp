@@ -17,15 +17,18 @@
 #   --grantee-account "$SP_CALLER_ACCOUNT"    `grant`: the agent whose prompt
 #   --grantee-user "$SP_CALLER_USER"          is being served, and no other
 #
-# A call that passes any of these flags itself is refused, and so is a
-# `grant` with no caller to grant to. Refusals have sp's own shape and exit
+# A call that passes any of these flags itself is refused, and so are
+# `--workflow` (a binding is permanent, and the agent's own commits need an
+# unbound workspace) and a `grant` with no caller to grant to. Refusals have sp's own shape and exit
 # code: one JSON error on stderr, exit 2, no request sent. Otherwise this
 # runs sp, so sp's exit codes and output pass through.
 #
 # One exception: a `publish-file` while a prompt with a verified caller is
 # served also grants that caller read on what it published, first-hand, as
 # an SDK-built agent grants the caller its reply. The grant's operation id
-# is the publication's with `-caller`, its expiry the publication's. The
+# is the publication's with `-caller`; it lasts the publication's
+# `--ttl-seconds`, or 600 seconds without it (sp ends it no later than the
+# publication's own deadline). The
 # result is the publication's JSON with `granted_to_caller` (the grant's
 # result) or `caller_grant_error` (sp's error) added; the exit code is the
 # publication's.
@@ -96,6 +99,8 @@ for arg in "$@"; do
       case $name in
         url | creds | dir | volume | bootstrap-file | thread-id | root-id | tool-call-id | creator | grantee-account | grantee-user)
           refuse "--$name is set by the agent, not passed; run the command without it" ;;
+        workflow)
+          refuse "--workflow binds the workspace for good, and this agent's workspace stays unbound; run the command without it" ;;
       esac
       ;;
   esac
