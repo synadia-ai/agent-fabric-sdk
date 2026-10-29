@@ -158,10 +158,11 @@ A full retention table refuses the next publication with `capacity`.
 An expired pin still holds its slot until maintenance releases it.
 After the retention deadline, `scripts/sp maintain --apply` frees that slot.
 
-In this harness, `scripts/sp release` rarely frees a slot early.
-The caller grant from `publish-file` lasts as long as its retention.
+In this harness, `scripts/sp release` frees a slot early only after the publication's caller grant has expired.
+The caller grant from `publish-file` lasts for the publication's `--ttl-seconds`, or 600 seconds without that flag.
 While that grant lives, `release --apply` fails with `conflict`.
-After the deadline, a short reference no longer resolves, so `release --apply` fails with `not_found`.
+So a publication with the 24-hour default can be released once its grant has expired, after 600 seconds, when no reader still needs it.
+After the retention deadline, a short reference no longer resolves, so `release --apply` fails with `not_found`, or reports `absent` when housekeeping already cleared the pin.
 Do not repeat a release that failed with `conflict` or `not_found`; run `scripts/sp maintain --apply` after the deadline.
 
 Use `release` only for a publication without a live grant, when no reader still needs it:
