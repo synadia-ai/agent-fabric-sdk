@@ -76,7 +76,7 @@ Name the isolated protocol checkout's branch `main`, as the existing build scrip
 This branch name does not select a newer commit; verify the full recorded commit before building.
 Use the matching protocol checkout next to the SDK checkout, as the development instructions describe.
 Build with `sh bundles/build.sh all /absolute/candidate-directory`.
-The shared release manifest selects and verifies `sp-v0.1.6`.
+The shared release manifest at the recorded Fabric commit selects and verifies the ScratchPad release the candidate manifest names.
 `SP_RELEASE_DOWNLOAD=gh` downloads through the GitHub CLI instead; offline builds can use `SP_RELEASE_SOURCE_DIR`.
 
 Archive names record both source revisions.
