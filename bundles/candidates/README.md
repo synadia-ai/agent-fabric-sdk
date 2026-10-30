@@ -17,7 +17,9 @@ Each archive's `bin/BUILD.json` names `sp-v0.1.8`, and its four executables matc
 At `b17e56a`, the fabric package's and the three add-ons' typecheck, lint, format check and tests pass, and so do `load-sp.mjs verify` and the distribution suite.
 Each npm package holds its archive's plugin folder file for file, and none has dependencies.
 The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
-Not yet checked against a test deployment: an agent's ScratchPad round trip with `sp-v0.1.8` (`init` with the volume, `publish-file`, `read`) is owed before publication.
+Checked before publication with fabric v0.13.0 against a deployment of grouped ScratchPad (`66c98ee0`) in reusable mode, for a new test tenant, in a throwaway home: the pi archive installed with `fabric plugins install --from`; a pi agent connected with `fabric connect` got a reusable slot, a bootstrap file and no volume; through its skill pi ran `sp init`, `publish-file`, which returned an `sp-r1:` reference, and `read --text`, which returned the text published; its model calls were recorded.
+The same round trip ran by hand with the archive's `scripts/sp` and the agent's credentials; outside an agent's turn `publish-file` needs `SP_CREATOR`, which the add-on sets in a turn.
+The Claude Code and OpenClaw archives were not run against it: their `scripts/sp` and four `sp` executables are pi's files, and so is OpenClaw's whole skill; Claude Code's `SKILL.md` is its own.
 
 ## OpenClaw's stop and the add-ons' own sp, the add-ons 0.3.2
 
