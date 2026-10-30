@@ -923,7 +923,7 @@ wire artefact.
 **Amended 2026-10-11: pi's and OpenClaw's packages are the whole plugin.**
 An operator installs one package the harness's own way: `pi install
 npm:@synadia-ai/agent-fabric-pi`, `openclaw plugins install
-@synadia-ai/agent-fabric-openclaw`. Version 0.3.2 of each is the bundle
+@synadia-ai/agent-fabric-openclaw`. Version 0.3.3 of each is the bundle
 `bundles/build.sh` makes: the channel plugin compiled from `synadia-agents`,
 this repo's add-on and ScratchPad's skill. The plugin is used, never copied:
 it is compiled in at build time, as the fabric CLI's bundles always were.
@@ -939,7 +939,7 @@ a prompt through another agent. The paragraph below stays true for a
 plugin installed apart from its add-on.
 
 **The same for Claude Code, the same day.** `@synadia-ai/agent-fabric-claude-code`
-0.3.2 is Claude Code's bundle, the plugin `nats-channel`, its `.mcp.json`
+0.3.3 is Claude Code's bundle, the plugin `nats-channel`, its `.mcp.json`
 naming the bundled add-on. Claude Code installs plugins from a marketplace,
 and a marketplace entry may have an npm source: this repo's
 `.claude-plugin/marketplace.json`, `agent-fabric`, names the package

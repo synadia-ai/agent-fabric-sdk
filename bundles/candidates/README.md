@@ -4,6 +4,23 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## ScratchPad's sp-v0.1.8, the add-ons 0.3.3
+
+[bundles-v0.1.6.json](bundles-v0.1.6.json) describes the prepared `bundles-v0.1.6` assets.
+The protocol source is unchanged from `bundles-v0.1.5`: `synadia-agents` main at `ed9aefb`.
+The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7.
+The Fabric source is `b17e56a`: the three add-ons at 0.3.3; each ships ScratchPad's `sp-v0.1.8` and its skill, which teaches `read --text` windows, `list`, the 24-hour retention of a publication without `--ttl-seconds`, the 8 retention slots of a volume and `maintain --apply`, `release`, and the `outcome` class of every error; `scripts/sp` refuses `--workflow` (#90).
+ScratchPad is `sp-v0.1.8`, before `sp-v0.1.6`; going back is limited, as `docs/scratchpad-binaries.md` says.
+The archives hold the members of `bundles-v0.1.5`'s, with the same names, types and modes, and their compiled code is unchanged.
+What differs is the skill (`SKILL.md`, `scripts/sp`, the four `sp` executables, `BUILD.json`, `COMMIT`), `BUILD`, each package's `package.json`, and Claude Code's plugin and marketplace manifests, whose versions name the new commit.
+Each archive's `bin/BUILD.json` names `sp-v0.1.8`, and its four executables match the release's hashes.
+At `b17e56a`, the fabric package's and the three add-ons' typecheck, lint, format check and tests pass, and so do `load-sp.mjs verify` and the distribution suite.
+Each npm package holds its archive's plugin folder file for file, and none has dependencies.
+The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
+Checked before publication with fabric v0.13.0 against a deployment of grouped ScratchPad (`66c98ee0`) in reusable mode, for a new test tenant, in a throwaway home: the pi archive installed with `fabric plugins install --from`; a pi agent connected with `fabric connect` got a reusable slot, a bootstrap file and no volume; through its skill pi ran `sp init`, `publish-file`, which returned an `sp-r1:` reference, and `read --text`, which returned the text published; its model calls were recorded.
+The same round trip ran by hand with the archive's `scripts/sp` and the agent's credentials; outside an agent's turn `publish-file` needs `SP_CREATOR`, which the add-on sets in a turn.
+The Claude Code and OpenClaw archives were not run against it: their `scripts/sp` and four `sp` executables are pi's files, and so is OpenClaw's whole skill; Claude Code's `SKILL.md` is its own.
+
 ## OpenClaw's stop and the add-ons' own sp, the add-ons 0.3.2
 
 [bundles-v0.1.5.json](bundles-v0.1.5.json) describes the prepared `bundles-v0.1.5` assets.
