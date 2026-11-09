@@ -171,6 +171,8 @@ async def test_the_agent_against_a_fake_model_behind_a_fake_proxy(tmp_path: Path
         )
         pad = FakePad()
         agent = await start_agent(cfg, log=lambda _line: None, scratchpad=pad)  # type: ignore[arg-type]
+        # The startup line's state: the client it was given.
+        assert agent.scratchpad is True
         caller = Agents(
             nc=nc_caller,
             identity=Identity(signer=signer_from_seed(users["caller"].seed)),

@@ -80,6 +80,17 @@ from .tools import NO_TOOLS, offered_tools, tool_runner
 MAX_CONCURRENT_PROMPTS = 4
 
 
+def scratchpad_line(on: bool, env: Mapping[str, str]) -> str:
+    """The startup line's ScratchPad state, from the client the agent built
+    and never from one variable: ``on`` when it has a client, with the volume
+    when ``SCRATCHPAD_VOLUME`` names it (a bootstrap file names it only inside
+    the client), else ``off``."""
+    if not on:
+        return "off"
+    volume = env.get("SCRATCHPAD_VOLUME")
+    return f"on (volume {volume})" if volume else "on"
+
+
 @dataclass
 class RunningAgent:
     #: The prompt address other agents see in discovery.
@@ -87,6 +98,10 @@ class RunningAgent:
     instance_id: str
     #: ``<account>.<user>``, the identity the agent registered.
     identity: str | None
+    #: Whether the agent has a ScratchPad client: the native one the
+    #: environment configured (``SCRATCHPAD_VOLUME`` or
+    #: ``SCRATCHPAD_BOOTSTRAP_FILE``), or the one the caller passed.
+    scratchpad: bool
     _stop: Callable[[], "asyncio.Future[None]"]  # noqa: F821 — typed loosely on purpose
 
     async def stop(self) -> None:
@@ -130,8 +145,9 @@ async def start_agent(
     # Where this agent takes prompts: ``agents.prompt.<kind>.<owner>.<name>``.
     address = AgentSubject.new(cfg.agent.kind, cfg.agent.owner, cfg.agent.name).prompt
 
-    # (4) ScratchPad borrows this authenticated connection. An unset volume
-    # disables it; a configured volume requires a private persistent workspace.
+    # (4) ScratchPad borrows this authenticated connection. SCRATCHPAD_VOLUME or
+    # SCRATCHPAD_BOOTSTRAP_FILE (what `fabric env` sets for a reusable volume) turns it on, neither
+    # leaves it off; either requires a private persistent workspace.
     # Every reference this agent creates names its prompt address as creator.
     native_scratchpad = (
         await native_scratchpad_from_env(env, creator=address, nc=nc) if scratchpad is None else None
@@ -347,6 +363,7 @@ async def start_agent(
         address=service.subject.prompt,
         instance_id=service.instance_id,
         identity=str(service.identity) if service.identity is not None else None,
+        scratchpad=scratchpad is not None,
         _stop=stop,  # type: ignore[arg-type]
     )
 

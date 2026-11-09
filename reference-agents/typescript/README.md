@@ -27,7 +27,7 @@
 | `env.example` | the one file per agent; copy to `.env` |
 
 ScratchPad comes from the fabric package: `nativeScratchPadFromEnv` in `src/agent.ts` borrows the agent's authenticated NATS connection.
-An unset `SCRATCHPAD_VOLUME` disables ScratchPad. A configured volume requires a persistent private `SCRATCHPAD_DIR`.
+`SCRATCHPAD_VOLUME` or `SCRATCHPAD_BOOTSTRAP_FILE` (what `fabric env` sets for a reusable volume) turns ScratchPad on; neither leaves it off. Either requires a persistent private `SCRATCHPAD_DIR`.
 The native client needs no shell or `sp`. Policy tests explicitly inject the CLI adapter with a stand-in `sp`.
 The SDK's separate native tests use the real ScratchPad service.
 

@@ -71,7 +71,25 @@ export interface RunningAgent {
   readonly instanceId: string;
   /** `<account>.<user>`, the identity the agent registered. */
   readonly identity: string | undefined;
+  /**
+   * Whether the agent has a ScratchPad client: the native one the
+   * environment configured (`SCRATCHPAD_VOLUME` or
+   * `SCRATCHPAD_BOOTSTRAP_FILE`), or the one `deps` passed.
+   */
+  readonly scratchpad: boolean;
   stop(): Promise<void>;
+}
+
+/**
+ * The startup line's ScratchPad state, from the client the agent built and
+ * never from one variable: `on` when it has a client, with the volume when
+ * `SCRATCHPAD_VOLUME` names it (a bootstrap file names it only inside the
+ * client), else `off`.
+ */
+export function scratchpadLine(on: boolean, env: Readonly<Record<string, string | undefined>>): string {
+  if (!on) return "off";
+  const volume = env["SCRATCHPAD_VOLUME"];
+  return volume ? `on (volume ${volume})` : "on";
 }
 
 export interface StartAgentDeps {
@@ -109,8 +127,9 @@ export async function startAgent(
   // Where this agent takes prompts: `agents.prompt.<kind>.<owner>.<name>`.
   const address = AgentSubject.new(cfg.agent.kind, cfg.agent.owner, cfg.agent.name).prompt;
 
-  // ScratchPad borrows this authenticated connection. The private workspace
-  // must persist across restarts; SCRATCHPAD_VOLUME unset disables the feature.
+  // ScratchPad borrows this authenticated connection. SCRATCHPAD_VOLUME or
+  // SCRATCHPAD_BOOTSTRAP_FILE (what `fabric env` sets for a reusable volume) turns it on, neither
+  // leaves it off. The private workspace must persist across restarts.
   const nativeScratchpad = deps.scratchpad === undefined
     ? await nativeScratchPadFromEnv(deps.env ?? process.env, { creator: address, nc })
     : undefined;
@@ -351,6 +370,7 @@ export async function startAgent(
     address: service.subject.prompt,
     instanceId: service.instanceId,
     identity: service.identity,
+    scratchpad: scratchpad !== undefined,
     async stop() {
       // Open prompts to other agents are cancelled before the connection goes.
       await tools.close();

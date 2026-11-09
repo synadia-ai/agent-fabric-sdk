@@ -31,7 +31,7 @@ The handler gate requires `nats-server` and fails when the executable is absent.
 | `tests/test_durable_parity.py` | the `start_workflow` definition, the workflows' names and the words a step tells the model, byte for byte against the TypeScript agent (`../typescript/test/harness/durable-bytes.ts`) |
 | `env.example` | the one file per agent; copy to `.env` |
 
-ScratchPad comes from the fabric package: `await native_scratchpad_from_env(env, nc=nc, creator=address)` in `fabric_agent/agent.py` borrows the agent's authenticated connection and gives `None` when `SCRATCHPAD_VOLUME` is unset. A configured volume requires a persistent private `SCRATCHPAD_DIR`; it needs no shell or `sp`. `__main__.py` passes the environment it read, `.env` included. Reference-policy tests explicitly inject the CLI adapter with a stand-in `sp`. The SDK's separate native tests use the real ScratchPad service.
+ScratchPad comes from the fabric package: `await native_scratchpad_from_env(env, nc=nc, creator=address)` in `fabric_agent/agent.py` borrows the agent's authenticated connection and gives `None` when neither `SCRATCHPAD_VOLUME` nor `SCRATCHPAD_BOOTSTRAP_FILE` (what `fabric env` sets for a reusable volume) is set. Either requires a persistent private `SCRATCHPAD_DIR`; it needs no shell or `sp`. `__main__.py` passes the environment it read, `.env` included. Reference-policy tests explicitly inject the CLI adapter with a stand-in `sp`. The SDK's separate native tests use the real ScratchPad service.
 
 Results above 65,536 UTF-8 bytes travel by a granted ScratchPad reference, with a bounded refusal when the handoff fails.
 The next model turn keeps that delivery message. See [bounded replies](../docs/bounded-replies.md) for the contract and tests.

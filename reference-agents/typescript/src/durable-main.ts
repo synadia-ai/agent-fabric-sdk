@@ -8,6 +8,7 @@
 // agent creates nothing.
 
 import "./dotenv.js";
+import { scratchpadLine } from "./agent.js";
 import { startDurableAgent } from "./durable-agent.js";
 import { loadConfig } from "./config.js";
 
@@ -16,7 +17,7 @@ const agent = await startDurableAgent(cfg);
 console.log(`${cfg.agent.kind} durable agent listening on ${agent.address}`);
 console.log(`identity: ${agent.identity ?? "none"}`);
 console.log(`model: ${cfg.model.model} through ${cfg.model.proxyUrl}`);
-console.log(`scratchpad: ${process.env["SCRATCHPAD_VOLUME"] || "off"}`);
+console.log(`scratchpad: ${scratchpadLine(agent.scratchpad, process.env)}`);
 console.log("the model loop is the workflow agent-loop: a run survives a restart of this process");
 
 let stopping = false;

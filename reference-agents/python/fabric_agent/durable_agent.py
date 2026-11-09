@@ -491,6 +491,7 @@ async def start_durable_agent(
         address=service.subject.prompt,
         instance_id=service.instance_id,
         identity=str(service.identity) if service.identity is not None else None,
+        scratchpad=scratchpad is not None,
         _stop=stop,  # type: ignore[arg-type]
     )
     if cfg.agent.ready_file is not None:
