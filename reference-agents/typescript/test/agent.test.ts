@@ -295,6 +295,8 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
       tools: { replyTimeoutMs: 10_000 },
     };
     agent = await startAgent(cfg, () => {}, { scratchpad: pad });
+    // The startup line's state: the client it was given.
+    expect(agent.scratchpad).toBe(true);
 
     caller = new Agents({
       nc: ncCaller,

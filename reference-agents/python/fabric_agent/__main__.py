@@ -15,7 +15,7 @@ import signal
 import sys
 from pathlib import Path
 
-from .agent import start_agent
+from .agent import scratchpad_line, start_agent
 from .config import load_config, load_env_file
 
 
@@ -32,7 +32,7 @@ async def main() -> None:
     print(f"{cfg.agent.kind} agent listening on {agent.address}")
     print(f"identity: {agent.identity or 'none'}")
     print(f"model: {cfg.model.model} through {cfg.model.proxy_url}")
-    print(f"scratchpad: {env.get('SCRATCHPAD_VOLUME') or 'off'}")
+    print(f"scratchpad: {scratchpad_line(agent.scratchpad, env)}")
     print(f"durable: {'on (start_workflow: durable-task)' if cfg.durable else 'off'}")
     print("press Ctrl+C to stop (the conversation lives in memory and is gone on restart)")
 

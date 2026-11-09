@@ -237,7 +237,7 @@ const scratchpad = await nativeScratchPadFromEnv(process.env, { nc, creator: add
 const references = scratchpad !== undefined ? scratchPadExtension({ scratchPad: scratchpad, agents: client }) : undefined;
 ```
 
-The first creates a native client from the environment and returns no client while `SCRATCHPAD_VOLUME` is unset. It borrows `nc`, the agent's existing authenticated NATS connection, without changing its identity or closing it. The second applies the fabric's reference rules to the agent tools. The native writer requires Node 22.13 or later and a private, persistent `SCRATCHPAD_DIR`; it stores its journal, pending artifact, and grant ledger there.
+The first creates a native client from the environment and returns no client while neither `SCRATCHPAD_VOLUME` nor `SCRATCHPAD_BOOTSTRAP_FILE` (what `fabric env` sets for a reusable volume) is set. It borrows `nc`, the agent's existing authenticated NATS connection, without changing its identity or closing it. The second applies the fabric's reference rules to the agent tools. The native writer requires Node 22.13 or later and a private, persistent `SCRATCHPAD_DIR`; it stores its journal, pending artifact, and grant ledger there.
 
 Ask your deployment operator to provision `AssistantReplies` for the assistant's account and user, and `HelperReplies` for the helper's; a volume name is letters and digits only. Add two lines to `.env`. For a TypeScript helper, set `HelperReplies` and a separate persistent directory in `.env.helper`:
 
@@ -250,7 +250,7 @@ The directory must be writable by this agent and survive restarts. There is no t
 
 A native client cannot automatically adopt a CLI workspace or an existing writer whose journal is missing. Recover pending work with its original client and journal. If you deliberately abandon that recovery promise, stop the old writer and call `resetWriter({ target, expectedGeneration })` with the exact volume incarnation and observed writer generation. See [persistence and recovery](../../../docs/scratchpad-native.md#persistence-and-recovery) for inspection and reset behavior.
 
-Restart both agents. Each now says `scratchpad: <its volume>`. Prompt the assistant:
+Restart both agents. Each now says `scratchpad: on (volume <its volume>)`. Prompt the assistant:
 
 ```sh
 node --env-file=.env.caller --import tsx src/prompt.ts assistant "Write four lines about the sea."

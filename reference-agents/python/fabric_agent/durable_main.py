@@ -16,6 +16,7 @@ import signal
 import sys
 from pathlib import Path
 
+from .agent import scratchpad_line
 from .config import load_config, load_env_file
 from .durable_agent import start_durable_agent
 
@@ -33,7 +34,7 @@ async def main() -> None:
     print(f"{cfg.agent.kind} durable agent listening on {agent.address}")
     print(f"identity: {agent.identity or 'none'}")
     print(f"model: {cfg.model.model} through {cfg.model.proxy_url}")
-    print(f"scratchpad: {env.get('SCRATCHPAD_VOLUME') or 'off'}")
+    print(f"scratchpad: {scratchpad_line(agent.scratchpad, env)}")
     print("the model loop is the workflow agent-loop: a run survives a restart of this process")
 
     stop = asyncio.Event()

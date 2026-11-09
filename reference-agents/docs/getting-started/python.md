@@ -237,7 +237,7 @@ scratchpad = await native_scratchpad_from_env(env, creator=address, nc=nc)
 references = scratch_pad_extension(scratch_pad=scratchpad, agents=client) if scratchpad is not None else None
 ```
 
-The first builds the native client on the agent's existing authenticated connection and gives nothing while `SCRATCHPAD_VOLUME` is unset. The second puts the fabric's rules for references on the agent tools. The client requires `SCRATCHPAD_DIR`: keep that directory private and across restarts, since it records the volume and the one operation still to finish. On Unix, the directory must have mode 0700. The client creates a new directory with that mode when needed. Do not share this workspace with `sp` or another writer. The native contract in the repository's `docs/scratchpad-native.md` explains explicit recovery and reset.
+The first builds the native client on the agent's existing authenticated connection and gives nothing while neither `SCRATCHPAD_VOLUME` nor `SCRATCHPAD_BOOTSTRAP_FILE` (what `fabric env` sets for a reusable volume) is set. The second puts the fabric's rules for references on the agent tools. The client requires `SCRATCHPAD_DIR`: keep that directory private and across restarts, since it records the volume and the one operation still to finish. On Unix, the directory must have mode 0700. The client creates a new directory with that mode when needed. Do not share this workspace with `sp` or another writer. The native contract in the repository's `docs/scratchpad-native.md` explains explicit recovery and reset.
 
 Ask your deployment operator to provision `AssistantReplies` for the assistant's account and user, and `HelperReplies` for the helper's; a volume name is letters and digits only. Add two lines to `.env`, and the same to `.env.helper` with `HelperReplies`:
 
@@ -248,7 +248,7 @@ SCRATCHPAD_DIR=/var/lib/my-agent/scratchpad
 
 Use a separate private directory for each agent. `SCRATCHPAD_GRANT_TTL_S` defaults to 600 seconds (`env.example`).
 
-Restart both agents. Each now says `scratchpad: <its volume>`. Prompt the assistant:
+Restart both agents. Each now says `scratchpad: on (volume <its volume>)`. Prompt the assistant:
 
 ```sh
 uv run python -m fabric_agent.prompt .env.caller assistant "Write four lines about the sea."

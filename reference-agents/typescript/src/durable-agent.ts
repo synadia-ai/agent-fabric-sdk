@@ -481,6 +481,7 @@ export async function startDurableAgent(
     address: service.subject.prompt,
     instanceId: service.instanceId,
     identity: service.identity,
+    scratchpad: scratchpad !== undefined,
     async stop() {
       await service.stop();
       await worker.stop();
