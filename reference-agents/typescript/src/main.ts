@@ -8,12 +8,13 @@
 import "./dotenv.js";
 import { scratchpadLine, startAgent } from "./agent.js";
 import { loadConfig } from "./config.js";
+import { apiOf } from "./model.js";
 
 const cfg = loadConfig(process.env);
 const agent = await startAgent(cfg);
 console.log(`${cfg.agent.kind} agent listening on ${agent.address}`);
 console.log(`identity: ${agent.identity ?? "none"}`);
-console.log(`model: ${cfg.model.model} through ${cfg.model.proxyUrl}`);
+console.log(`model: ${cfg.model.model} through ${cfg.model.proxyUrl}, on ${apiOf(cfg.model.provider)}`);
 console.log(`scratchpad: ${scratchpadLine(agent.scratchpad, process.env)}`);
 console.log(`durable: ${cfg.durable === true ? "on (start_workflow: durable-task)" : "off"}`);
 console.log("press Ctrl+C to stop (the conversation lives in memory and is gone on restart)");

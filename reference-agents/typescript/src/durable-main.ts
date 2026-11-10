@@ -11,12 +11,13 @@ import "./dotenv.js";
 import { scratchpadLine } from "./agent.js";
 import { startDurableAgent } from "./durable-agent.js";
 import { loadConfig } from "./config.js";
+import { apiOf } from "./model.js";
 
 const cfg = loadConfig(process.env);
 const agent = await startDurableAgent(cfg);
 console.log(`${cfg.agent.kind} durable agent listening on ${agent.address}`);
 console.log(`identity: ${agent.identity ?? "none"}`);
-console.log(`model: ${cfg.model.model} through ${cfg.model.proxyUrl}`);
+console.log(`model: ${cfg.model.model} through ${cfg.model.proxyUrl}, on ${apiOf(cfg.model.provider)}`);
 console.log(`scratchpad: ${scratchpadLine(agent.scratchpad, process.env)}`);
 console.log("the model loop is the workflow agent-loop: a run survives a restart of this process");
 

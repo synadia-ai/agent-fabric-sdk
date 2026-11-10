@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .agent import scratchpad_line
 from .config import load_config, load_env_file
+from .model import api_of
 from .durable_agent import start_durable_agent
 
 
@@ -33,7 +34,7 @@ async def main() -> None:
     agent = await start_durable_agent(cfg, env=env)
     print(f"{cfg.agent.kind} durable agent listening on {agent.address}")
     print(f"identity: {agent.identity or 'none'}")
-    print(f"model: {cfg.model.model} through {cfg.model.proxy_url}")
+    print(f"model: {cfg.model.model} through {cfg.model.proxy_url}, on {api_of(cfg.model.provider)}")
     print(f"scratchpad: {scratchpad_line(agent.scratchpad, env)}")
     print("the model loop is the workflow agent-loop: a run survives a restart of this process")
 

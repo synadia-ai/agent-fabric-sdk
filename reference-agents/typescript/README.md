@@ -13,7 +13,7 @@
 | `src/durable-agent.ts`, `src/durable-main.ts` | the durable agent, `npm run start:durable`: the front door relays each prompt to a run of the workflow `agent-loop`, whose model turns and tool calls are journaled steps (`../README.md`, "The durable agent") |
 | `src/config.ts` | every variable the agent reads, with its default |
 | `src/history.ts` | the history the model is shown: one per verified caller, the 32 served last, none with `AGENT_MAX_HISTORY=0`, and one line in front of a reply naming the tools the exchange used |
-| `src/model.ts` | one chat-completions client pointed at the proxy, and the loop that runs the model's tool calls |
+| `src/model.ts` | one model client pointed at the proxy, on the OpenAI chat-completions API or Anthropic's Messages API, and the loop that runs the model's tool calls |
 | `src/reply.ts`, `test/reply*.test.ts` | UTF-8 reply boundaries, verified grants, bounded refusal and subsequent model history |
 | `src/tools.ts` | the model loop's side of the SDK's agent tools: their definitions as chat-completions `function`s, not a word changed, and a call run by name with the model's tool-call id |
 | `src/prompt.ts` | a caller for the command line: `npm run prompt -- <address or kind> "<text>"`, signed with the environment's credentials; a refused or failed prompt is one line, not a stack |
@@ -72,7 +72,7 @@ npm start
 
 The agent reads `.env` when there is one; a variable already in the environment wins over the file's (`src/dotenv.ts`).
 
-The agent needs a fabric that already stands: a NATS server it has credentials for, the model proxy with a provider behind it, a virtual key issued for this agent that names that provider, and, for references, ScratchPad in the account. `../README.md`, "Run it", says where each comes from; `env.example` names every variable. The proxy prefixes the provider origin's path to the request's, so `MODEL_PROXY_URL` ends in `/api` for OpenRouter and in nothing for a local Ollama, whose origin is `http://localhost:11434` without `/v1`.
+The agent needs a fabric that already stands: a NATS server it has credentials for, the model proxy with a provider behind it, a virtual key issued for this agent that names that provider, and, for references, ScratchPad in the account. `../README.md`, "Run it", says where each comes from; `env.example` names every variable. The proxy prefixes the provider origin's path to the request's, so `MODEL_PROXY_URL` ends in `/api` for OpenRouter and in nothing for Anthropic, OpenAI, or a local Ollama, whose origin is `http://localhost:11434` without `/v1`. With `MODEL_PROVIDER=anthropic` the agent calls Anthropic's Messages API, the only one on which the proxy records an Anthropic call's tokens and content.
 
 ## The tools the model is offered
 

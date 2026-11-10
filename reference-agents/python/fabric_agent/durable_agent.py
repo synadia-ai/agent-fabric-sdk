@@ -220,17 +220,22 @@ def agent_loop_workflow(
         empty_replies = 0
         turn = 0
         while True:
-            offered = tool_definitions if turn < max_tool_rounds else []
+            # The same tools every turn; on the last permitted one the model
+            # may not call them and has to answer.
+            answer_only = turn >= max_tool_rounds
 
             # (2) A model turn: journaled once. On replay this returns the
             # recorded message, and the model is not called again.
-            async def model_turn(offered: list[dict[str, Any]] = offered) -> dict[str, Any]:
-                completion = await model.complete(messages, offered, headers)
+            async def model_turn(answer_only: bool = answer_only) -> dict[str, Any]:
+                completion = await model.complete(
+                    messages, tool_definitions, headers, tool_choice="none" if answer_only else "auto"
+                )
                 return dict(completion.message)
 
             message: dict[str, Any] = await ctx.run(f"llm-{turn}", model_turn)
             messages.append(message)  # type: ignore[arg-type]
-            calls = (message.get("tool_calls") or []) if offered else []
+            # No tool runs on the answer-only turn, nor for an agent shown none.
+            calls = [] if answer_only or not tool_definitions else (message.get("tool_calls") or [])
             if not calls:
                 answer = message.get("content") or ""
                 if answer.strip():
@@ -352,6 +357,8 @@ async def start_durable_agent(
         proxy_url=cfg.model.proxy_url,
         virtual_key=cfg.model.virtual_key,
         model=cfg.model.model,
+        provider=cfg.model.provider,
+        **({"max_tokens": cfg.model.max_tokens} if cfg.model.max_tokens is not None else {}),
         **({"timeout_s": cfg.model.timeout_s} if cfg.model.timeout_s is not None else {}),
     )
     address = AgentSubject.new(cfg.agent.kind, cfg.agent.owner, cfg.agent.name).prompt

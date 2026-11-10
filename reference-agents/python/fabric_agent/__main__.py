@@ -17,6 +17,7 @@ from pathlib import Path
 
 from .agent import scratchpad_line, start_agent
 from .config import load_config, load_env_file
+from .model import api_of
 
 
 async def main() -> None:
@@ -31,7 +32,7 @@ async def main() -> None:
     agent = await start_agent(cfg, env=env)
     print(f"{cfg.agent.kind} agent listening on {agent.address}")
     print(f"identity: {agent.identity or 'none'}")
-    print(f"model: {cfg.model.model} through {cfg.model.proxy_url}")
+    print(f"model: {cfg.model.model} through {cfg.model.proxy_url}, on {api_of(cfg.model.provider)}")
     print(f"scratchpad: {scratchpad_line(agent.scratchpad, env)}")
     print(f"durable: {'on (start_workflow: durable-task)' if cfg.durable else 'off'}")
     print("press Ctrl+C to stop (the conversation lives in memory and is gone on restart)")

@@ -29,7 +29,11 @@ class ScriptedModel:
         self.seen: list[list[ChatMessage]] = []
 
     async def complete(
-        self, messages: Sequence[ChatMessage], tools: Sequence[Mapping[str, Any]], headers: Mapping[str, str]
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[Mapping[str, Any]],
+        headers: Mapping[str, str],
+        tool_choice: str = "auto",
     ) -> Completion:
         self.seen.append([dict(m) for m in messages])
         if not self.script:

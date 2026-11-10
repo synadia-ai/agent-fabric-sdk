@@ -127,7 +127,7 @@ npm start
 
 ```
 assistant agent listening on agents.prompt.assistant.me.main
-model: anthropic/claude-sonnet-5 through http://localhost:18281/api
+model: anthropic/claude-sonnet-5 through http://localhost:18281/api, on the OpenAI chat-completions API
 scratchpad: off
 ```
 

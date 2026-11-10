@@ -1,14 +1,21 @@
-// model.ts — one chat-completions client pointed at the fabric's proxy, and
-// the loop that runs the model's tool calls.
+// model.ts — one model client pointed at the fabric's proxy, and the loop
+// that runs the model's tool calls.
 //
 // The agent never talks to a model provider. It talks to the proxy with its
 // virtual key, and the proxy resolves the key to a provider (Ollama on a
-// laptop, OpenRouter, OpenAI) and records the call on the agent's thread.
-// The agent holds three things: the proxy's URL, its virtual key and a
-// model name. Two headers on every call, `X-Synadia-Thread-ID` and
-// `X-Synadia-Root-ID` from the fabric package's `traceHeaders()`, tell the
-// proxy which thread the call belongs to; the proxy sees no NATS traffic,
-// so nothing else about the tree has to reach it.
+// laptop, OpenRouter, OpenAI, Anthropic) and records the call on the agent's
+// thread. The agent holds four things: the proxy's URL, its virtual key, a
+// model name, and the provider behind the key. Two headers on every call,
+// `X-Synadia-Thread-ID` and `X-Synadia-Root-ID` from the fabric package's
+// `traceHeaders()`, tell the proxy which thread the call belongs to; the
+// proxy sees no NATS traffic, so nothing else about the tree has to reach it.
+//
+// Two APIs, picked by the provider. Anthropic is called on its own Messages
+// API (`/v1/messages`), because that is where the proxy reads an Anthropic
+// call's tokens and content; every other provider on the OpenAI
+// chat-completions API (`/v1/chat/completions`). The loop below speaks the
+// chat-completions shape either way: the Anthropic client translates on the
+// way out and back.
 //
 // One request, one JSON reply, no streaming: a tool-calling loop is easiest
 // to read that way, and the host SDK keeps the caller's stream alive with
@@ -33,6 +40,14 @@ export interface ChatMessage {
   readonly tool_calls?: readonly ToolCall[];
   /** On a `tool` message: the id of the call this message answers. */
   readonly tool_call_id?: string;
+  /**
+   * On an assistant message from Anthropic's Messages API: the reply's
+   * content blocks as the API returned them, its thinking blocks included.
+   * They go back unchanged while the turn's tool loop runs, because the API
+   * checks a replayed thinking block against the conversation that produced
+   * it. The chat-completions client never sets it.
+   */
+  readonly anthropic_content?: readonly unknown[];
 }
 
 export interface Usage {
@@ -49,47 +64,115 @@ export interface Completion {
 /** A tool definition as the request carries it; `tools.ts` supplies them. */
 export interface ToolDefinitionLike {
   readonly type: "function";
-  readonly function: { readonly name: string };
+  readonly function: {
+    readonly name: string;
+    readonly description?: string;
+    /** The arguments' JSON Schema, an object schema. */
+    readonly parameters?: Readonly<Record<string, unknown>>;
+  };
+}
+
+/** The provider whose own API the client speaks; every other provider gets chat completions. */
+export const ANTHROPIC_PROVIDER = "anthropic";
+
+/** The Messages API version the Anthropic client asks for. */
+export const ANTHROPIC_VERSION = "2026-10-21";
+
+/**
+ * Anthropic's `max_tokens`, which its API requires, when `MODEL_MAX_TOKENS`
+ * sets none: room for a long answer without streaming. Thinking counts
+ * toward it.
+ */
+export const DEFAULT_MAX_TOKENS = 16_000;
+
+
+/** Which API the client speaks for a provider, as the startup line says it. */
+export function apiOf(provider: string | undefined): string {
+  return provider === ANTHROPIC_PROVIDER ? "Anthropic's Messages API" : "the OpenAI chat-completions API";
 }
 
 export interface ModelClientOptions {
-  /** The proxy's root URL; `/v1/chat/completions` is appended. */
+  /**
+   * The proxy's root URL. `/v1/chat/completions` is appended, or
+   * `/v1/messages` for Anthropic; for OpenRouter the root ends in `/api`.
+   */
   readonly proxyUrl: string;
   /** Issued through the console, resolved by the proxy to a provider. Never in a file this repo tracks. */
   readonly virtualKey: string;
-  /** The model name the provider behind the key understands, for example `llama3.1:8b` or `openai/gpt-4o-mini`. */
+  /** The model name the provider behind the key understands, for example `llama3.1:8b`, `openai/gpt-4o-mini` or `claude-sonnet-5-5`. */
   readonly model: string;
-  /** Per call. A local model on a laptop can take a while; default two minutes. */
-  readonly timeoutMs?: number;
+  /**
+   * The provider the virtual key names (`MODEL_PROVIDER`): `anthropic`
+   * selects Anthropic's Messages API; any other value, or none, the OpenAI
+   * chat-completions API.
+   */
+  readonly provider?: string | undefined;
+  /** Anthropic's `max_tokens`; default {@link DEFAULT_MAX_TOKENS}. A chat-completions call sends none. */
+  readonly maxTokens?: number | undefined;
+  /**
+   * Per call. A local model on a laptop can take a while; default two
+   * minutes. Stated honestly, it has two ceilings: Node's fetch gives up on
+   * a reply whose headers take more than five minutes; and a durable run's
+   * work between two waits must end within the engine's max work (five
+   * minutes by default): the step in flight when it passes is run again,
+   * and a call longer than it never ends.
+   */
+  readonly timeoutMs?: number | undefined;
+}
+
+/** How one call may use the tools it is shown. */
+export interface CompleteOptions {
+  /**
+   * `auto`, the default: the model may call the tools. `none`: it has to
+   * answer in words. The chat-completions client then sends no tools at
+   * all; the Anthropic client sends the same tools with `tool_choice`
+   * `none`, since a change to the tools would invalidate the thinking blocks
+   * already in the conversation.
+   */
+  readonly toolChoice?: "auto" | "none";
 }
 
 export interface ModelClient {
   /** For log lines: the model and where the calls go. */
   readonly label: string;
   /**
-   * One chat-completions call. `headers` are merged into the request; the
-   * agent passes the fabric package's `traceHeaders()` here, once per call.
+   * One model call. `headers` are merged into the request; the agent passes
+   * the fabric package's `traceHeaders()` here, once per call.
    */
   complete(
     messages: readonly ChatMessage[],
     tools: readonly ToolDefinitionLike[],
     headers: Record<string, string>,
+    options?: CompleteOptions,
   ): Promise<Completion>;
 }
 
 export function createModelClient(options: ModelClientOptions): ModelClient {
-  const root = options.proxyUrl.endsWith("/") ? options.proxyUrl : `${options.proxyUrl}/`;
-  const endpoint = new URL("v1/chat/completions", root);
+  return options.provider === ANTHROPIC_PROVIDER ? anthropicClient(options) : chatCompletionsClient(options);
+}
+
+function rootOf(proxyUrl: string): string {
+  return proxyUrl.endsWith("/") ? proxyUrl : `${proxyUrl}/`;
+}
+
+async function failed(res: Response): Promise<Error> {
+  const text = (await res.text()).slice(0, 300);
+  return new Error(`model call failed: ${res.status} ${res.statusText} ${text}`.trim());
+}
+
+function chatCompletionsClient(options: ModelClientOptions): ModelClient {
+  const endpoint = new URL("v1/chat/completions", rootOf(options.proxyUrl));
   const timeoutMs = options.timeoutMs ?? 120_000;
   return {
     label: `${options.model} through ${endpoint.host}`,
-    async complete(messages, tools, headers) {
+    async complete(messages, tools, headers, callOptions) {
+      const offered = callOptions?.toolChoice === "none" ? [] : tools;
       const body = {
         model: options.model,
         messages,
         // No `tools` key at all when there are none: some providers reject
         // an empty list.
-        ...(tools.length > 0 ? { tools } : {}),
+        ...(offered.length > 0 ? { tools: offered } : {}),
         stream: false,
       };
       const res = await fetch(endpoint, {
@@ -102,10 +185,7 @@ export function createModelClient(options: ModelClientOptions): ModelClient {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!res.ok) {
-        const text = (await res.text()).slice(0, 300);
-        throw new Error(`model call failed: ${res.status} ${res.statusText} ${text}`.trim());
-      }
+      if (!res.ok) throw await failed(res);
       const reply = (await res.json()) as {
         choices?: { message?: ChatMessage }[];
         usage?: Usage;
@@ -115,6 +195,217 @@ export function createModelClient(options: ModelClientOptions): ModelClient {
       return { message, usage: reply.usage };
     },
   };
+}
+
+function anthropicClient(options: ModelClientOptions): ModelClient {
+  const endpoint = new URL("v1/messages", rootOf(options.proxyUrl));
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
+  return {
+    label: `${options.model} through ${endpoint.host}, on Anthropic's Messages API`,
+    async complete(messages, tools, headers, callOptions) {
+      const body = anthropicRequest({
+        model: options.model,
+        maxTokens,
+        messages,
+        tools,
+        toolChoice: callOptions?.toolChoice ?? "auto",
+      });
+      // The virtual key as the bearer token, as on chat completions: the
+      // proxy reads it there first, whatever the provider, and puts the
+      // provider's own key in the header Anthropic reads.
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.virtualKey}`,
+          "anthropic-version": ANTHROPIC_VERSION,
+          ...headers,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) throw await failed(res);
+      return anthropicCompletion(await res.json());
+    },
+  };
+}
+
+export interface AnthropicRequestInput {
+  readonly model: string;
+  readonly maxTokens: number;
+  readonly messages: readonly ChatMessage[];
+  readonly tools: readonly ToolDefinitionLike[];
+  readonly toolChoice: "auto" | "none";
+}
+
+type AnthropicRole = "user" | "assistant";
+
+/**
+ * The Messages API request for a conversation in the chat-completions shape.
+ * System messages become the top-level `system`. An assistant message goes
+ * back as the content blocks Anthropic returned for it, when it carries
+ * them, else as its text and its tool calls as `tool_use` blocks. A `tool`
+ * message becomes a `tool_result` block in a user turn. Consecutive messages
+ * of one role join one turn, so a round's tool results arrive together, in
+ * one user turn, ahead of any text that follows them. Text that is empty or
+ * only whitespace is left out, among the returned blocks too: the API
+ * refuses such a block, and the check on replayed thinking ignores it.
+ */
+export function anthropicRequest(input: AnthropicRequestInput): Record<string, unknown> {
+  const system: string[] = [];
+  const turns: { role: AnthropicRole; content: unknown[] }[] = [];
+  const add = (role: AnthropicRole, blocks: readonly unknown[]): void => {
+    if (blocks.length === 0) return;
+    const last = turns[turns.length - 1];
+    if (last !== undefined && last.role === role) last.content.push(...blocks);
+    else turns.push({ role, content: [...blocks] });
+  };
+  for (const message of input.messages) {
+    switch (message.role) {
+      case "system":
+        if (message.content !== null && message.content.trim() !== "") system.push(message.content);
+        break;
+      case "user":
+        add("user", textBlocks(message.content));
+        break;
+      case "assistant":
+        add(
+          "assistant",
+          Array.isArray(message.anthropic_content)
+            ? message.anthropic_content.filter((block) => !blankText(block))
+            : [...textBlocks(message.content), ...(message.tool_calls ?? []).map(toolUseBlock)],
+        );
+        break;
+      case "tool":
+        add("user", [
+          {
+            type: "tool_result",
+            tool_use_id: message.tool_call_id ?? "",
+            ...(message.content !== null && message.content !== "" ? { content: message.content } : {}),
+          },
+        ]);
+        break;
+    }
+  }
+  return {
+    model: input.model,
+    max_tokens: input.maxTokens,
+    ...(system.length > 0 ? { system: system.join("\n\n") } : {}),
+    messages: turns,
+    // No `tools` key when there are none; with tools, the call's choice.
+    ...(input.tools.length > 0
+      ? { tools: input.tools.map(anthropicTool), tool_choice: { type: input.toolChoice } }
+      : {}),
+  };
+}
+
+/** A text block whose text is empty or only whitespace. */
+function blankText(block: unknown): boolean {
+  if (typeof block !== "object" || block === null) return false;
+  const b = block as Record<string, unknown>;
+  return b["type"] === "text" && typeof b["text"] === "string" && b["text"].trim() === "";
+}
+
+function textBlocks(content: string | null): unknown[] {
+  return content !== null && content.trim() !== "" ? [{ type: "text", text: content }] : [];
+}
+
+function toolUseBlock(call: ToolCall): unknown {
+  return { type: "tool_use", id: call.id, name: call.function.name, input: toolInput(call.function.arguments) };
+}
+
+/** A tool call's arguments as the object `tool_use` carries: `{}` when they are not a JSON object. */
+function toolInput(args: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(args);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function anthropicTool(tool: ToolDefinitionLike): Record<string, unknown> {
+  const { name, description, parameters } = tool.function;
+  return {
+    name,
+    ...(description !== undefined ? { description } : {}),
+    input_schema:
+      parameters !== undefined && parameters !== null && Object.keys(parameters).length > 0
+        ? parameters
+        : { type: "object", properties: {} },
+  };
+}
+
+interface AnthropicUsage {
+  readonly input_tokens?: number;
+  readonly output_tokens?: number;
+  readonly cache_creation_input_tokens?: number | null;
+  readonly cache_read_input_tokens?: number | null;
+}
+
+/**
+ * The completion in the chat-completions shape for a Messages API reply:
+ * its text blocks joined as the content, its `tool_use` blocks as tool
+ * calls, and all its blocks kept as `anthropic_content` for the next call
+ * of the turn. A refusal fails the call with its category; it is not an
+ * empty answer to ask again. A reply cut off at `max_tokens` fails too,
+ * naming `MODEL_MAX_TOKENS`: half an answer is no reply, and a tool call
+ * cut off has arguments that never arrived whole. So does a conversation
+ * that outgrew the model's context window.
+ */
+export function anthropicCompletion(reply: unknown): Completion {
+  const r = (typeof reply === "object" && reply !== null ? reply : {}) as {
+    content?: unknown;
+    stop_reason?: unknown;
+    stop_details?: { category?: unknown } | null;
+    usage?: AnthropicUsage | null;
+  };
+  if (r.stop_reason === "refusal") {
+    const category = typeof r.stop_details?.category === "string" ? `: ${r.stop_details.category}` : "";
+    throw new Error(`the model declined the request (refusal${category})`);
+  }
+  if (r.stop_reason === "max_tokens") {
+    throw new Error("the model's reply was cut off at its token limit: raise MODEL_MAX_TOKENS, which counts thinking too");
+  }
+  if (r.stop_reason === "model_context_window_exceeded") {
+    throw new Error("the conversation no longer fits the model's context window");
+  }
+  if (!Array.isArray(r.content)) throw new Error("model reply carries no content");
+  const blocks: unknown[] = r.content;
+  const texts: string[] = [];
+  const calls: ToolCall[] = [];
+  for (const block of blocks) {
+    if (typeof block !== "object" || block === null) continue;
+    const b = block as Record<string, unknown>;
+    if (b["type"] === "text" && typeof b["text"] === "string") texts.push(b["text"]);
+    if (b["type"] === "tool_use" && typeof b["id"] === "string" && typeof b["name"] === "string") {
+      calls.push({
+        id: b["id"],
+        type: "function",
+        function: { name: b["name"], arguments: JSON.stringify(b["input"] ?? {}) },
+      });
+    }
+  }
+  const text = texts.join("");
+  const message: ChatMessage = {
+    role: "assistant",
+    content: text === "" ? null : text,
+    ...(calls.length > 0 ? { tool_calls: calls } : {}),
+    anthropic_content: blocks,
+  };
+  return { message, usage: chatUsage(r.usage) };
+}
+
+/** Anthropic's usage counted the chat-completions way: every input token, cached or not, as a prompt token. */
+function chatUsage(usage: AnthropicUsage | null | undefined): Usage | undefined {
+  if (usage === undefined || usage === null) return undefined;
+  const prompt =
+    (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
+  const completion = usage.output_tokens ?? 0;
+  return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion };
 }
 
 /** What the loop needs from the tools: their definitions and a way to run one. */
@@ -195,8 +486,8 @@ export interface ConverseResult {
  * Run the model until it answers in words. Each round is one model call;
  * when the model asks for tools, every call is run and answered with a
  * `tool` message, and the model is called again with the results in front
- * of it. On the last permitted round the model gets no tools, so it has to
- * answer.
+ * of it. On the last permitted round the model may not call a tool
+ * (`toolChoice: "none"`), so it has to answer.
  *
  * An empty answer is not a reply while a call the model started is still
  * open, waiting on a question it has to answer or still running: the turn
@@ -219,15 +510,19 @@ export async function converse(options: ConverseOptions): Promise<ConverseResult
   let emptyReplies = 0;
   const open = new Map<string, OpenCall>();
   for (let round = 0; ; round += 1) {
-    const toolsOffered = round < maxToolRounds ? options.tools.definitions : [];
+    // The same tools every round; on the last permitted one the model may
+    // not call them and has to answer.
+    const answerOnly = round >= maxToolRounds;
     const { message, usage } = await options.model.complete(
       options.messages,
-      toolsOffered,
+      options.tools.definitions,
       options.traceHeaders(),
+      { toolChoice: answerOnly ? "none" : "auto" },
     );
     modelCalls += 1;
     options.messages.push(message);
-    const calls = toolsOffered.length > 0 ? (message.tool_calls ?? []) : [];
+    // No tool runs on the answer-only round, nor for an agent shown none.
+    const calls = answerOnly || options.tools.definitions.length === 0 ? [] : (message.tool_calls ?? []);
     log(
       `model call ${modelCalls}: ${calls.length} tool call(s), ` +
         `${usage?.prompt_tokens ?? "?"} in / ${usage?.completion_tokens ?? "?"} out tokens`,
