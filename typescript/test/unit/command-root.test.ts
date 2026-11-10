@@ -28,6 +28,11 @@ const world = vi.hoisted(() => ({
   target: undefined as Listed | undefined,
   // What the agent says when it refuses the prompt.
   refusal: "",
+  // What the agent sends instead, when set: the chunks of its reply, and a
+  // question where an entry is `{ ask }`.
+  served: undefined as ReadonlyArray<string | { readonly ask: string }> | undefined,
+  // What the agent's questions were answered.
+  answers: [] as string[],
 }));
 
 vi.mock("../../src/caller.js", async (importOriginal) => {
@@ -41,6 +46,26 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
             () => world.target ?? real.pickAgent(world.agents as unknown as Agent[], who),
           ),
         prompt: () => {
+          const served = world.served;
+          if (served !== undefined) {
+            return Promise.resolve({
+              rootId: Promise.resolve("0".repeat(32)),
+              stream: (async function* () {
+                for (const part of served) {
+                  // Each arrives on its own, as a message from the server does.
+                  await Promise.resolve();
+                  if (typeof part === "string") yield { type: "response", text: part };
+                  else {
+                    const reply = (answer: string): Promise<void> => {
+                      world.answers.push(answer);
+                      return Promise.resolve();
+                    };
+                    yield { type: "query", prompt: part.ask, reply };
+                  }
+                }
+              })(),
+            });
+          }
           const rootId = Promise.reject(new real.FabricCallerError("not-sent", "never sent"));
           rootId.catch(() => {});
           return Promise.resolve({
@@ -75,6 +100,8 @@ beforeEach(() => {
   world.agents = [];
   world.target = WRITER;
   world.refusal = "refused before it went out";
+  world.served = undefined;
+  world.answers = [];
 });
 
 /** An agent of kind `k` that registered no identity. */
@@ -168,6 +195,66 @@ describe("prompt, what an agent registered or said", () => {
       expect((caught as Error).message).toBe(
         `no agent "nosuch"; there: agents.prompt.a${CLEAR}.demo.s, agents.prompt.b\t.demo.s`,
       );
+    });
+  });
+});
+
+// The reply and a question are the agent's own text, over as many lines as
+// it wrote. A terminal is sent them as text it only shows; a pipe or a file
+// gets them as they came.
+describe("prompt, the reply and a question", () => {
+  const ESC = String.fromCharCode(0x1b);
+  const BEL = String.fromCharCode(0x07);
+  const CSI = String.fromCharCode(0x9b); // the one-character form of ESC [
+  const OVERRIDE = String.fromCodePoint(0x202e); // right-to-left override
+  const FAMILY = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
+  const FFFD = String.fromCodePoint(0xfffd);
+  // Clears the screen, sets the window's title, moves up a line and writes
+  // over it: what a reply must not do to the terminal it is printed on.
+  const REPLY = [
+    `one\ttab\nline two ${ESC}[2J${ESC}]0;title${BEL}`,
+    `${CSI}1A\rroot 0123 ${OVERRIDE}${FAMILY}\n`,
+  ];
+  const SHOWN =
+    `one\ttab\nline two ${FFFD}[2J${FFFD}]0;title${FFFD}` +
+    `${FFFD}1A${FFFD}root 0123 ${FFFD}${FAMILY}\n`;
+  const QUESTION = `which ${ESC}[31mcolour?\n${ESC}[1Aroot 0123`;
+
+  beforeEach(() => {
+    world.served = [REPLY[0]!, { ask: QUESTION }, REPLY[1]!];
+  });
+
+  it("on a terminal, shows U+FFFD for a control or a format character; line breaks, tabs and joiners stay", async () => {
+    const io = recordingIO(ENV, ["green"], { out: true, err: true });
+    expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(`${SHOWN}\n`);
+    expect(io.stderr()).toContain(`? which ${FFFD}[31mcolour?\n${FFFD}[1Aroot 0123\n`);
+    expect(io.stdout() + io.stderr()).not.toContain(ESC);
+    // The answer goes to the agent as it was typed.
+    expect(world.answers).toEqual(["green"]);
+  });
+
+  it("writes them as they came when the output is not a terminal", async () => {
+    const io = recordingIO(ENV, ["green"]);
+    expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(`${REPLY.join("")}\n`);
+    expect(io.stderr()).toContain(`? ${QUESTION}\n`);
+  });
+
+  it("decides for each output alone: a reply piped from a terminal is the exact reply", async () => {
+    const io = recordingIO(ENV, ["green"], { err: true });
+    expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(`${REPLY.join("")}\n`);
+    expect(io.stderr()).toContain(`? which ${FFFD}[31mcolour?\n${FFFD}[1Aroot 0123\n`);
+  });
+
+  it("leaves --json as it is, on a terminal too: the text as it came", async () => {
+    const io = recordingIO(ENV, ["green"], { out: true, err: true });
+    expect(await runCommand(["prompt", "writer", "hi", "--json"], io)).toBe(EXIT_OK);
+    expect(JSON.parse(io.stdout())).toEqual({
+      root: "0".repeat(32),
+      text: REPLY.join(""),
+      references: [],
     });
   });
 });

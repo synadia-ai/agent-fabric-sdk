@@ -20,7 +20,7 @@ from typing import Literal
 
 from synadia_ai.agents import Agent, Query, ResponseChunk
 
-from ._description import clean_description, plain_line
+from ._description import clean_description, plain_line, terminal_text
 from .caller import (
     CANNOT_ANSWER,
     NATS_CREDS_VAR,
@@ -74,6 +74,10 @@ class CommandIO:
     #: One line from stdin, without its newline; ``None`` at its end.
     read_line: Callable[[], Awaitable[str | None]]
     env: Mapping[str, str] = field(default_factory=dict)
+    #: Whether stdout is a terminal. A pipe or a file is not.
+    out_is_terminal: bool = False
+    #: Whether stderr is a terminal.
+    err_is_terminal: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,14 +286,25 @@ async def _prompt(
             io.err(f"root {f.result()}\n")
 
     started.root_id.add_done_callback(print_root)
+
+    # The reply and a question are the agent's own text. A terminal is sent
+    # them as text it only shows (``terminal_text``), so no escape sequence in
+    # them clears the screen or writes over a line. A pipe or a file gets them
+    # as they came: a script reads the exact reply.
+    def to_out(text: str) -> str:
+        return terminal_text(text) if io.out_is_terminal else text
+
+    def to_err(text: str) -> str:
+        return terminal_text(text) if io.err_is_terminal else text
+
     reply: list[str] = []
     async for msg in started.stream:
         if isinstance(msg, ResponseChunk):
             reply.append(msg.text)
             if not parsed.json:
-                io.out(msg.text)
+                io.out(to_out(msg.text))
         elif isinstance(msg, Query):
-            io.err(f"? {msg.prompt}\n")
+            io.err(f"? {to_err(msg.prompt)}\n")
             answer = await io.read_line()
             await msg.reply(answer if answer and answer.strip() else CANNOT_ANSWER)
     root = await started.root_id
@@ -324,6 +339,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         err=_write(sys.stderr),
         read_line=_read_stdin_line,
         env=os.environ,
+        out_is_terminal=sys.stdout.isatty(),
+        err_is_terminal=sys.stderr.isatty(),
     )
     return asyncio.run(run_command(sys.argv[1:] if argv is None else argv, io))
 

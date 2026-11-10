@@ -1,4 +1,7 @@
-"""A ``CommandIO`` for the command's tests: stdout and stderr collected, stdin a list of lines."""
+"""A ``CommandIO`` for the command's tests: stdout and stderr collected, stdin a list of lines.
+
+Neither output is a terminal unless the test says so.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +26,11 @@ class Recording:
 
 
 def recording_io(
-    env: Mapping[str, str] | None = None, stdin: Sequence[str] = ()
+    env: Mapping[str, str] | None = None,
+    stdin: Sequence[str] = (),
+    *,
+    out_is_terminal: bool = False,
+    err_is_terminal: bool = False,
 ) -> tuple[CommandIO, Recording]:
     rec = Recording()
     lines = list(stdin)
@@ -32,6 +39,11 @@ def recording_io(
         return lines.pop(0) if lines else None
 
     io = CommandIO(
-        out=rec.stdout.append, err=rec.stderr.append, read_line=read_line, env=dict(env or {})
+        out=rec.stdout.append,
+        err=rec.stderr.append,
+        read_line=read_line,
+        env=dict(env or {}),
+        out_is_terminal=out_is_terminal,
+        err_is_terminal=err_is_terminal,
     )
     return io, rec

@@ -14,7 +14,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import nats
 import pytest
@@ -37,6 +37,10 @@ ALICE = identity_fixture("operator/alice.creds")
 ERIN = identity_fixture("operator/erin.creds")
 REF = "sp-r1:rwxmJU9MR2qrq6urq6urq6urq6urq6urAAAAAAAAAAkQb4WlVJM_S1l6lm-1"
 ROOT_LINE = re.compile(r"^root ([0-9a-f]{32})$", re.MULTILINE)
+# What the writer asks and replies to a prompt that starts with ``paint:``: it
+# colours the text, clears the screen and moves up a line.
+PAINT_QUESTION = "which \x1b[31mcolour?"
+PAINT_REPLY = "\x1b[2Jcleared\tthe\nscreen \x1b[1A"
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -72,7 +76,11 @@ async def world(nats_server_operator: RunningServer) -> AsyncIterator[World]:
     async def handler(envelope: Any, stream: Any) -> None:
         if envelope.prompt.startswith("fail:"):
             raise RuntimeError("refused")
-        if envelope.prompt.startswith("ask:"):
+        if envelope.prompt.startswith("paint:"):
+            # A question and a reply with escape sequences in them.
+            await stream.ask(PAINT_QUESTION, timeout=3.0)
+            await stream.send(PAINT_REPLY)
+        elif envelope.prompt.startswith("ask:"):
             answer = await stream.ask("which colour?", timeout=3.0)
             w.answers.append(answer.prompt)
             await stream.send(f"got {answer.prompt}")
@@ -140,6 +148,52 @@ async def _run(
     )
     out, err = await proc.communicate()
     return proc.returncode, out, err
+
+
+async def _run_on_terminal(
+    program: tuple[str, ...], *args: str, terminal: Literal["stdout", "stderr"]
+) -> tuple[int | None, bytes, bytes]:
+    """Run a command with a terminal as one of its two outputs.
+
+    Returns its exit code, what the terminal was sent, and the other output,
+    which is a pipe.
+    """
+    import pty  # noqa: PLC0415 - not on Windows
+    import tty  # noqa: PLC0415
+
+    master, slave = pty.openpty()
+    try:
+        # As the command wrote it: no line break turned into two characters.
+        tty.setraw(slave)
+        pipe = asyncio.subprocess.PIPE
+        proc = await asyncio.create_subprocess_exec(
+            *program,
+            *args,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=slave if terminal == "stdout" else pipe,
+            stderr=slave if terminal == "stderr" else pipe,
+        )
+    finally:
+        os.close(slave)
+
+    def sent() -> bytes:
+        parts: list[bytes] = []
+        while True:
+            try:
+                part = os.read(master, 4096)
+            except OSError:  # how Linux ends a terminal's output
+                break
+            if not part:
+                break
+            parts.append(part)
+        return b"".join(parts)
+
+    try:
+        shown = asyncio.get_running_loop().run_in_executor(None, sent)
+        out, err = await proc.communicate()
+        return proc.returncode, await shown, out if terminal == "stderr" else err
+    finally:
+        os.close(master)
 
 
 async def _registered(world: World, kind: str, address: str) -> Any:
@@ -212,6 +266,33 @@ async def test_both_commands_and_examples_print_what_an_agent_registered_as_plai
     assert rows[0] == rows[1]
     assert address + b"\twri [31mter\tagent identity: none" in rows[0]
     assert all(_ESC not in out for _code, out, _err in examples)
+
+
+@both_commands
+@pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
+async def test_both_commands_send_a_terminal_no_escape_sequence_and_a_pipe_the_exact_reply(
+    world: World,
+) -> None:
+    # The writer's question and reply hold escape sequences. Where an output
+    # is a terminal, both commands send it U+FFFD for each escape character,
+    # the same bytes from both. Where it is a pipe, they write what came.
+    prompt = ("prompt", "writer", "paint: it", "--creds", str(ERIN), "--url", world.server.url)
+    fffd = chr(0xFFFD)
+    question_shown = f"? which {fffd}[31mcolour?\n".encode()
+    reply_shown = f"{fffd}[2Jcleared\tthe\nscreen {fffd}[1A\n".encode()
+    seen = []
+    for program in (_PYTHON, _TYPESCRIPT):
+        # The reply on a terminal, the question on a pipe.
+        code, shown, err = await _run_on_terminal(program, *prompt, terminal="stdout")
+        assert (code, shown) == (0, reply_shown)
+        assert f"? {PAINT_QUESTION}\n".encode() in err
+        # The question on a terminal, the reply on a pipe.
+        code, shown, out = await _run_on_terminal(program, *prompt, terminal="stderr")
+        assert (code, out) == (0, f"{PAINT_REPLY}\n".encode())
+        assert question_shown in shown
+        assert _ESC not in shown
+        seen.append(re.sub(rb"root [0-9a-f]{32}", b"root", shown))
+    assert seen[0] == seen[1]
 
 
 @both_commands

@@ -48,6 +48,13 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   after `no reply:`. The errors `find()` and `pickAgent()` throw are unchanged: their messages
   carry the addresses as they were registered. The `list-agents.mjs` example prints its rows as
   plain text too.
+- `agent-fabric prompt`, without `--json`: the reply and a question the agent asks are the
+  agent's own text, and a terminal no longer gets them as they came. When stdout is a terminal,
+  every control or format character in the reply is written as U+FFFD, and half a character too;
+  a line break, a tab, the zero width joiner and the zero width non-joiner stay. So a reply
+  cannot clear the screen, move the cursor or write over a line with an escape sequence. The
+  same for a question when stderr is a terminal. When the output is a pipe or a file, the text
+  is written as it came, so a script reads the exact reply. `--json` is unchanged.
 - `resolveScratchPad`, the add-ons' ScratchPad settings, takes the connection the plugin's
   channel takes, so `sp` connects to the agent's server as the agent. After
   `options.scratchpad`'s `url` and `creds`, field by field: a non-empty `NATS_CONTEXT`'s

@@ -17,6 +17,8 @@ function processIO(): CommandIO {
       return next.done === true ? null : next.value;
     },
     env: process.env,
+    outIsTerminal: process.stdout.isTTY === true,
+    errIsTerminal: process.stderr.isTTY === true,
   };
 }
 

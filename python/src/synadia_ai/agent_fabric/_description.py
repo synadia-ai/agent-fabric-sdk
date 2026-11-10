@@ -17,6 +17,11 @@ same test vectors.
 The other fields of a listed agent, its address, its kind and its identity, are
 registered text too. :func:`plain_line` applies the rule's first step to one:
 the same characters become a space or U+FFFD, and nothing is collapsed or cut.
+
+A reply and a question are another agent's text as well, over as many lines as
+the agent wrote. :func:`terminal_text` is for a terminal: the line breaks and
+the tabs stay, and every other control or format character is shown as U+FFFD,
+so an escape sequence is printed and never run.
 """
 
 from __future__ import annotations
@@ -44,6 +49,25 @@ def _plain(ch: str) -> str:
     if category == "Cs":
         return _REPLACEMENT
     return " " if category in _NOT_PLAIN and ch not in _KEPT else ch
+
+
+# The categories of a code point that a terminal may act on instead of showing
+# it, a control character (the escape character among them) or a format
+# character, and of half a character.
+_NOT_SHOWN = frozenset({"Cc", "Cf", "Cs"})
+# A line break and a tab, and the zero width non-joiner and joiner.
+_SHOWN = frozenset({"\n", "\t"}) | _KEPT
+
+
+def terminal_text(text: str) -> str:
+    """``text`` as a terminal can be sent it, over as many lines as it has: every
+    control and format character as U+FFFD, and half a character too. A line
+    break (U+000A) and a tab stay, and so do the zero width non-joiner and
+    joiner. Everything else is as it is. As many characters as it had."""
+    return "".join(
+        _REPLACEMENT if ch not in _SHOWN and unicodedata.category(ch) in _NOT_SHOWN else ch
+        for ch in text
+    )
 
 
 def plain_line(text: str) -> str:

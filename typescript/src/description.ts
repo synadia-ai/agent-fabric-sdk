@@ -19,6 +19,11 @@
 // identity, are registered text too. `plainLine` applies the rule's first
 // step to one: the same characters become a space or U+FFFD, and nothing is
 // collapsed or cut.
+//
+// A reply and a question are another agent's text as well, over as many
+// lines as the agent wrote. `terminalText` is for a terminal: the line breaks
+// and the tabs stay, and every other control or format character is shown as
+// U+FFFD, so an escape sequence is printed and never run.
 
 /** The most characters, counted as Unicode code points, a description has. */
 export const DESCRIPTION_LIMIT = 500;
@@ -39,6 +44,28 @@ function plain(point: string): string {
   if (code !== undefined && code >= 0xd800 && code <= 0xdfff) return REPLACEMENT;
   if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) return point;
   return NOT_PLAIN.test(point) ? " " : point;
+}
+
+// One code point that a terminal may act on instead of showing it: a control
+// character (the escape character among them) or a format character.
+const CONTROL_OR_FORMAT = /^[\p{Cc}\p{Cf}]$/u;
+
+/**
+ * `text` as a terminal can be sent it, over as many lines as it has: every
+ * control and format character as U+FFFD, and half a character too. A line
+ * break (U+000A) and a tab stay, and so do the zero width non-joiner and
+ * joiner. Everything else is as it is. As many characters as it had.
+ */
+export function terminalText(text: string): string {
+  let shown = "";
+  for (const point of text) {
+    const code = point.codePointAt(0);
+    if (point === "\n" || point === "\t") shown += point;
+    else if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) shown += point;
+    else if (code !== undefined && code >= 0xd800 && code <= 0xdfff) shown += REPLACEMENT;
+    else shown += CONTROL_OR_FORMAT.test(point) ? REPLACEMENT : point;
+  }
+  return shown;
 }
 
 /**

@@ -13,7 +13,7 @@ import {
   fabricCaller,
   type FabricCaller,
 } from "./caller.js";
-import { cleanDescription, plainLine } from "./description.js";
+import { cleanDescription, plainLine, terminalText } from "./description.js";
 import { findReferences } from "./scratchpad.js";
 
 /** Success. */
@@ -57,6 +57,10 @@ export interface CommandIO {
   err(text: string): void;
   /** One line from stdin, without its newline; `null` at its end. */
   readLine(): Promise<string | null>;
+  /** Whether stdout is a terminal. A pipe or a file is not; unset, it is not. */
+  readonly outIsTerminal?: boolean;
+  /** Whether stderr is a terminal. */
+  readonly errIsTerminal?: boolean;
   /** The environment: `NATS_CREDS`, `NATS_URL`. */
   readonly env: Readonly<Record<string, string | undefined>>;
 }
@@ -283,13 +287,19 @@ async function prompt(
     (root) => io.err(`root ${root}\n`),
     () => {},
   );
+  // The reply and a question are the agent's own text. A terminal is sent
+  // them as text it only shows (`terminalText`), so no escape sequence in
+  // them clears the screen or writes over a line. A pipe or a file gets them
+  // as they came: a script reads the exact reply.
+  const toOut = (text: string): string => (io.outIsTerminal === true ? terminalText(text) : text);
+  const toErr = (text: string): string => (io.errIsTerminal === true ? terminalText(text) : text);
   let reply = "";
   for await (const msg of stream) {
     if (msg.type === "response") {
       reply += msg.text;
-      if (!opts.json) io.out(msg.text);
+      if (!opts.json) io.out(toOut(msg.text));
     } else if (msg.type === "query") {
-      io.err(`? ${msg.prompt}\n`);
+      io.err(`? ${toErr(msg.prompt)}\n`);
       const answer = await io.readLine();
       await msg.reply(answer === null || answer.trim() === "" ? CANNOT_ANSWER : answer);
     }

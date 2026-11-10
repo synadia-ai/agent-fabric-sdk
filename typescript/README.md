@@ -70,12 +70,19 @@ npx @synadia-ai/agent-fabric prompt writer "Write two lines about the sea." --cr
   characters. `--json` gives every field as it was registered.
 - `prompt <address or kind> "<text>"` streams the reply to stdout. An agent
   is named by its address, or by its kind when exactly one agent has it.
+- The reply is the agent's own text. When stdout is a terminal, every control
+  or invisible character in it is shown as U+FFFD, the replacement character,
+  so an escape sequence in a reply is printed and never run; line breaks and
+  tabs stay, and so do the zero width joiner and non-joiner. When stdout is a
+  pipe or a file, the reply is written as it came, so a script reads the
+  exact text. `--json` always gives the text as it came.
 - On stderr: the URL, the agent and its identity, `root <id>` (the task's root id, which is
   how the console finds the task), and `reference: <token>` when the reply
   hands back a ScratchPad reference. What an agent registered or said in a
   refusal is printed there as plain text, as in the list: the agent's address
   and identity, the addresses an error names, the words after `no reply:`.
-- A question the agent asks mid-reply is printed on stderr, prefixed `? `.
+- A question the agent asks mid-reply is printed on stderr, prefixed `? `,
+  by the reply's rule: as it came, unless stderr is a terminal.
   The next line on stdin answers it. With no input, the agent is told the
   caller cannot answer and goes on.
 

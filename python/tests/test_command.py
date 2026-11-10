@@ -16,10 +16,10 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
-from synadia_ai.agents import Agent
+from synadia_ai.agents import Agent, Query, ResponseChunk
 
 from synadia_ai.agent_fabric import FabricCallerError, cli, pick_agent
 from synadia_ai.agent_fabric.cli import (
@@ -138,19 +138,34 @@ class _A:
     id_sig_verified: bool = False
 
 
+@dataclass
+class _Ask:
+    """A question the agent asks in the middle of its reply."""
+
+    question: str
+
+
 def _listing(
     monkeypatch: pytest.MonkeyPatch,
     agents: list[_A],
     *,
     target: _A | None = None,
     refusal: str = "refused before it went out",
-) -> None:
+    served: Sequence[str | _Ask] | None = None,
+) -> list[str]:
     """Replace the caller with one that lists ``agents``.
 
     Its ``find`` returns ``target``, or picks from ``agents`` by the caller's
     own rule and fails as the caller does. Its prompt is refused with
-    ``refusal`` at the stream's first step, before any root.
+    ``refusal`` at the stream's first step, before any root; or, with
+    ``served``, answered with those chunks of a reply, and a question where
+    an entry is an ``_Ask``. Returns what the questions were answered.
     """
+    answers: list[str] = []
+
+    class _Question(Query):
+        async def reply(self, answer: object) -> None:
+            answers.append(str(answer))
 
     class _Caller:
         async def list(self) -> list[_A]:
@@ -161,11 +176,19 @@ def _listing(
 
         async def prompt(self, _target: object, _text: str, **_options: object) -> object:
             async def stream() -> AsyncIterator[object]:
-                raise RuntimeError(refusal)
-                yield
+                if served is None:
+                    raise RuntimeError(refusal)
+                for part in served:
+                    if isinstance(part, _Ask):
+                        yield _Question("q", "r", part.question, None, cast("Any", None))
+                    else:
+                        yield ResponseChunk(text=part)
 
             root_id: asyncio.Future[str] = asyncio.get_running_loop().create_future()
-            root_id.cancel()
+            if served is None:
+                root_id.cancel()
+            else:
+                root_id.set_result("0" * 32)
             return SimpleNamespace(stream=stream(), root_id=root_id)
 
         async def close(self) -> None:
@@ -175,6 +198,7 @@ def _listing(
         return _Caller()
 
     monkeypatch.setattr(cli, "fabric_caller", fake)
+    return answers
 
 
 # Three emoji held together by two zero width joiners, which stay.
@@ -417,3 +441,66 @@ def test_the_error_a_program_catches_keeps_the_addresses_as_they_were_registered
     assert str(caught.value) == (
         f'no agent "nosuch"; there: agents.prompt.a{_CLEAR}.demo.s, agents.prompt.b\t.demo.s'
     )
+
+
+# The reply and a question are the agent's own text, over as many lines as it
+# wrote. A terminal is sent them as text it only shows; a pipe or a file gets
+# them as they came.
+_BEL = chr(0x07)
+_CSI = chr(0x9B)  # the one-character form of ESC [
+_FFFD = chr(0xFFFD)
+# Clears the screen, sets the window's title, moves up a line and writes over
+# it: what a reply must not do to the terminal it is printed on.
+_REPLY = [
+    f"one\ttab\nline two {_ESC}[2J{_ESC}]0;title{_BEL}",
+    f"{_CSI}1A\rroot 0123 {_OVERRIDE}{_FAMILY}\n",
+]
+_SHOWN = (
+    f"one\ttab\nline two {_FFFD}[2J{_FFFD}]0;title{_FFFD}"
+    f"{_FFFD}1A{_FFFD}root 0123 {_FFFD}{_FAMILY}\n"
+)
+_QUESTION = f"which {_ESC}[31mcolour?\n{_ESC}[1Aroot 0123"
+_SERVED = [_REPLY[0], _Ask(_QUESTION), _REPLY[1]]
+
+
+async def test_on_a_terminal_the_reply_and_a_question_show_u_fffd_for_a_control_or_format_character(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Line breaks, tabs and the joiners stay.
+    answers = _listing(monkeypatch, [], target=_WRITER, served=_SERVED)
+    io, rec = recording_io(_ENV, ["green"], out_is_terminal=True, err_is_terminal=True)
+    assert await run_command(["prompt", "writer", "hi"], io) == EXIT_OK
+    assert rec.out == f"{_SHOWN}\n"
+    assert f"? which {_FFFD}[31mcolour?\n{_FFFD}[1Aroot 0123\n" in rec.err
+    assert _ESC not in rec.out + rec.err
+    # The answer goes to the agent as it was typed.
+    assert answers == ["green"]
+
+
+async def test_the_reply_and_a_question_are_written_as_they_came_when_the_output_is_not_a_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, [], target=_WRITER, served=_SERVED)
+    io, rec = recording_io(_ENV, ["green"])
+    assert await run_command(["prompt", "writer", "hi"], io) == EXIT_OK
+    assert rec.out == f"{''.join(_REPLY)}\n"
+    assert f"? {_QUESTION}\n" in rec.err
+
+
+async def test_each_output_is_decided_alone_a_reply_piped_from_a_terminal_is_the_exact_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, [], target=_WRITER, served=_SERVED)
+    io, rec = recording_io(_ENV, ["green"], err_is_terminal=True)
+    assert await run_command(["prompt", "writer", "hi"], io) == EXIT_OK
+    assert rec.out == f"{''.join(_REPLY)}\n"
+    assert f"? which {_FFFD}[31mcolour?\n{_FFFD}[1Aroot 0123\n" in rec.err
+
+
+async def test_json_is_left_as_it_is_on_a_terminal_too_the_text_as_it_came(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, [], target=_WRITER, served=_SERVED)
+    io, rec = recording_io(_ENV, ["green"], out_is_terminal=True, err_is_terminal=True)
+    assert await run_command(["prompt", "writer", "hi", "--json"], io) == EXIT_OK
+    assert json.loads(rec.out) == {"root": "0" * 32, "text": "".join(_REPLY), "references": []}
