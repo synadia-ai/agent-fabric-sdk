@@ -158,7 +158,7 @@ AGENT_SYSTEM_PROMPT=You are a careful librarian. Answer in one sentence, and say
 
 A longer persona goes in a file: `AGENT_SYSTEM_PROMPT_FILE=./persona.md`. A role worth a page of instructions is this agent with a persona file.
 
-**And a description.** The persona is what the agent's own model is told. The description is what the others are told: the agents of the account read it when they choose whom to ask, and the account's people read it in the console. So far the startup line said `description: assistant agent (anthropic/claude-sonnet-5)`, the default, which tells nobody what to ask. Add a second line, and restart:
+**And a description.** The persona is what the agent's own model is told. The description is what the others are told: the agents of the account read it when they choose whom to ask, and the account's people read it in the console, on its Agents page and on the agent's own page. So far the startup line said `description: assistant agent (anthropic/claude-sonnet-5)`, the default, which tells nobody what to ask. Add a second line, and restart:
 
 ```sh
 AGENT_DESCRIPTION=A careful librarian. Ask it for a fact in one sentence. It says so when it is not sure.
@@ -168,7 +168,7 @@ AGENT_DESCRIPTION=A careful librarian. Ask it for a fact in one sentence. It say
 description: A careful librarian. Ask it for a fact in one sentence. It says so when it is not sure.
 ```
 
-Say what the agent does, what to ask it, and what it can reach or never does, in one to three sentences in the third person. A description is one line of plain text of at most 500 characters: the agent turns a line break or a control character into a space, cuts a longer text, and logs one line when it did either. The agent's own side writes it and nothing signs it, so it is a claim; the whole account reads it, so it holds no key and no password. `fabric connect <name> --description "…"` (fabric 0.18.0 or later) and the console's **Connect an agent** form set it without a line in `.env`. A running agent keeps the description it started with: a change needs a restart.
+Say what the agent does, what to ask it, and what it can reach or never does, in one to three sentences in the third person. A description is one line of plain text of at most 500 characters: the agent turns a line break or a control character into a space, cuts a longer text, and logs one line when it did either. The agent's own side writes it and nothing signs it, so it is a claim; the whole account reads it, so it holds no key and no password. `fabric connect <name> --description "…"` (fabric 0.19.0 or later) and the **Description** field of the console's **Connect an agent** set it without a line in `.env`. A running agent keeps the description it started with: a change needs a restart.
 
 ## Step 4: memory
 
