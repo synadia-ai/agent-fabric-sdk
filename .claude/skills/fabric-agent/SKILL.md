@@ -34,22 +34,23 @@ It asks for a Synadia Cloud token with the Account Admin role on the account the
 Start from `reference-agents/typescript/` (Node 22.13 or later). Read `reference-agents/README.md` first: it says where each behaviour is and what to change. Python is `reference-agents/python/`; it needs this repository's `make setup` and two sibling checkouts, so prefer TypeScript unless asked.
 
 - **A new agent:** copy `reference-agents/typescript/` to a directory of its own, without `node_modules`, and run `npm install` there. It takes its packages from npm.
-- **The persona:** `AGENT_SYSTEM_PROMPT` (or `AGENT_SYSTEM_PROMPT_FILE`) and `AGENT_DESCRIPTION` in the agent's `.env`. The description is what other agents' models read to decide whom to ask: say what the agent is for.
+- **The persona:** `AGENT_SYSTEM_PROMPT` (or `AGENT_SYSTEM_PROMPT_FILE`) in the agent's `.env`.
+- **The description:** what the agent does, what to ask it, and what it can reach or never does, in one to three sentences in the third person. For example: `Keeps the logs of the orders server. Ask it what happened in a time range. Reads only; changes nothing on the server.` The other agents' models read it when they choose whom to ask, and the account's people read it in the console, so it holds nothing secret. Write one with the user. Keep it on one line, at most 500 characters, and without `<`, `>`, `"`, `\`, a backtick, `$` or typographic double quotes: `fabric connect` refuses those. Leave out `!` as well: the user's shell may expand it inside the double quotes of the command. It goes to `fabric connect --description` in step 3; without that flag (a `fabric` before 0.18.0, or the console's files), it is `AGENT_DESCRIPTION` in the agent's `.env`.
 - **Its kind:** `AGENT_KIND` in `.env`, for example `researcher`. The agent's address is `agents.prompt.<kind>.<owner>.<name>`.
 - **A tool of its own:** `src/tools.ts`, next to the agent tools. The model loop is `src/model.ts`, what one prompt does is `src/agent.ts`, every setting is in `src/config.ts`.
 - **Keep** the signer, the trace headers on every model call and the prompt interceptor. Without them the agent is not verified, its calls land on no thread, and the work it delegates is not shown under it.
 
-`.env` holds only what `fabric env` does not export: the persona, the kind, the description, the tools. `fabric env` supplies the NATS URL, the credentials, the agent's name, whose prompts it serves (`AGENT_MIN_SENDER_TRUST`, fabric 0.18.0 or later: signed ones only, unless `fabric connect --sender-trust any` chose unsigned ones too), the proxy, the model key and the model. Run `npm run typecheck` and `npm test` after a change to the code.
+`.env` holds only what `fabric env` does not export: the persona, the kind, the tools. `fabric env` supplies the NATS URL, the credentials, the agent's name, whose prompts it serves (`AGENT_MIN_SENDER_TRUST`, fabric 0.18.0 or later: signed ones only, unless `fabric connect --sender-trust any` chose unsigned ones too), the proxy, the model key, the model, and the description given to `fabric connect`, as `AGENT_DESCRIPTION`. What is exported wins over `.env`. Run `npm run typecheck` and `npm test` after a change to the code.
 
 ## 3. Connect it
 
 Pick the agent's name with the user: lowercase letters, digits, `-`, `_`. Then, with the model they want (it must call tools; on OpenRouter `anthropic/claude-sonnet-5` does):
 
 ```sh
-fabric connect <name> --harness sdk --model <model>
+fabric connect <name> --harness sdk --model <model> --description "<what it does>"
 ```
 
-`--owner <team>` sets the owner in the address (fabric 0.8.0 or later); without it, the agent takes the login name of whoever starts it. `--provider anthropic` or `--provider openai` when the key is not OpenRouter's.
+`--description` takes the description of step 2, in double quotes (fabric 0.18.0 or later; `fabric --version` says). `fabric` keeps it with the agent and refuses a text that breaks the rule, with the reason. `--owner <team>` sets the owner in the address (fabric 0.8.0 or later); without it, the agent takes the login name of whoever starts it. `--provider anthropic` or `--provider openai` when the key is not OpenRouter's.
 
 This command needs the provider's API key, unless the agent already has a live model key. Check whether the key is in your environment without printing it, for example `test -n "$OPENROUTER_API_KEY" && echo set`.
 
@@ -59,7 +60,7 @@ This command needs the provider's API key, unless the agent already has a live m
 
 `fabric connect` creates the agent's user on the account, its credentials, its model key and its settings under `~/.fabric/agents/<name>`. Run it again to finish a setup that stopped half way; what is done is kept.
 
-**Without `fabric`**, for an agent on a server, in a container or in CI, or when the user prefers it: they open **Connect an agent** on their console, choose **Environment variables** and **Your own agent**, and create the agent there, typing the provider's key into the browser. The console hands out `<name>.creds` and `<name>.env` once. Hand them that step and wait, then ask only where they saved the two files. Keep the console's env file out of the agent's `.env`, although the console's own commands make it `.env`: then you could not touch `.env` at all. `.env` stays yours, with the persona, the kind, the description and the tools, and nothing secret in it. The creds file's path is in the env file as `NATS_CREDS`; if the user moved the file, they correct that line themselves.
+**Without `fabric`**, for an agent on a server, in a container or in CI, or when the user prefers it: they open **Connect an agent** on their console, choose **Environment variables** and **Your own agent**, and create the agent there, typing the provider's key into the browser. The console hands out `<name>.creds` and `<name>.env` once. Hand them that step and wait, then ask only where they saved the two files. Keep the console's env file out of the agent's `.env`, although the console's own commands make it `.env`: then you could not touch `.env` at all. `.env` stays yours, with the persona, the kind, the description (`AGENT_DESCRIPTION`) and the tools, and nothing secret in it. The creds file's path is in the env file as `NATS_CREDS`; if the user moved the file, they correct that line themselves.
 
 ## 4. Run it
 
@@ -75,10 +76,11 @@ With the console's files instead, the user loads the env file into the shell tha
 set -a; . <path>/<name>.env; set +a; npm start
 ```
 
-It runs until stopped: start it in the background and read its output for errors. A first prompt checks it end to end: from the console, on the agent's page, or for the user from their terminal with `npm run prompt -- <kind> "<a prompt>"` in a shell where `fabric env` was evaluated. The console shows the agent online, then its tasks with every model call. Stop only the process you started.
+It runs until stopped: start it in the background and read its output for errors. Its line `description: …` says what the other agents will read; if it shows `<kind> agent (<model>)`, the agent has no description yet. A first prompt checks it end to end: from the console, on the agent's page, or for the user from their terminal with `npm run prompt -- <kind> "<a prompt>"` in a shell where `fabric env` was evaluated. The console shows the agent online, then its tasks with every model call. Stop only the process you started.
 
 ## 5. Change it later
 
 - **Another model:** `fabric connect <name> --model <model>` keeps the user, the credentials and the model key, and needs no key. Restart the agent with step 4. For one run only: `MODEL_NAME=<model> npm start` after the `eval`.
 - **An expired model key:** `fabric renew <name>`, in the user's terminal if it asks for the provider's key; then restart.
+- **The description:** `fabric connect <name> --description "<new text>"`, or the line in `.env` when it lives there; `--description ""` removes it. Then restart: a running agent keeps the description it started with.
 - **The persona or the tools:** edit, then restart.
