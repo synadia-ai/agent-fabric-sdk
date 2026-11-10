@@ -33,6 +33,8 @@ async def main() -> None:
     cfg = load_config(env)
     agent = await start_durable_agent(cfg, env=env)
     print(f"{cfg.agent.kind} durable agent listening on {agent.address}")
+    # What discovery shows the other agents, which choose whom to ask by it.
+    print(f"description: {cfg.agent.description}")
     print(f"identity: {agent.identity or 'none'}")
     print(f"model: {cfg.model.model} through {cfg.model.proxy_url}, on {api_of(cfg.model.provider)}")
     print(f"scratchpad: {scratchpad_line(agent.scratchpad, env)}")

@@ -11,9 +11,12 @@ values in that untracked file.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Mapping
+
+from .description import DESCRIPTION_LIMIT, clean_description
 
 #: Which of the agent tools the model is offered (see ``AgentIdentityConfig.tools``).
 ToolsSetting = Literal["blocking", "all", "none"]
@@ -52,6 +55,10 @@ class AgentIdentityConfig:
     kind: str
     owner: str
     name: str
+    #: What the agent does, as discovery shows it to the other agents, which
+    #: choose whom to ask by it (``AGENT_DESCRIPTION``): one line of plain
+    #: text (``description.py``), or ``<kind> agent (<model>)`` when none is
+    #: given.
     description: str
     system_prompt: str
     min_sender_trust: Literal["any", "signed"]
@@ -115,11 +122,12 @@ def load_env_file(path: str | Path) -> dict[str, str]:
     return values
 
 
-def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
+def load_config(env: Mapping[str, str] | None = None, log: Callable[[str], None] = print) -> AgentConfig:
     """Read the configuration from ``env`` (default: the process environment).
 
     Raises one error naming every variable that is missing, so a first start
-    fails once with the whole list rather than once per variable.
+    fails once with the whole list rather than once per variable. ``log`` gets
+    a line when a value is used changed: a description that had to be cleaned.
     """
     e = dict(os.environ if env is None else env)
     missing: list[str] = []
@@ -214,6 +222,21 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         if prompt_file is not None
         else optional("AGENT_SYSTEM_PROMPT") or DEFAULT_SYSTEM_PROMPT
     )
+    # The description: what the other agents read when they choose whom to
+    # ask. It is one line of plain text (``description.py``), so a text that is
+    # not is used cleaned, and the log says so. Unset, or with nothing left of
+    # it, the agent registers the default.
+    described = optional("AGENT_DESCRIPTION")
+    cleaned = clean_description(described) if described is not None else ""
+    if described is not None and cleaned != described:
+        log(
+            "AGENT_DESCRIPTION holds no text: the default description is used."
+            if cleaned == ""
+            else f"AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most {DESCRIPTION_LIMIT} characters. "
+            "A line break, a tab, a control or an invisible character becomes a space, runs of spaces become one, "
+            f"and a longer text is cut to its first {DESCRIPTION_LIMIT} characters."
+        )
+    description = cleaned or f"{kind} agent ({model})"
 
     return AgentConfig(
         nats=nats,
@@ -221,7 +244,7 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
             kind=kind,
             owner=owner,
             name=name,
-            description=optional("AGENT_DESCRIPTION") or f"{kind} agent ({model})",
+            description=description,
             system_prompt=system_prompt,
             min_sender_trust=min_sender_trust,  # type: ignore[arg-type]
             tools=tools_setting,  # type: ignore[arg-type]
