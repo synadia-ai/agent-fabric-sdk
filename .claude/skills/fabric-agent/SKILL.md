@@ -39,7 +39,7 @@ Start from `reference-agents/typescript/` (Node 22.13 or later). Read `reference
 - **A tool of its own:** `src/tools.ts`, next to the agent tools. The model loop is `src/model.ts`, what one prompt does is `src/agent.ts`, every setting is in `src/config.ts`.
 - **Keep** the signer, the trace headers on every model call and the prompt interceptor. Without them the agent is not verified, its calls land on no thread, and the work it delegates is not shown under it.
 
-`.env` holds only what `fabric env` does not export: the persona, the kind, the description, the tools. `fabric env` supplies the NATS URL, the credentials, the agent's name, the proxy, the model key and the model. Run `npm run typecheck` and `npm test` after a change to the code.
+`.env` holds only what `fabric env` does not export: the persona, the kind, the description, the tools. `fabric env` supplies the NATS URL, the credentials, the agent's name, whose prompts it serves (`AGENT_MIN_SENDER_TRUST`, fabric 0.18.0 or later: signed ones only, unless `fabric connect --sender-trust any` chose unsigned ones too), the proxy, the model key and the model. Run `npm run typecheck` and `npm test` after a change to the code.
 
 ## 3. Connect it
 
