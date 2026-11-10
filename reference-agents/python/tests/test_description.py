@@ -54,8 +54,8 @@ ENV = {
 # The two lines an agent logs about a description it could not use as given.
 CLEANED = (
     "AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most 500 characters. "
-    "A line break, a tab, a control or an invisible character becomes a space, runs of spaces become one, "
-    "and a longer text is cut to its first 500 characters."
+    "A line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), "
+    "runs of spaces become one, and a longer text is cut to its first 500 characters."
 )
 NO_TEXT = "AGENT_DESCRIPTION holds no text: the default description is used."
 
@@ -80,6 +80,13 @@ def test_set_it_is_used_as_it_is_and_nothing_is_logged() -> None:
 def test_keeps_every_printable_character_the_rule_cleans_it_does_not_refuse() -> None:
     text = 'Answers "what broke?" for <orders> at $5 a `look`; the server\u2019s logs \\ 50% #1 \U0001f44d'
     assert load(text) == (text, [])
+
+
+def test_keeps_the_zero_width_joiner_and_non_joiner_a_word_and_an_emoji_spelled_with_them_stay_whole() -> None:
+    # A Persian word with a non-joiner in it, and a family of three emoji held by two joiners.
+    word = "".join(map(chr, (0x645, 0x6CC, 0x200C, 0x62E, 0x648, 0x627, 0x647, 0x645)))
+    family = "".join(map(chr, (0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467)))
+    assert load(f"{word} {family}") == (f"{word} {family}", [])
 
 
 def test_with_a_line_break_it_is_one_line_and_one_line_in_the_log_says_it_was_cleaned() -> None:

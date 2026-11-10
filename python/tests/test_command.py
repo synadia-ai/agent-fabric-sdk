@@ -146,9 +146,11 @@ def _listing(monkeypatch: pytest.MonkeyPatch, agents: list[_A]) -> None:
     monkeypatch.setattr(cli, "fabric_caller", fake)
 
 
+# Three emoji held together by two zero width joiners, which stay.
+_FAMILY = "".join(map(chr, (0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467)))
 # What each listed agent registered as its description; one registered none.
 _AGENTS = [
-    _A("agents.prompt.b", "Writes two\tlines.\n\u001b[31mNever more."),
+    _A("agents.prompt.b", f"Writes two\tlines.\n\u001b[31mNever more. {_FAMILY}"),
     _A(
         "agents.prompt.a_x",
         "Keeps the logs of the orders server. Ask it what happened in a time range.",
@@ -187,7 +189,8 @@ async def test_prints_each_description_under_its_row_after_a_tab_as_one_line_of_
         "\tKeeps the logs of the orders server. Ask it what happened in a time range.\n"
         "agents.prompt.b\tk\tagent identity: none\n"
         # A line break, a tab and an escape sequence's control character: spaces.
-        "\tWrites two lines. [31mNever more.\n"
+        # The joiners inside the emoji stay, so it stays one emoji.
+        f"\tWrites two lines. [31mNever more. {_FAMILY}\n"
     )
 
 
@@ -201,5 +204,5 @@ async def test_leaves_the_description_as_it_was_registered_in_json(
         "",
         " \n ",
         "Keeps the logs of the orders server. Ask it what happened in a time range.",
-        "Writes two\tlines.\n\u001b[31mNever more.",
+        f"Writes two\tlines.\n\u001b[31mNever more. {_FAMILY}",
     ]

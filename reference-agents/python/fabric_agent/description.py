@@ -10,7 +10,9 @@ It is one line of plain text of at most 500 characters.
 :func:`clean_description` makes any text fit and never refuses one:
 
 1. every control, invisible, line-break and space character becomes a plain
-   space (the Unicode categories Cc, Cf, Zl, Zp and Zs);
+   space (the Unicode categories Cc, Cf, Zl, Zp and Zs). Two invisible
+   characters stay, the zero width non-joiner and joiner (U+200C, U+200D):
+   Persian, the Indic scripts and emoji sequences are spelled with them;
 2. runs of spaces become one, and the spaces at both ends go;
 3. a text longer than 500 characters is cut to its first 500, and a space the
    cut leaves at the end goes too.
@@ -28,17 +30,24 @@ import unicodedata
 #: The most characters, counted as Unicode code points, a description has.
 DESCRIPTION_LIMIT = 500
 
-# Controls (a tab, a line break, an escape), format characters (a zero-width
-# space, a direction override), line and paragraph separators, and every kind
-# of space.
+# A code point that is not plain text: a control (a tab, a line break, an
+# escape), a format character (a zero-width space, a direction override), a
+# line or paragraph separator, or any kind of space.
 _NOT_PLAIN = frozenset({"Cc", "Cf", "Zl", "Zp", "Zs"})
+# The zero width non-joiner and joiner.
+_KEPT = frozenset({chr(0x200C), chr(0x200D)})
+
+
+def _plain(ch: str) -> str:
+    """One code point as plain text: itself, or a space in its place."""
+    return " " if unicodedata.category(ch) in _NOT_PLAIN and ch not in _KEPT else ch
 
 
 def clean_description(text: str) -> str:
     """``text`` as a description: one line of plain text of at most
     :data:`DESCRIPTION_LIMIT` characters. Empty when nothing is left, which
     means no description."""
-    spaced = "".join(" " if unicodedata.category(ch) in _NOT_PLAIN else ch for ch in text)
+    spaced = "".join(_plain(ch) for ch in text)
     line = " ".join(part for part in spaced.split(" ") if part)
     if len(line) <= DESCRIPTION_LIMIT:
         return line

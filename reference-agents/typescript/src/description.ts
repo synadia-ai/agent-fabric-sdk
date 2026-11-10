@@ -10,7 +10,10 @@
 // makes any text fit and never refuses one:
 //
 //   1. every control, invisible, line-break and space character becomes a
-//      plain space (the Unicode categories Cc, Cf, Zl, Zp and Zs);
+//      plain space (the Unicode categories Cc, Cf, Zl, Zp and Zs). Two
+//      invisible characters stay, the zero width non-joiner and joiner
+//      (U+200C, U+200D): Persian, the Indic scripts and emoji sequences are
+//      spelled with them;
 //   2. runs of spaces become one, and the spaces at both ends go;
 //   3. a text longer than 500 characters is cut to its first 500, and a
 //      space the cut leaves at the end goes too.
@@ -23,10 +26,19 @@
 /** The most characters, counted as Unicode code points, a description has. */
 export const DESCRIPTION_LIMIT = 500;
 
-// Controls (a tab, a line break, an escape), format characters (a
-// zero-width space, a direction override), line and paragraph separators,
-// and every kind of space.
-const NOT_PLAIN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Zs}]/gu;
+// One code point that is not plain text: a control (a tab, a line break, an
+// escape), a format character (a zero-width space, a direction override), a
+// line or paragraph separator, or any kind of space.
+const NOT_PLAIN = /^[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Zs}]$/u;
+const ZERO_WIDTH_NON_JOINER = 0x200c;
+const ZERO_WIDTH_JOINER = 0x200d;
+
+/** One code point as plain text: itself, or a space in its place. */
+function plain(point: string): string {
+  const code = point.codePointAt(0);
+  if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) return point;
+  return NOT_PLAIN.test(point) ? " " : point;
+}
 
 /**
  * `text` as a description: one line of plain text of at most
@@ -34,9 +46,22 @@ const NOT_PLAIN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Zs}]/gu;
  * means no description.
  */
 export function cleanDescription(text: string): string {
-  const line = text.replace(NOT_PLAIN, " ").replace(/ +/g, " ").replace(/^ | $/g, "");
-  // By code point: an emoji is one character, as it is in Python.
-  const characters = Array.from(line);
-  if (characters.length <= DESCRIPTION_LIMIT) return line;
-  return characters.slice(0, DESCRIPTION_LIMIT).join("").replace(/ $/, "");
+  // One code point at a time, each tested alone, never one expression over
+  // the whole text: an engine that pairs the units of a text wrongly under a
+  // global Unicode expression lets a character slip through (Bun 1.3.14
+  // does, for a byte order mark after a ligature).
+  const points: string[] = [];
+  for (const point of text) {
+    const next = plain(point);
+    // Runs of spaces become one, and none leads.
+    if (next === " " && (points.length === 0 || points[points.length - 1] === " ")) continue;
+    points.push(next);
+  }
+  if (points[points.length - 1] === " ") points.pop();
+  // Counted here, by code point: an emoji is one character, as it is in Python.
+  if (points.length > DESCRIPTION_LIMIT) {
+    points.length = DESCRIPTION_LIMIT;
+    if (points[points.length - 1] === " ") points.pop();
+  }
+  return points.join("");
 }

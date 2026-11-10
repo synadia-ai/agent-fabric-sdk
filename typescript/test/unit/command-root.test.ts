@@ -10,12 +10,18 @@ import type * as CallerModule from "../../src/caller.js";
 import { recordingIO } from "../support/command-io.js";
 
 // What each listed agent registered as its description; one registered none.
-const DESCRIPTIONS: Record<string, string | undefined> = vi.hoisted(() => ({
-  "agents.prompt.b": "Writes two\tlines.\n\u001b[31mNever more.",
-  "agents.prompt.a_x": "Keeps the logs of the orders server. Ask it what happened in a time range.",
-  "agents.prompt.B": undefined,
-  "agents.prompt.a-x": " \n ",
-}));
+// FAMILY is three emoji held together by two zero width joiners, which stay.
+const { DESCRIPTIONS, FAMILY } = vi.hoisted(() => {
+  const FAMILY = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
+  const DESCRIPTIONS: Record<string, string | undefined> = {
+    "agents.prompt.b": `Writes two\tlines.\n\u001b[31mNever more. ${FAMILY}`,
+    "agents.prompt.a_x":
+      "Keeps the logs of the orders server. Ask it what happened in a time range.",
+    "agents.prompt.B": undefined,
+    "agents.prompt.a-x": " \n ",
+  };
+  return { DESCRIPTIONS, FAMILY };
+});
 
 vi.mock("../../src/caller.js", async (importOriginal) => {
   const real = await importOriginal<typeof CallerModule>();
@@ -97,7 +103,8 @@ describe("agents", () => {
         "\tKeeps the logs of the orders server. Ask it what happened in a time range.\n" +
         "agents.prompt.b\tk\tagent identity: none\n" +
         // A line break, a tab and an escape sequence's control character: spaces.
-        "\tWrites two lines. [31mNever more.\n",
+        // The joiners inside the emoji stay, so it stays one emoji.
+        `\tWrites two lines. [31mNever more. ${FAMILY}\n`,
     );
   });
 
@@ -109,7 +116,7 @@ describe("agents", () => {
       undefined,
       " \n ",
       "Keeps the logs of the orders server. Ask it what happened in a time range.",
-      "Writes two\tlines.\n\u001b[31mNever more.",
+      `Writes two\tlines.\n\u001b[31mNever more. ${FAMILY}`,
     ]);
   });
 });

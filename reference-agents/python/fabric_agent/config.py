@@ -234,8 +234,8 @@ def load_config(env: Mapping[str, str] | None = None, log: Callable[[str], None]
             "AGENT_DESCRIPTION holds no text: the default description is used."
             if cleaned == ""
             else f"AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most {DESCRIPTION_LIMIT} characters. "
-            "A line break, a tab, a control or an invisible character becomes a space, runs of spaces become one, "
-            f"and a longer text is cut to its first {DESCRIPTION_LIMIT} characters."
+            "A line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), "
+            f"runs of spaces become one, and a longer text is cut to its first {DESCRIPTION_LIMIT} characters."
         )
     description = cleaned or f"{kind} agent ({model})"
 

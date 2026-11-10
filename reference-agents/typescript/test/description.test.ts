@@ -28,8 +28,8 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 // The two lines an agent logs about a description it could not use as given.
 const CLEANED =
   "AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most 500 characters. " +
-  "A line break, a tab, a control or an invisible character becomes a space, runs of spaces become one, " +
-  "and a longer text is cut to its first 500 characters.";
+  "A line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), " +
+  "runs of spaces become one, and a longer text is cut to its first 500 characters.";
 const NO_TEXT = "AGENT_DESCRIPTION holds no text: the default description is used.";
 
 const vectors = JSON.parse(
@@ -80,6 +80,13 @@ describe("AGENT_DESCRIPTION", () => {
   it("keeps every printable character: the rule cleans, it does not refuse", () => {
     const text = 'Answers "what broke?" for <orders> at $5 a `look`; the server\u2019s logs \\ 50% #1 \u{1F44D}';
     expect(load(text)).toEqual({ description: text, log: [] });
+  });
+
+  it("keeps the zero width joiner and non-joiner: a word and an emoji spelled with them stay whole", () => {
+    // A Persian word with a non-joiner in it, and a family of three emoji held by two joiners.
+    const word = String.fromCodePoint(0x645, 0x6cc, 0x200c, 0x62e, 0x648, 0x627, 0x647, 0x645);
+    const family = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
+    expect(load(`${word} ${family}`)).toEqual({ description: `${word} ${family}`, log: [] });
   });
 
   it("with a line break, it is one line, and one line in the log says it was cleaned", () => {
