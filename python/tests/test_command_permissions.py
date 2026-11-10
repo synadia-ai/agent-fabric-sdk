@@ -138,10 +138,11 @@ async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_char
         await svc.start()
         return svc
 
-    async def listing(*program: str) -> tuple[int | None, bytes, bytes]:
+    async def listing(*program: str, json: bool = False) -> tuple[int | None, bytes, bytes]:
         proc = await asyncio.create_subprocess_exec(
             *program,
             "agents",
+            *(["--json"] if json else []),
             "--creds",
             str(ERIN),
             "--url",
@@ -159,6 +160,8 @@ async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_char
     try:
         python = await listing(sys.executable, "-m", "synadia_ai.agent_fabric.cli")
         typescript = await listing("node", str(_TS_CLI))
+        python_json = await listing(sys.executable, "-m", "synadia_ai.agent_fabric.cli", json=True)
+        typescript_json = await listing("node", str(_TS_CLI), json=True)
     finally:
         for svc in extra:
             await svc.stop()
@@ -174,6 +177,11 @@ async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_char
     url = f"url {world.server.url}\n".encode()
     assert python == (0, expected, url)
     assert typescript == (0, expected, url)
+    # And ``--json``, which gives the description as it was registered: half a
+    # character as its JSON escape, the same bytes from both.
+    assert typescript_json[0] == 0
+    assert b'"description":"cut in an emoji \\ud83d"' in typescript_json[1]
+    assert python_json == typescript_json
 
 
 async def test_streams_the_reply_and_the_root_and_reference_on_stderr(world: World) -> None:

@@ -12,6 +12,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import sys
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -227,9 +228,16 @@ def _describe_identity(line: Mapping[str, object]) -> str:
     return f"agent {line['identity']}"
 
 
+# Half a character: a surrogate, which in a Python string is never part of a pair.
+_HALF = re.compile(f"[{chr(0xD800)}-{chr(0xDFFF)}]")
+
+
 def _json(value: object) -> str:
-    # The TypeScript command's bytes: no spaces, non-ASCII as it is.
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+    # The TypeScript command's bytes: no spaces, non-ASCII as it is. Half a
+    # character is written as its escape, as JSON.stringify writes it: the
+    # reader gets the same text back, and Python cannot write it otherwise.
+    text = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+    return _HALF.sub(lambda half: f"\\u{ord(half.group()):04x}", text)
 
 
 async def _list_agents(caller: FabricCaller, as_json: bool, io: CommandIO) -> int:

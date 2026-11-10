@@ -236,6 +236,22 @@ async def test_lists_every_agent_when_a_description_holds_half_a_character(
     assert rec.out.encode()
 
 
+async def test_json_writes_half_a_character_as_its_escape_the_typescript_commands_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ``--json`` gives the description as it was registered. Half a character
+    # cannot be written as UTF-8, so it is written as its JSON escape, which is
+    # what JSON.stringify writes: a reader gets the same text back.
+    _listing(monkeypatch, [_A("agents.prompt.b", "cut in an emoji " + chr(0xD83D))])
+    io, rec = recording_io(_ENV)
+    assert await run_command(["agents", "--json"], io) == EXIT_OK
+    assert rec.out.encode() == (
+        b'[{"address":"agents.prompt.b","kind":"k","identity":null,"verified":false,'
+        b'"description":"cut in an emoji \\ud83d"}]\n'
+    )
+    assert json.loads(rec.out)[0]["description"] == "cut in an emoji " + chr(0xD83D)
+
+
 # The kind, the address and the identity are text an agent registered too:
 # ``metadata.agent`` is as free as the description.
 _ESC = chr(0x1B)

@@ -145,6 +145,16 @@ describe("agents", () => {
     );
   });
 
+  it("writes half a character as its escape in --json, the bytes the Python command writes", async () => {
+    world.agents = [listed("agents.prompt.b", `cut in an emoji ${String.fromCharCode(0xd83d)}`)];
+    const io = recordingIO(ENV);
+    expect(await runCommand(["agents", "--json"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(
+      '[{"address":"agents.prompt.b","kind":"k","identity":null,"verified":false,' +
+        '"description":"cut in an emoji \\ud83d"}]\n',
+    );
+  });
+
   // The kind, the address and the identity are text an agent registered too:
   // `metadata.agent` is as free as the description.
   describe("the row's own fields", () => {

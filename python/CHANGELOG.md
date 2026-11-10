@@ -10,6 +10,10 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `agent-fabric agents`, text output: each agent's description, what the agent says it does, is printed on a line of its own under the agent's row, after a tab; an agent with no description has no such line. Everything the list prints is text an agent registered, and all of it is printed as plain text. In every field, the address, the kind, the identity and the description, a line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), and half a character (a surrogate that is not part of a pair) becomes U+FFFD. The description is also brought to one line: runs of spaces become one, and a text longer than 500 characters is cut. So nothing an agent registered adds a row or a column, stops the list, or reaches the terminal as an escape sequence. `--json` gives every field as it was registered, as before.
 
+### Fixed
+
+- `--json` no longer stops with a `UnicodeEncodeError` when a field of a listed agent, or a reply, holds half a character (a surrogate that is not part of a pair). It is written as its JSON escape, the bytes the TypeScript command writes, and a reader gets the same text back.
+
 ## [0.2.0] — 2026-10-21
 
 ### Added
