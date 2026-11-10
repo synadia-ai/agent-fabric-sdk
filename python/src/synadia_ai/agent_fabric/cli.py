@@ -19,6 +19,7 @@ from typing import Literal
 
 from synadia_ai.agents import Agent, Query, ResponseChunk
 
+from ._description import clean_description
 from .caller import (
     CANNOT_ANSWER,
     NATS_CREDS_VAR,
@@ -43,9 +44,12 @@ USAGE = f"""usage: agent-fabric agents [options]
        agent-fabric prompt <address or kind> "<text>" [options]
 
 List the agents on the Synadia Agent Fabric, or prompt one, with the creds
-file the console gave you. The reply streams to stdout; the server's URL,
-the agent, the task's root id and a ScratchPad reference go to stderr. A
-question the agent asks is printed on stderr and answered from stdin.
+file the console gave you. The list has one row per agent: its address, its
+kind and its identity. Under a row, after a tab, comes the agent's
+description, what it says it does, when it has one. The reply streams to
+stdout; the server's URL, the agent, the task's root id and a ScratchPad
+reference go to stderr. A question the agent asks is printed on stderr and
+answered from stdin.
 
 options:
   --creds <file>    the creds file (default: ${NATS_CREDS_VAR})
@@ -240,6 +244,11 @@ async def _list_agents(caller: FabricCaller, as_json: bool, io: CommandIO) -> in
         io.err("no agents\n")
     for line in ordered:
         io.out(f"{line['address']}\t{line['kind']}\t{_describe_identity(line)}\n")
+        # What the agent says it does, under its row: one line of plain text,
+        # whatever was registered (``_description.py``). ``--json`` has it as it is.
+        description = clean_description(str(line["description"]))
+        if description:
+            io.out(f"\t{description}\n")
     return EXIT_OK
 
 

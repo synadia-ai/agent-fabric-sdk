@@ -88,8 +88,8 @@ async def world(nats_server_operator: RunningServer) -> AsyncIterator[World]:
 async def test_lists_the_agents(world: World) -> None:
     io, rec = recording_io(world.env)
     assert await run_command(["agents"], io) == EXIT_OK
-    # The host registers no identity of its own.
-    assert rec.out == f"{world.address}\twriter\tagent identity: none\n"
+    # The host registers no identity of its own. Its description is under its row.
+    assert rec.out == f"{world.address}\twriter\tagent identity: none\n\twrites\n"
     assert rec.err == f"url {world.server.url}\n"
 
 

@@ -9,7 +9,7 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - A caller: `fabric_caller()` and `fabric_caller_from_env()` prompt your agents with the creds file the console gave you and nothing else. Every prompt is signed and starts a task of its own; `prompt()` returns the SDK's stream with the task's root id, `ask()` the whole reply with it. `list()`, `find()`, `close()`, `pick_agent()` and `FabricCallerError`.
-- The `agent-fabric` command: `agent-fabric agents` and `agent-fabric prompt <address or kind> "<text>"`, with `--creds`, `--url`, `--timeout` and `--json`. Run it with `uvx --from synadia-ai-agent-fabric agent-fabric`.
+- The `agent-fabric` command: `agent-fabric agents` and `agent-fabric prompt <address or kind> "<text>"`, with `--creds`, `--url`, `--timeout` and `--json`. `agents` prints each agent's description, what the agent says it does, under the agent's row, after a tab, as one line of plain text: a line break or a control character becomes a space, and a text longer than 500 characters is cut. `--json` gives it as it was registered. Run it with `uvx --from synadia-ai-agent-fabric agent-fabric`.
 - Five examples in the source distribution's `examples/`: one prompt, a reply in a script, questions answered, the agents listed, topics prompted on an interval.
 
 ## [0.1.0]

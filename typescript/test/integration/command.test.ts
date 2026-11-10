@@ -72,8 +72,8 @@ describe.skipIf(!bin)("the agent-fabric command with a caller's permissions", ()
   it("lists the agents", async () => {
     const io = recordingIO(env);
     expect(await runCommand(["agents"], io)).toBe(EXIT_OK);
-    // The host registers no identity of its own.
-    expect(io.stdout()).toBe(`${svc.subject.prompt}\twriter\tagent identity: none\n`);
+    // The host registers no identity of its own. Its description is under its row.
+    expect(io.stdout()).toBe(`${svc.subject.prompt}\twriter\tagent identity: none\n\twrites\n`);
     expect(io.stderr()).toBe(`url ${server.url}\n`);
   });
 

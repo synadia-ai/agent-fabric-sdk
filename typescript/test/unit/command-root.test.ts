@@ -2,11 +2,20 @@
 // out: its root rejects, and the command still ends with its one line,
 // never an unhandled rejection; the failure happens where it would on the
 // wire, at the stream's first iteration, before any root. And `agents`
-// lists in code-point order, as the Python command does.
+// lists in code-point order, as the Python command does, with each agent's
+// description under its row, as one line of plain text.
 
 import { describe, expect, it, vi } from "vitest";
 import type * as CallerModule from "../../src/caller.js";
 import { recordingIO } from "../support/command-io.js";
+
+// What each listed agent registered as its description; one registered none.
+const DESCRIPTIONS: Record<string, string | undefined> = vi.hoisted(() => ({
+  "agents.prompt.b": "Writes two\tlines.\n\u001b[31mNever more.",
+  "agents.prompt.a_x": "Keeps the logs of the orders server. Ask it what happened in a time range.",
+  "agents.prompt.B": undefined,
+  "agents.prompt.a-x": " \n ",
+}));
 
 vi.mock("../../src/caller.js", async (importOriginal) => {
   const real = await importOriginal<typeof CallerModule>();
@@ -42,7 +51,7 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
                 agent: "k",
                 identity: undefined,
                 idSigVerified: false,
-                description: "",
+                description: DESCRIPTIONS[promptSubject],
               }),
             ),
           ),
@@ -51,7 +60,7 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
   };
 });
 
-const { EXIT_FAILED, runCommand } = await import("../../src/command.js");
+const { EXIT_FAILED, EXIT_OK, runCommand } = await import("../../src/command.js");
 
 describe("a prompt that never goes out", () => {
   it("ends with one line and exit 1, its root's rejection handled", async () => {
@@ -74,6 +83,33 @@ describe("agents", () => {
       "agents.prompt.a-x",
       "agents.prompt.a_x",
       "agents.prompt.b",
+    ]);
+  });
+
+  it("prints each description under its row, after a tab, as one line of plain text", async () => {
+    const io = recordingIO({ NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" });
+    expect(await runCommand(["agents"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(
+      "agents.prompt.B\tk\tagent identity: none\n" +
+        // No description, or nothing left of one: no line.
+        "agents.prompt.a-x\tk\tagent identity: none\n" +
+        "agents.prompt.a_x\tk\tagent identity: none\n" +
+        "\tKeeps the logs of the orders server. Ask it what happened in a time range.\n" +
+        "agents.prompt.b\tk\tagent identity: none\n" +
+        // A line break, a tab and an escape sequence's control character: spaces.
+        "\tWrites two lines. [31mNever more.\n",
+    );
+  });
+
+  it("leaves the description as it was registered in --json", async () => {
+    const io = recordingIO({ NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" });
+    await runCommand(["agents", "--json"], io);
+    const listed = JSON.parse(io.stdout()) as Array<{ address: string; description?: string }>;
+    expect(listed.map((a) => a.description)).toEqual([
+      undefined,
+      " \n ",
+      "Keeps the logs of the orders server. Ask it what happened in a time range.",
+      "Writes two\tlines.\n\u001b[31mNever more.",
     ]);
   });
 });

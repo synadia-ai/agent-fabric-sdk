@@ -121,26 +121,21 @@ async def test_exits_2_with_one_line_for_a_creds_file_it_cannot_read() -> None:
     )
 
 
-async def test_lists_agents_by_code_point_the_typescript_commands_order(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    @dataclass
-    class _A:
-        prompt_subject: str
-        agent: str = "k"
-        identity: None = None
-        id_sig_verified: bool = False
-        description: str = ""
+@dataclass
+class _A:
+    prompt_subject: str
+    description: str = ""
+    agent: str = "k"
+    identity: None = None
+    id_sig_verified: bool = False
+
+
+def _listing(monkeypatch: pytest.MonkeyPatch, agents: list[_A]) -> None:
+    """Replace the caller with one that lists ``agents``."""
 
     class _Caller:
         async def list(self) -> list[_A]:
-            subjects = [
-                "agents.prompt.b",
-                "agents.prompt.a_x",
-                "agents.prompt.B",
-                "agents.prompt.a-x",
-            ]
-            return [_A(s) for s in subjects]
+            return agents
 
         async def close(self) -> None:
             pass
@@ -149,11 +144,62 @@ async def test_lists_agents_by_code_point_the_typescript_commands_order(
         return _Caller()
 
     monkeypatch.setattr(cli, "fabric_caller", fake)
-    io, rec = recording_io({"NATS_CREDS": "a.creds", "NATS_URL": "nats://127.0.0.1:1"})
+
+
+# What each listed agent registered as its description; one registered none.
+_AGENTS = [
+    _A("agents.prompt.b", "Writes two\tlines.\n\u001b[31mNever more."),
+    _A(
+        "agents.prompt.a_x",
+        "Keeps the logs of the orders server. Ask it what happened in a time range.",
+    ),
+    _A("agents.prompt.B"),
+    _A("agents.prompt.a-x", " \n "),
+]
+_ENV = {"NATS_CREDS": "a.creds", "NATS_URL": "nats://127.0.0.1:1"}
+
+
+async def test_lists_agents_by_code_point_the_typescript_commands_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, _AGENTS)
+    io, rec = recording_io(_ENV)
     assert await run_command(["agents", "--json"], io) == EXIT_OK
     assert [a["address"] for a in json.loads(rec.out)] == [
         "agents.prompt.B",
         "agents.prompt.a-x",
         "agents.prompt.a_x",
         "agents.prompt.b",
+    ]
+
+
+async def test_prints_each_description_under_its_row_after_a_tab_as_one_line_of_plain_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, _AGENTS)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["agents"], io) == EXIT_OK
+    assert rec.out == (
+        "agents.prompt.B\tk\tagent identity: none\n"
+        # No description, or nothing left of one: no line.
+        "agents.prompt.a-x\tk\tagent identity: none\n"
+        "agents.prompt.a_x\tk\tagent identity: none\n"
+        "\tKeeps the logs of the orders server. Ask it what happened in a time range.\n"
+        "agents.prompt.b\tk\tagent identity: none\n"
+        # A line break, a tab and an escape sequence's control character: spaces.
+        "\tWrites two lines. [31mNever more.\n"
+    )
+
+
+async def test_leaves_the_description_as_it_was_registered_in_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, _AGENTS)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["agents", "--json"], io) == EXIT_OK
+    assert [a["description"] for a in json.loads(rec.out)] == [
+        "",
+        " \n ",
+        "Keeps the logs of the orders server. Ask it what happened in a time range.",
+        "Writes two\tlines.\n\u001b[31mNever more.",
     ]

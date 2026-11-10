@@ -13,6 +13,7 @@ import {
   fabricCaller,
   type FabricCaller,
 } from "./caller.js";
+import { cleanDescription } from "./description.js";
 import { findReferences } from "./scratchpad.js";
 
 /** Success. */
@@ -29,9 +30,12 @@ export const USAGE = `usage: agent-fabric agents [options]
        agent-fabric prompt <address or kind> "<text>" [options]
 
 List the agents on the Synadia Agent Fabric, or prompt one, with the creds
-file the console gave you. The reply streams to stdout; the server's URL,
-the agent, the task's root id and a ScratchPad reference go to stderr. A
-question the agent asks is printed on stderr and answered from stdin.
+file the console gave you. The list has one row per agent: its address, its
+kind and its identity. Under a row, after a tab, comes the agent's
+description, what it says it does, when it has one. The reply streams to
+stdout; the server's URL, the agent, the task's root id and a ScratchPad
+reference go to stderr. A question the agent asks is printed on stderr and
+answered from stdin.
 
 options:
   --creds <file>    the creds file (default: $${NATS_CREDS_VAR})
@@ -232,7 +236,15 @@ async function listAgents(caller: FabricCaller, json: boolean, io: CommandIO): P
     return EXIT_OK;
   }
   if (lines.length === 0) io.err("no agents\n");
-  for (const l of lines) io.out(`${l.address}\t${l.kind}\t${describeIdentity(l)}\n`);
+  for (const l of lines) {
+    io.out(`${l.address}\t${l.kind}\t${describeIdentity(l)}\n`);
+    // What the agent says it does, under its row: one line of plain text,
+    // whatever was registered (`description.ts`), and no line for a service
+    // that registered none. `--json` has it as it is.
+    const registered: unknown = l.description;
+    const description = typeof registered === "string" ? cleanDescription(registered) : "";
+    if (description !== "") io.out(`\t${description}\n`);
+  }
   return EXIT_OK;
 }
 
