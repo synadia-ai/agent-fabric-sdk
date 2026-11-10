@@ -219,15 +219,20 @@ export function agentLoopWorkflow(deps: AgentLoopDeps) {
     ];
     let emptyReplies = 0;
     for (let turn = 0; ; turn += 1) {
-      const offered = turn < maxToolRounds ? deps.toolDefinitions : [];
+      // The same tools every turn; on the last permitted one the model may
+      // not call them and has to answer.
+      const answerOnly = turn >= maxToolRounds;
       // (2) A model turn: journaled once. On replay this returns the recorded
       // message, and the model is not called again.
       const message = await ctx.run(`llm-${turn}`, async () => {
-        const completion = await deps.model.complete(messages, offered, headers);
+        const completion = await deps.model.complete(messages, deps.toolDefinitions, headers, {
+          toolChoice: answerOnly ? "none" : "auto",
+        });
         return completion.message;
       });
       messages.push(message);
-      const calls = offered.length > 0 ? (message.tool_calls ?? []) : [];
+      // No tool runs on the answer-only turn, nor for an agent shown none.
+      const calls = answerOnly || deps.toolDefinitions.length === 0 ? [] : (message.tool_calls ?? []);
       if (calls.length === 0) {
         const answer = message.content ?? "";
         if (answer.trim() !== "") return { answer, modelTurns: turn + 1 };

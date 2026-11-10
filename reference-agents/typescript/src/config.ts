@@ -49,6 +49,10 @@ export interface AgentConfig {
     readonly proxyUrl: string;
     readonly virtualKey: string;
     readonly model: string;
+    /** The provider the virtual key names (`MODEL_PROVIDER`); `anthropic` selects Anthropic's Messages API. */
+    readonly provider: string | undefined;
+    /** Anthropic's `max_tokens` (`MODEL_MAX_TOKENS`); unset, the client's default. */
+    readonly maxTokens: number | undefined;
     readonly timeoutMs: number | undefined;
   };
   readonly tools: {
@@ -103,6 +107,15 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
     if (value === undefined) return fallback;
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number, got "${value}"`);
+    return n;
+  };
+  // A whole number above 0, such as a token count.
+  const wholeNumber = (name: string): number => {
+    const value = optional(name) ?? "";
+    const n = Number(value);
+    if (value.trim() === "" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`${name} must be a whole number above 0, got "${value}"`);
+    }
     return n;
   };
   // A count that may be 0.
@@ -184,6 +197,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
       proxyUrl,
       virtualKey,
       model,
+      provider: optional("MODEL_PROVIDER")?.trim().toLowerCase(),
+      maxTokens: optional("MODEL_MAX_TOKENS") !== undefined ? wholeNumber("MODEL_MAX_TOKENS") : undefined,
       timeoutMs: optional("MODEL_TIMEOUT_MS") !== undefined ? number("MODEL_TIMEOUT_MS", 120_000) : undefined,
     },
     tools: {

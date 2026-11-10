@@ -139,6 +139,8 @@ async def start_agent(
         proxy_url=cfg.model.proxy_url,
         virtual_key=cfg.model.virtual_key,
         model=cfg.model.model,
+        provider=cfg.model.provider,
+        **({"max_tokens": cfg.model.max_tokens} if cfg.model.max_tokens is not None else {}),
         **({"timeout_s": cfg.model.timeout_s} if cfg.model.timeout_s is not None else {}),
     )
 

@@ -80,6 +80,10 @@ class ModelConfig:
     virtual_key: str
     model: str
     timeout_s: float | None
+    #: The provider the virtual key names (``MODEL_PROVIDER``); ``anthropic`` selects Anthropic's Messages API.
+    provider: str | None = None
+    #: Anthropic's ``max_tokens`` (``MODEL_MAX_TOKENS``); unset, the client's default.
+    max_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -141,6 +145,17 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         if n <= 0:
             raise ValueError(f'{name} must be a positive number, got "{value}"')
         return n
+
+    def whole_number(name: str) -> int:
+        # A whole number above 0, such as a token count.
+        value = optional(name) or ""
+        try:
+            n = float(value)
+        except ValueError:
+            n = -1.0
+        if not n.is_integer() or n <= 0:
+            raise ValueError(f'{name} must be a whole number above 0, got "{value}"')
+        return int(n)
 
     def count(name: str, fallback: int) -> int:
         # A count that may be 0.
@@ -220,6 +235,8 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
             model=model,
             # In milliseconds, like the TypeScript agent's variable of the same name.
             timeout_s=number("MODEL_TIMEOUT_MS", 120_000) / 1000 if timeout is not None else None,
+            provider=(optional("MODEL_PROVIDER") or "").strip().lower() or None,
+            max_tokens=whole_number("MODEL_MAX_TOKENS") if optional("MODEL_MAX_TOKENS") is not None else None,
         ),
         reply_timeout_s=number("AGENT_REPLY_TIMEOUT_MS", DEFAULT_REPLY_TIMEOUT_S * 1000) / 1000,
         durable=durable == "1",

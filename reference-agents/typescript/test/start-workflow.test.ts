@@ -162,7 +162,7 @@ describe.skipIf(binary === undefined || engineUnavailable !== undefined)("start_
         maxHistoryExchanges: 0,
         readyFile: undefined,
       },
-      model: { proxyUrl: `http://127.0.0.1:${addr.port}`, virtualKey: "vk-test", model: "fake-1", timeoutMs: undefined },
+      model: { proxyUrl: `http://127.0.0.1:${addr.port}`, virtualKey: "vk-test", model: "fake-1", provider: undefined, maxTokens: undefined, timeoutMs: undefined },
       tools: { replyTimeoutMs: 20_000 },
       durable: true,
     };

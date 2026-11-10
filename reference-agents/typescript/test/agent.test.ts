@@ -291,7 +291,7 @@ describe.skipIf(binary === undefined)("the agent against a fake model behind a f
         maxHistoryExchanges: 20,
         readyFile: join(dir, "ready.json"),
       },
-      model: { proxyUrl, virtualKey: "vk-test", model: "fake-1", timeoutMs: undefined },
+      model: { proxyUrl, virtualKey: "vk-test", model: "fake-1", provider: undefined, maxTokens: undefined, timeoutMs: undefined },
       tools: { replyTimeoutMs: 10_000 },
     };
     agent = await startAgent(cfg, () => {}, { scratchpad: pad });

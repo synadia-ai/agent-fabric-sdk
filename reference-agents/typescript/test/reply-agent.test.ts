@@ -72,7 +72,7 @@ describe("bounded reply through actual agent", () => {
         agent: { kind: "delivery", owner: "test", name: "main", description: "bounded delivery test",
           systemPrompt: "test", minSenderTrust: "any", tools: "none", heartbeatIntervalS: undefined,
           maxHistoryExchanges: 2, readyFile: undefined },
-        model: { proxyUrl: modelURL, virtualKey: "fixture", model: "fixture", timeoutMs: 5000 },
+        model: { proxyUrl: modelURL, virtualKey: "fixture", model: "fixture", provider: undefined, maxTokens: undefined, timeoutMs: 5000 },
         tools: { replyTimeoutMs: 5000 } }, () => {}, { env: {}, ...(item.mode === "absent" ? {} : { scratchpad: pad }) });
       try {
         const caller = item.mode === "unsigned" ? unsigned : signed;
