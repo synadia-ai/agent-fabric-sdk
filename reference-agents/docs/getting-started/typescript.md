@@ -1,6 +1,6 @@
 # Getting started: a TypeScript agent on the fabric
 
-The model and console examples come from the 2026-09-26 walkthrough. Step 6 describes the native TypeScript ScratchPad client and its persistent workspace. The [native client contract](../../../docs/scratchpad-native.md) defines that interface; [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19) holds delivery and validation status. The Python walkthrough uses the native Python client.
+The model and console examples come from the 2026-09-26 walkthrough. Step 3's description and the `description:` startup lines were added on 2026-11-10, from the agent's tests and not from a run of this page. Step 6 describes the native TypeScript ScratchPad client and its persistent workspace. The [native client contract](../../../docs/scratchpad-native.md) defines that interface; [SDK issue #19](https://github.com/synadia-ai/agent-fabric-sdk/issues/19) holds delivery and validation status. The Python walkthrough uses the native Python client.
 
 You will put one agent on the fabric and grow it in six steps. Each step adds one thing, and after each you look at what the console shows and why.
 
@@ -8,7 +8,7 @@ You will put one agent on the fabric and grow it in six steps. Each step adds on
 | --- | --- | --- |
 | 1 | answers every prompt with the prompt | the agent on the fabric, under a signed identity |
 | 2 | asks a model, through the proxy | a thread with a model call and its tokens |
-| 3 | has a persona | the same, in character |
+| 3 | has a persona, and a description | the same, in character, and what it tells the others it does |
 | 4 | remembers the conversation | an answer that needs the earlier prompt |
 | 5 | can discover and prompt other agents | a child thread under a tool call |
 | 6 | hands work over through ScratchPad | a commit, a grant and a read on the timeline |
@@ -127,6 +127,7 @@ npm start
 
 ```
 assistant agent listening on agents.prompt.assistant.me.main
+description: assistant agent (anthropic/claude-sonnet-5)
 model: anthropic/claude-sonnet-5 through http://localhost:18281/api, on the OpenAI chat-completions API
 scratchpad: off
 ```
@@ -157,6 +158,18 @@ AGENT_SYSTEM_PROMPT=You are a careful librarian. Answer in one sentence, and say
 
 A longer persona goes in a file: `AGENT_SYSTEM_PROMPT_FILE=./persona.md`. A role worth a page of instructions is this agent with a persona file.
 
+**And a description.** The persona is what the agent's own model is told. The description is what the others are told: the agents of the account read it when they choose whom to ask, and the account's people read it in the console. So far the startup line said `description: assistant agent (anthropic/claude-sonnet-5)`, the default, which tells nobody what to ask. Add a second line, and restart:
+
+```sh
+AGENT_DESCRIPTION=A careful librarian. Ask it for a fact in one sentence. It says so when it is not sure.
+```
+
+```
+description: A careful librarian. Ask it for a fact in one sentence. It says so when it is not sure.
+```
+
+Say what the agent does, what to ask it, and what it can reach or never does, in one to three sentences in the third person. A description is one line of plain text of at most 500 characters: the agent turns a line break or a control character into a space, cuts a longer text, and logs one line when it did either. The agent's own side writes it and nothing signs it, so it is a claim; the whole account reads it, so it holds no key and no password. `fabric connect <name> --description "…"` (fabric 0.18.0 or later) and the console's **Connect an agent** form set it without a line in `.env`. A running agent keeps the description it started with: a change needs a restart.
+
 ## Step 4: memory
 
 Nothing to configure. Prompt twice:
@@ -184,16 +197,16 @@ NATS_CREDS=/path/to/helper.creds
 AGENT_KIND=helper
 AGENT_OWNER=me
 AGENT_NAME=main
-AGENT_DESCRIPTION=Does arithmetic and counting, exactly, and shows its working
+AGENT_DESCRIPTION=Does arithmetic and counting, exactly, and shows its working. Ask it for a sum, a product or a count. It asks no other agent.
 AGENT_TOOLS=none
 MODEL_PROXY_URL=http://localhost:18281/api
 MODEL_NAME=anthropic/claude-sonnet-5
 MODEL_VIRTUAL_KEY=sk_syn_…
 ```
 
-The helper's key is issued like the assistant's, for the helper's own identity (before the key is there, `node --env-file=.env.helper --import tsx src/echo.ts` prints it). The helper may as well be the Python agent: the two speak the same protocol, and the tree is the same. The description is what another agent's model reads when it decides whom to ask, so say what the agent is for. The helper keeps `AGENT_TOOLS=none`: it answers and never delegates.
+The helper's key is issued like the assistant's, for the helper's own identity (before the key is there, `node --env-file=.env.helper --import tsx src/echo.ts` prints it). The helper may as well be the Python agent: the two speak the same protocol, and the tree is the same. Its description is what the assistant's model will choose it by, as step 3 said: what it does, what to ask it, what it never does. The helper keeps `AGENT_TOOLS=none`: it answers and never delegates.
 
-In the assistant's `.env`, delete the `AGENT_TOOLS=none` line and the persona line. Start both agents, each in a terminal:
+In the assistant's `.env`, delete the `AGENT_TOOLS=none` line, the persona line and the description line: the assistant is no librarian here. Start both agents, each in a terminal:
 
 ```sh
 node --env-file=.env.helper --import tsx src/main.ts
@@ -219,6 +232,8 @@ The assistant's terminal shows its model deciding:
 [ea9778ec]   prompt_agent({"address": "agents.prompt.helper.me.main", "prompt": "What is 23 times 4?"})
 [ea9778ec] model call 3: 0 tool call(s), 1412 in / 27 out tokens
 ```
+
+**How it chose.** The prompt named no agent, only what was needed. `discover_agents` gave the model one entry for each agent, with its address and its description, and the helper's begins `Does arithmetic and counting`. That text is all the assistant's model knew of the helper: the address, `agents.prompt.helper.me.main`, says nothing of arithmetic. The default persona tells the model to choose an agent by what its description says it does. An agent without a description shows the default, `<kind> agent (<model>)`, and is chosen by the name of its kind or not at all.
 
 **In the console.** One tree, two threads. The assistant's thread has three model calls and two tool calls, each named: `discover_agents`, the agent's own tool, with the list of agents it got back behind "show result", and `prompt_agent`, with the address and the prompt it sent; the helper's thread hangs under that second tool call with one model call of its own. Every tool call the model made is a row: its name and arguments, and either the child it spawned or the result that came back.
 
@@ -307,6 +322,7 @@ The native grant ledger survives restart in the workspace. The fabric extension'
 | What you see | Why, and what to do |
 | --- | --- |
 | `no agent "assistant" on the fabric; there: nobody` | the agent is not running, or the two `.env` files name different `NATS_URL`s or credentials of different accounts |
+| the assistant's model does not ask the helper, or asks the wrong agent | it chooses by description. Give the helper an `AGENT_DESCRIPTION` that says what it does, restart it, and read its startup line `description: …` |
 | the caller says `no reply: service error 500: handler error`, and the agent's terminal says `failed: …` | a model call failed, and that line has the proxy's answer. `401 Unauthorized unknown virtual key`: the key is mistyped, expired or revoked. `404 Not Found` with a page of HTML: `MODEL_PROXY_URL` lacks OpenRouter's `/api` |
 | startup reports that `SCRATCHPAD_DIR` is required | set a private persistent directory when `SCRATCHPAD_VOLUME` is enabled |
 | a reply comes without a reference | read the agent's `could not hand the reply over by reference: …` message. Check the account's ScratchPad import, provisioned scope, retention capacity, and the caller's verified identity. An unknown mutation requires journal recovery before another mutation |
