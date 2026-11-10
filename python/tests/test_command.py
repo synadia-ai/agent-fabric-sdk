@@ -1,22 +1,30 @@
 """The command's arguments, help and usage errors, without a server.
 
-The TypeScript suite's ``command.test.ts``.
+And the command over a replaced caller: what it prints of the text the agents
+registered or sent. The TypeScript suite's ``command.test.ts`` and
+``command-root.test.ts``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import shutil
 import subprocess
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from synadia_ai.agents import Agent
 
-from synadia_ai.agent_fabric import cli
+from synadia_ai.agent_fabric import FabricCallerError, cli, pick_agent
 from synadia_ai.agent_fabric.cli import (
     DEFAULT_TIMEOUT_S,
+    EXIT_FAILED,
     EXIT_OK,
     EXIT_USAGE,
     USAGE,
@@ -130,12 +138,35 @@ class _A:
     id_sig_verified: bool = False
 
 
-def _listing(monkeypatch: pytest.MonkeyPatch, agents: list[_A]) -> None:
-    """Replace the caller with one that lists ``agents``."""
+def _listing(
+    monkeypatch: pytest.MonkeyPatch,
+    agents: list[_A],
+    *,
+    target: _A | None = None,
+    refusal: str = "refused before it went out",
+) -> None:
+    """Replace the caller with one that lists ``agents``.
+
+    Its ``find`` returns ``target``, or picks from ``agents`` by the caller's
+    own rule and fails as the caller does. Its prompt is refused with
+    ``refusal`` at the stream's first step, before any root.
+    """
 
     class _Caller:
         async def list(self) -> list[_A]:
             return agents
+
+        async def find(self, who: str) -> object:
+            return target or pick_agent(cast("Sequence[Agent]", agents), who)
+
+        async def prompt(self, _target: object, _text: str, **_options: object) -> object:
+            async def stream() -> AsyncIterator[object]:
+                raise RuntimeError(refusal)
+                yield
+
+            root_id: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+            root_id.cancel()
+            return SimpleNamespace(stream=stream(), root_id=root_id)
 
         async def close(self) -> None:
             pass
@@ -310,3 +341,79 @@ async def test_the_rows_own_fields_are_left_as_they_were_registered_in_json(
             "description": "Last.",
         },
     ]
+
+
+# An address, a kind and an identity are text the agents registered, and a
+# refusal's few words are the agent's own. ``prompt`` prints them on stderr,
+# which is a terminal more often than not.
+_CLEAR = f"{_ESC}[2J"  # the escape sequence that clears the screen
+_WRITER = _A("agents.prompt.writer.demo.s", agent="writer")
+_THERE = [
+    _A(f"agents.prompt.a{_CLEAR}.demo.s"),
+    _A("agents.prompt.b\t.demo.s"),
+]
+
+
+async def test_prompt_prints_the_agents_address_and_identity_as_plain_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _A(
+        f"agents.prompt.w{_CLEAR}.demo\n.s{_HALF}",
+        agent="writer",
+        identity=f"ACCOUNT{_OVERRIDE}.USER",
+        id_sig_verified=True,
+    )
+    _listing(monkeypatch, [], target=target)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["prompt", "writer", "hi"], io) == EXIT_FAILED
+    assert (
+        f"→ agents.prompt.w [2J.demo .s{chr(0xFFFD)} (agent ACCOUNT .USER, verified)\n" in rec.err
+    )
+    assert _ESC not in rec.err
+
+
+async def test_prompt_prints_a_refusals_words_as_plain_text_on_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, [], target=_WRITER, refusal=f"service error 500: no{_CLEAR}\nroot 0123")
+    io, rec = recording_io(_ENV)
+    assert await run_command(["prompt", "writer", "hi"], io) == EXIT_FAILED
+    assert rec.err == (
+        "url nats://127.0.0.1:1\n"
+        "→ agents.prompt.writer.demo.s (agent identity: none)\n"
+        "agent-fabric: no reply: service error 500: no [2J root 0123\n"
+    )
+
+
+async def test_prompt_prints_every_address_as_plain_text_when_no_agent_is_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, _THERE)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["prompt", "nosuch", "hi"], io) == EXIT_FAILED
+    assert rec.err == (
+        "url nats://127.0.0.1:1\n"
+        'agent-fabric: no agent "nosuch"; there: '
+        "agents.prompt.a [2J.demo.s, agents.prompt.b .demo.s\n"
+    )
+
+
+async def test_prompt_prints_every_address_as_plain_text_when_a_kind_names_several(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, _THERE)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["prompt", "k", "hi"], io) == EXIT_FAILED
+    assert rec.err == (
+        "url nats://127.0.0.1:1\n"
+        'agent-fabric: 2 agents of kind "k": '
+        "agents.prompt.a [2J.demo.s, agents.prompt.b .demo.s; name one by its address\n"
+    )
+
+
+def test_the_error_a_program_catches_keeps_the_addresses_as_they_were_registered() -> None:
+    with pytest.raises(FabricCallerError) as caught:
+        pick_agent(cast("Sequence[Agent]", _THERE), "nosuch")
+    assert str(caught.value) == (
+        f'no agent "nosuch"; there: agents.prompt.a{_CLEAR}.demo.s, agents.prompt.b\t.demo.s'
+    )

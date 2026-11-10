@@ -1,11 +1,13 @@
 // The command over a replaced caller. A prompt that fails before it goes
 // out: its root rejects, and the command still ends with its one line,
 // never an unhandled rejection; the failure happens where it would on the
-// wire, at the stream's first iteration, before any root. And `agents`
-// lists in code-point order, as the Python command does, with each agent's
-// description under its row, as one line of plain text.
+// wire, at the stream's first iteration, before any root. `agents` lists in
+// code-point order, as the Python command does, with each agent's
+// description under its row, as one line of plain text. And `prompt` prints
+// what the agents registered, an address or an identity, as plain text too.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Agent } from "@synadia-ai/agents";
 import type * as CallerModule from "../../src/caller.js";
 import { recordingIO } from "../support/command-io.js";
 
@@ -18,8 +20,15 @@ interface Listed {
   readonly description: string | undefined;
 }
 
-// What the replaced caller lists; each test sets it.
-const world = vi.hoisted(() => ({ agents: [] as Listed[] }));
+// What the replaced caller lists, finds and is told; each test sets it.
+const world = vi.hoisted(() => ({
+  agents: [] as Listed[],
+  // The agent `find` returns. Unset, `find` picks from `agents` by the
+  // caller's own rule, and fails as the caller does.
+  target: undefined as Listed | undefined,
+  // What the agent says when it refuses the prompt.
+  refusal: "",
+}));
 
 vi.mock("../../src/caller.js", async (importOriginal) => {
   const real = await importOriginal<typeof CallerModule>();
@@ -27,14 +36,10 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
     ...real,
     fabricCaller: () =>
       Promise.resolve({
-        find: () =>
-          Promise.resolve({
-            promptSubject: "agents.prompt.writer.demo.s",
-            identity: undefined,
-            idSigVerified: false,
-            agent: "writer",
-            description: "",
-          }),
+        find: (who: string) =>
+          Promise.resolve().then(
+            () => world.target ?? real.pickAgent(world.agents as unknown as Agent[], who),
+          ),
         prompt: () => {
           const rootId = Promise.reject(new real.FabricCallerError("not-sent", "never sent"));
           rootId.catch(() => {});
@@ -42,7 +47,7 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
             rootId,
             stream: {
               [Symbol.asyncIterator]: () => ({
-                next: () => Promise.reject(new Error("refused before it went out")),
+                next: () => Promise.reject(new Error(world.refusal)),
               }),
             },
           });
@@ -53,9 +58,24 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
   };
 });
 
+const { FabricCallerError, pickAgent } = await import("../../src/caller.js");
 const { EXIT_FAILED, EXIT_OK, runCommand } = await import("../../src/command.js");
 
 const ENV = { NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" };
+
+const WRITER: Listed = {
+  promptSubject: "agents.prompt.writer.demo.s",
+  agent: "writer",
+  identity: undefined,
+  idSigVerified: false,
+  description: "",
+};
+
+beforeEach(() => {
+  world.agents = [];
+  world.target = WRITER;
+  world.refusal = "refused before it went out";
+});
 
 /** An agent of kind `k` that registered no identity. */
 function listed(promptSubject: string, description?: string): Listed {
@@ -70,6 +90,85 @@ describe("a prompt that never goes out", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(io.stderr()).toContain("agent-fabric: no reply: refused before it went out\n");
     expect(io.stderr()).not.toContain("root ");
+  });
+});
+
+// An address, a kind and an identity are text the agents registered, and a
+// refusal's few words are the agent's own. `prompt` prints them on stderr,
+// which is a terminal more often than not.
+describe("prompt, what an agent registered or said", () => {
+  const ESC = String.fromCharCode(0x1b);
+  const OVERRIDE = String.fromCodePoint(0x202e); // right-to-left override
+  const HALF = String.fromCharCode(0xdc80); // half a character
+  const CLEAR = `${ESC}[2J`; // the escape sequence that clears the screen
+
+  it("prints the agent's address and identity as plain text", async () => {
+    world.target = {
+      ...WRITER,
+      promptSubject: `agents.prompt.w${CLEAR}.demo\n.s${HALF}`,
+      identity: `ACCOUNT${OVERRIDE}.USER`,
+      idSigVerified: true,
+    };
+    const io = recordingIO(ENV);
+    expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_FAILED);
+    expect(io.stderr()).toContain(
+      `→ agents.prompt.w [2J.demo .s${String.fromCodePoint(0xfffd)} (agent ACCOUNT .USER, verified)\n`,
+    );
+    expect(io.stderr()).not.toContain(ESC);
+  });
+
+  it("prints a refusal's words as plain text, on one line", async () => {
+    world.refusal = `service error 500: no${CLEAR}\nroot 0123`;
+    const io = recordingIO(ENV);
+    expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_FAILED);
+    expect(io.stderr()).toBe(
+      "url nats://127.0.0.1:1\n" +
+        "→ agents.prompt.writer.demo.s (agent identity: none)\n" +
+        "agent-fabric: no reply: service error 500: no [2J root 0123\n",
+    );
+  });
+
+  describe("naming the agents that are there", () => {
+    const there = [
+      { ...WRITER, promptSubject: `agents.prompt.a${CLEAR}.demo.s`, agent: "k" },
+      { ...WRITER, promptSubject: "agents.prompt.b\t.demo.s", agent: "k" },
+    ];
+
+    beforeEach(() => {
+      world.agents = there;
+      world.target = undefined;
+    });
+
+    it("prints every address as plain text when no agent is found", async () => {
+      const io = recordingIO(ENV);
+      expect(await runCommand(["prompt", "nosuch", "hi"], io)).toBe(EXIT_FAILED);
+      expect(io.stderr()).toBe(
+        "url nats://127.0.0.1:1\n" +
+          'agent-fabric: no agent "nosuch"; there: agents.prompt.a [2J.demo.s, agents.prompt.b .demo.s\n',
+      );
+    });
+
+    it("prints every address as plain text when a kind names several", async () => {
+      const io = recordingIO(ENV);
+      expect(await runCommand(["prompt", "k", "hi"], io)).toBe(EXIT_FAILED);
+      expect(io.stderr()).toBe(
+        "url nats://127.0.0.1:1\n" +
+          'agent-fabric: 2 agents of kind "k": agents.prompt.a [2J.demo.s, agents.prompt.b .demo.s; name one by its address\n',
+      );
+    });
+
+    it("leaves the error a program catches as it is: the addresses as they were registered", () => {
+      let caught: unknown;
+      try {
+        pickAgent(there as unknown as Agent[], "nosuch");
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(FabricCallerError);
+      expect((caught as Error).message).toBe(
+        `no agent "nosuch"; there: agents.prompt.a${CLEAR}.demo.s, agents.prompt.b\t.demo.s`,
+      );
+    });
   });
 });
 

@@ -42,6 +42,12 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   characters is cut. So nothing an agent registered adds a row or a column, stops the list, or
   reaches the terminal as an escape sequence. `--json` gives every field as it was registered, as
   before.
+- `agent-fabric prompt`: the lines on stderr print what an agent registered, or said when it
+  refused, as plain text, by the list's rule for a field: the address and the identity on the `→`
+  line, the addresses in `no agent "…"; there: …` and in `N agents of kind "…": …`, and the words
+  after `no reply:`. The errors `find()` and `pickAgent()` throw are unchanged: their messages
+  carry the addresses as they were registered. The `list-agents.mjs` example prints its rows as
+  plain text too.
 - `resolveScratchPad`, the add-ons' ScratchPad settings, takes the connection the plugin's
   channel takes, so `sp` connects to the agent's server as the agent. After
   `options.scratchpad`'s `url` and `creds`, field by field: a non-empty `NATS_CONTEXT`'s

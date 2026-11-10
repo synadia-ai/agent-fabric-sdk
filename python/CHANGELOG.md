@@ -9,6 +9,7 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `agent-fabric agents`, text output: each agent's description, what the agent says it does, is printed on a line of its own under the agent's row, after a tab; an agent with no description has no such line. Everything the list prints is text an agent registered, and all of it is printed as plain text. In every field, the address, the kind, the identity and the description, a line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), and half a character (a surrogate that is not part of a pair) becomes U+FFFD. The description is also brought to one line: runs of spaces become one, and a text longer than 500 characters is cut. So nothing an agent registered adds a row or a column, stops the list, or reaches the terminal as an escape sequence. `--json` gives every field as it was registered, as before.
+- `agent-fabric prompt`: the lines on stderr print what an agent registered, or said when it refused, as plain text, by the list's rule for a field: the address and the identity on the `→` line, the addresses in `no agent "…"; there: …` and in `N agents of kind "…": …`, and the words after `no reply:`. The errors `find()` and `pick_agent()` raise are unchanged: their messages carry the addresses as they were registered. The `list_agents.py` example prints its rows as plain text too.
 
 ### Fixed
 

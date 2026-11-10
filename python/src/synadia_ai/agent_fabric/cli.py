@@ -196,13 +196,16 @@ async def run_command(argv: Sequence[str], io: CommandIO) -> int:  # noqa: PLR09
         assert parsed.who is not None and parsed.text is not None
         return await _prompt(caller, parsed.who, parsed.text, parsed, io)
     except FabricCallerError as err:
-        io.err(f"agent-fabric: {err}\n")
+        # The message names the agents that are there by their addresses,
+        # text they registered: printed as plain text, on one line. The error
+        # itself keeps it as it is.
+        io.err(f"agent-fabric: {plain_line(str(err))}\n")
         return EXIT_FAILED
     except Exception as err:
         # The agent refused the prompt or failed while serving it. The
         # protocol carries a code and a few words; the reason is in the
-        # agent's own output.
-        io.err(f"agent-fabric: no reply: {err}\n")
+        # agent's own output. The words are the agent's: plain text too.
+        io.err(f"agent-fabric: no reply: {plain_line(str(err))}\n")
         return EXIT_FAILED
     finally:
         await caller.close()
@@ -268,7 +271,10 @@ async def _prompt(
     caller: FabricCaller, who: str, text: str, parsed: ParsedCommand, io: CommandIO
 ) -> int:
     target = await caller.find(who)
-    io.err(f"→ {target.prompt_subject} ({_describe_identity(_agent_line(target))})\n")
+    # The address and the identity are text the agent registered: plain text
+    # on the terminal, as in the list.
+    identity = plain_line(_describe_identity(_agent_line(target)))
+    io.err(f"→ {plain_line(target.prompt_subject)} ({identity})\n")
     started = await caller.prompt(target, text, max_wait_s=parsed.timeout_s)
 
     def print_root(f: asyncio.Future[str]) -> None:

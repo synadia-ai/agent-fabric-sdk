@@ -189,12 +189,15 @@ export async function runCommand(argv: ReadonlyArray<string>, io: CommandIO): Pr
     return await prompt(caller, parsed.who!, parsed.text!, parsed, io);
   } catch (err) {
     if (err instanceof FabricCallerError) {
-      io.err(`agent-fabric: ${err.message}\n`);
+      // The message names the agents that are there by their addresses,
+      // text they registered: printed as plain text, on one line. The error
+      // itself keeps it as it is.
+      io.err(`agent-fabric: ${plainLine(err.message)}\n`);
     } else {
       // The agent refused the prompt or failed while serving it. The
       // protocol carries a code and a few words; the reason is in the
-      // agent's own output.
-      io.err(`agent-fabric: no reply: ${message(err)}\n`);
+      // agent's own output. The words are the agent's: plain text too.
+      io.err(`agent-fabric: no reply: ${plainLine(message(err))}\n`);
     }
     return EXIT_FAILED;
   } finally {
@@ -267,7 +270,10 @@ async function prompt(
   io: CommandIO,
 ): Promise<number> {
   const target = await caller.find(who);
-  io.err(`→ ${target.promptSubject} (${describeIdentity(agentLine(target))})\n`);
+  // The address and the identity are text the agent registered: plain text
+  // on the terminal, as in the list.
+  const identity = plainLine(describeIdentity(agentLine(target)));
+  io.err(`→ ${plainLine(target.promptSubject)} (${identity})\n`);
   const { stream, rootId } = await caller.prompt(target, text, {
     maxWaitMs: Math.round(opts.timeoutS * 1000),
   });

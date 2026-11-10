@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import sys
@@ -110,12 +111,110 @@ async def test_lists_the_agents_as_json(world: World) -> None:
     ]
 
 
-_TS_CLI = Path(__file__).resolve().parents[2] / "typescript" / "dist" / "cli.js"
+_REPO = Path(__file__).resolve().parents[2]
+_TS_CLI = _REPO / "typescript" / "dist" / "cli.js"
+# The two commands as a person runs them, and the two packaged examples that
+# list the agents.
+_PYTHON = (sys.executable, "-m", "synadia_ai.agent_fabric.cli")
+_TYPESCRIPT = ("node", str(_TS_CLI))
+_PYTHON_EXAMPLE = (sys.executable, str(_REPO / "python" / "examples" / "list_agents.py"))
+_TYPESCRIPT_EXAMPLE = ("node", str(_REPO / "typescript" / "examples" / "list-agents.mjs"))
+_ESC = b"\x1b"
 
-
-@pytest.mark.skipif(
+both_commands = pytest.mark.skipif(
     shutil.which("node") is None or not _TS_CLI.exists(), reason="no node or no TypeScript build"
 )
+
+
+async def _run(
+    program: tuple[str, ...], *args: str, env: dict[str, str] | None = None
+) -> tuple[int | None, bytes, bytes]:
+    """Run a command or an example as a program: its exit code, stdout and stderr."""
+    proc = await asyncio.create_subprocess_exec(
+        *program,
+        *args,
+        env={**os.environ, **(env or {})},
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate()
+    return proc.returncode, out, err
+
+
+async def _registered(world: World, kind: str, address: str) -> Any:
+    """An agent that registered ``kind`` and ``address`` as they are.
+
+    A program that speaks NATS answers discovery itself, with whatever it
+    likes: here an escape sequence in the kind and in the address, which the
+    protocol SDK's host would not register.
+    """
+    info = json.dumps(
+        {
+            "type": "io.nats.micro.v1.info_response",
+            "name": "agents",
+            "id": "raw1",
+            "version": "0.0.1",
+            "description": "",
+            "metadata": {"agent": kind, "owner": "fabric", "protocol_version": "0.3"},
+            "endpoints": [
+                {"name": "prompt", "subject": address, "queue_group": "agents", "metadata": {}}
+            ],
+        }
+    ).encode()
+
+    async def answer(msg: Msg) -> None:
+        await msg.respond(info)
+
+    sub = await world.alice.subscribe("$SRV.INFO.agents", cb=answer)
+    await world.alice.flush()
+    return sub
+
+
+@both_commands
+async def test_both_commands_and_examples_print_what_an_agent_registered_as_plain_text(
+    world: World,
+) -> None:
+    # An agent whose kind and address hold escape sequences: one that colours
+    # the text, one that clears the screen. Every line that names it, from
+    # either command and either example, has a space where the escape
+    # character was, so the terminal runs nothing.
+    kind = "wri\x1b[31mter"
+    sub = await _registered(world, kind, "agents.prompt.wri\x1b[2Jter.fabric.raw")
+    address = b"agents.prompt.wri [2Jter.fabric.raw"
+    creds = ("--creds", str(ERIN), "--url", world.server.url)
+    try:
+        missing = [await _run(p, "prompt", "nosuch", "hi", *creds) for p in (_PYTHON, _TYPESCRIPT)]
+        found = [
+            await _run(p, "prompt", kind, "hi", "--timeout", "5", *creds)
+            for p in (_PYTHON, _TYPESCRIPT)
+        ]
+        examples = [await _run(p, env=world.env) for p in (_PYTHON_EXAMPLE, _TYPESCRIPT_EXAMPLE)]
+    finally:
+        await sub.unsubscribe()
+
+    # No agent "nosuch": the error names every address that is there.
+    for code, out, err in missing:
+        assert (code, out) == (1, b"")
+        assert err.startswith(
+            f'url {world.server.url}\nagent-fabric: no agent "nosuch"; there: '.encode()
+        )
+        assert address in err and world.address.encode() in err
+        assert _ESC not in err
+    # The one agent of that kind: its address on the line that says who is prompted.
+    for code, _out, err in found:
+        assert code == 1  # nothing serves that address
+        assert b"\xe2\x86\x92 " + address + b" (agent identity: none)\n" in err
+        assert _ESC not in err
+    # The examples print one row per agent, in the order discovery answered.
+    rows = [sorted(out.splitlines()) for _code, out, _err in examples]
+    assert [code for code, _out, _err in examples] == [0, 0]
+    assert rows[0] == rows[1]
+    assert address + b"\twri [31mter\tagent identity: none" in rows[0]
+    assert all(_ESC not in out for _code, out, _err in examples)
+
+
+@both_commands
 async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_character(
     world: World,
 ) -> None:
@@ -138,30 +237,23 @@ async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_char
         await svc.start()
         return svc
 
-    async def listing(*program: str, json: bool = False) -> tuple[int | None, bytes, bytes]:
-        proc = await asyncio.create_subprocess_exec(
-            *program,
-            "agents",
-            *(["--json"] if json else []),
-            "--creds",
-            str(ERIN),
-            "--url",
-            world.server.url,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+    async def listing(
+        program: tuple[str, ...], *, json: bool = False
+    ) -> tuple[int | None, bytes, bytes]:
+        flags = ("--json",) if json else ()
+        return await _run(
+            program, "agents", *flags, "--creds", str(ERIN), "--url", world.server.url
         )
-        out, err = await proc.communicate()
-        return proc.returncode, out, err
 
     extra = [
         await serve("archive", "a1", "Keeps what was written."),
         await serve("cutter", "c1", "cut in an emoji " + chr(0xD83D)),
     ]
     try:
-        python = await listing(sys.executable, "-m", "synadia_ai.agent_fabric.cli")
-        typescript = await listing("node", str(_TS_CLI))
-        python_json = await listing(sys.executable, "-m", "synadia_ai.agent_fabric.cli", json=True)
-        typescript_json = await listing("node", str(_TS_CLI), json=True)
+        python = await listing(_PYTHON)
+        typescript = await listing(_TYPESCRIPT)
+        python_json = await listing(_PYTHON, json=True)
+        typescript_json = await listing(_TYPESCRIPT, json=True)
     finally:
         for svc in extra:
             await svc.stop()

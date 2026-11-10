@@ -72,7 +72,9 @@ npx @synadia-ai/agent-fabric prompt writer "Write two lines about the sea." --cr
   is named by its address, or by its kind when exactly one agent has it.
 - On stderr: the URL, the agent and its identity, `root <id>` (the task's root id, which is
   how the console finds the task), and `reference: <token>` when the reply
-  hands back a ScratchPad reference.
+  hands back a ScratchPad reference. What an agent registered or said in a
+  refusal is printed there as plain text, as in the list: the agent's address
+  and identity, the addresses an error names, the words after `no reply:`.
 - A question the agent asks mid-reply is printed on stderr, prefixed `? `.
   The next line on stdin answers it. With no input, the agent is told the
   caller cannot answer and goes on.
