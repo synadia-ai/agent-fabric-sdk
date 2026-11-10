@@ -9,12 +9,15 @@ holds nothing secret.
 It is one line of plain text of at most 500 characters.
 :func:`clean_description` makes any text fit and never refuses one:
 
-1. every control, invisible, line-break and space character becomes a plain
+1. half a character becomes U+FFFD, the replacement character: a surrogate
+   that is not part of a pair, which a text cut inside an emoji holds, and so
+   does a value that was not UTF-8. Python cannot print one;
+2. every control, invisible, line-break and space character becomes a plain
    space (the Unicode categories Cc, Cf, Zl, Zp and Zs). Two invisible
    characters stay, the zero width non-joiner and joiner (U+200C, U+200D):
    Persian, the Indic scripts and emoji sequences are spelled with them;
-2. runs of spaces become one, and the spaces at both ends go;
-3. a text longer than 500 characters is cut to its first 500, and a space the
+3. runs of spaces become one, and the spaces at both ends go;
+4. a text longer than 500 characters is cut to its first 500, and a space the
    cut leaves at the end goes too.
 
 A character is a Unicode code point, never a byte or a UTF-16 unit, and a
@@ -38,9 +41,18 @@ _NOT_PLAIN = frozenset({"Cc", "Cf", "Zl", "Zp", "Zs"})
 _KEPT = frozenset({chr(0x200C), chr(0x200D)})
 
 
+# What takes the place of half a character: U+FFFD, the replacement character.
+_REPLACEMENT = chr(0xFFFD)
+
+
 def _plain(ch: str) -> str:
-    """One code point as plain text: itself, or a space in its place."""
-    return " " if unicodedata.category(ch) in _NOT_PLAIN and ch not in _KEPT else ch
+    """One code point as plain text: itself, a space in its place, or U+FFFD for half of one."""
+    category = unicodedata.category(ch)
+    # A surrogate that is not part of a pair: a text cut inside an emoji has
+    # one, and so has a value that was not UTF-8. Python cannot print it.
+    if category == "Cs":
+        return _REPLACEMENT
+    return " " if category in _NOT_PLAIN and ch not in _KEPT else ch
 
 
 def clean_description(text: str) -> str:

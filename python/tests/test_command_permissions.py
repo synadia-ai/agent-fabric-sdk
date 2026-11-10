@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import nats
@@ -105,6 +108,72 @@ async def test_lists_the_agents_as_json(world: World) -> None:
             "description": "writes",
         }
     ]
+
+
+_TS_CLI = Path(__file__).resolve().parents[2] / "typescript" / "dist" / "cli.js"
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or not _TS_CLI.exists(), reason="no node or no TypeScript build"
+)
+async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_character(
+    world: World,
+) -> None:
+    # Two more agents beside the writer, in its account. The middle one of the
+    # three registered a description that ends in half a character, a text cut
+    # inside an emoji. Python cannot write that to a terminal: the Python
+    # command stopped there and never listed the writer. Both commands, run as
+    # programs, print U+FFFD in its place and all three agents.
+    async def serve(kind: str, name: str, description: str) -> AgentService:
+        svc = AgentService(
+            nc=world.alice,
+            agent=kind,
+            owner="fabric",
+            session_name=name,
+            description=description,
+            heartbeat_interval_s=3600,
+            keepalive_interval_s=None,
+        )
+        svc.on_prompt(lambda _envelope, _stream: asyncio.sleep(0))
+        await svc.start()
+        return svc
+
+    async def listing(*program: str) -> tuple[int | None, bytes, bytes]:
+        proc = await asyncio.create_subprocess_exec(
+            *program,
+            "agents",
+            "--creds",
+            str(ERIN),
+            "--url",
+            world.server.url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate()
+        return proc.returncode, out, err
+
+    extra = [
+        await serve("archive", "a1", "Keeps what was written."),
+        await serve("cutter", "c1", "cut in an emoji " + chr(0xD83D)),
+    ]
+    try:
+        python = await listing(sys.executable, "-m", "synadia_ai.agent_fabric.cli")
+        typescript = await listing("node", str(_TS_CLI))
+    finally:
+        for svc in extra:
+            await svc.stop()
+
+    expected = (
+        "agents.prompt.archive.fabric.a1\tarchive\tagent identity: none\n"
+        "\tKeeps what was written.\n"
+        "agents.prompt.cutter.fabric.c1\tcutter\tagent identity: none\n"
+        f"\tcut in an emoji {chr(0xFFFD)}\n"
+        f"{world.address}\twriter\tagent identity: none\n"
+        "\twrites\n"
+    ).encode()
+    url = f"url {world.server.url}\n".encode()
+    assert python == (0, expected, url)
+    assert typescript == (0, expected, url)
 
 
 async def test_streams_the_reply_and_the_root_and_reference_on_stderr(world: World) -> None:

@@ -206,3 +206,31 @@ async def test_leaves_the_description_as_it_was_registered_in_json(
         "Keeps the logs of the orders server. Ask it what happened in a time range.",
         f"Writes two\tlines.\n\u001b[31mNever more. {_FAMILY}",
     ]
+
+
+async def test_lists_every_agent_when_a_description_holds_half_a_character(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Half a character: a text cut inside an emoji ends in one. Python cannot
+    # print it, and the command stopped the list there. Both commands print
+    # U+FFFD in its place, and every agent.
+    _listing(
+        monkeypatch,
+        [
+            _A("agents.prompt.a", "First."),
+            _A("agents.prompt.b", "cut in an emoji " + chr(0xD83D)),
+            _A("agents.prompt.c", "Third."),
+        ],
+    )
+    io, rec = recording_io(_ENV)
+    assert await run_command(["agents"], io) == EXIT_OK
+    assert rec.out == (
+        "agents.prompt.a\tk\tagent identity: none\n"
+        "\tFirst.\n"
+        "agents.prompt.b\tk\tagent identity: none\n"
+        f"\tcut in an emoji {chr(0xFFFD)}\n"
+        "agents.prompt.c\tk\tagent identity: none\n"
+        "\tThird.\n"
+    )
+    # What a terminal takes: the whole output can be written as UTF-8.
+    assert rec.out.encode()

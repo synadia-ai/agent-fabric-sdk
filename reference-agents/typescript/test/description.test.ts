@@ -28,8 +28,8 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 // The two lines an agent logs about a description it could not use as given.
 const CLEANED =
   "AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most 500 characters. " +
-  "A line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), " +
-  "runs of spaces become one, and a longer text is cut to its first 500 characters.";
+  "What is not valid Unicode becomes U+FFFD, a line break, a tab, a control or an invisible character becomes a space " +
+  "(the zero width joiner and non-joiner stay), runs of spaces become one, and a longer text is cut to its first 500 characters.";
 const NO_TEXT = "AGENT_DESCRIPTION holds no text: the default description is used.";
 
 const vectors = JSON.parse(
@@ -131,7 +131,18 @@ describe("AGENT_DESCRIPTION", () => {
 });
 
 describe.skipIf(binary === undefined)("the agent as `npm start` runs it", () => {
-  it("registers the cleaned description, and its startup lines say it", async () => {
+  // The agent's own command line.
+  const START = [process.execPath, "--import", "tsx", "src/main.ts"];
+
+  /**
+   * Start the agent with `command`, wait for its startup lines, ask
+   * discovery what it registered, and stop it. `description` goes into its
+   * environment; left out, the command sets it.
+   */
+  async function started(
+    command: readonly string[],
+    description?: string,
+  ): Promise<{ lines: string[]; registered: string | undefined; running: boolean }> {
     const [agentUser, callerUser] = [newUser(), newUser()];
     const server = await TestNatsServer.start(binary!, [agentUser, callerUser]);
     const dir = await mkdtemp(join(tmpdir(), "fabric-examples-description-"));
@@ -144,7 +155,8 @@ describe.skipIf(binary === undefined)("the agent as `npm start` runs it", () => 
       // The startup lines are the agent's stdout; a warning on stderr is not one of them.
       let out = "";
       let err = "";
-      child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
+      const [file, ...args] = command;
+      child = spawn(file!, args, {
         cwd: AGENT_DIR,
         env: {
           ...process.env,
@@ -155,8 +167,7 @@ describe.skipIf(binary === undefined)("the agent as `npm start` runs it", () => 
           AGENT_KIND: "logkeeper",
           AGENT_OWNER: "test",
           AGENT_NAME: "main",
-          // As a quoted value in a `.env` gives it: on two lines.
-          AGENT_DESCRIPTION: "Keeps the logs of the orders server.\nAsk it what happened in a time range.",
+          ...(description !== undefined ? { AGENT_DESCRIPTION: description } : {}),
           AGENT_READY_FILE: ready,
           // Nothing prompts the agent, so no model is called.
           MODEL_PROXY_URL: "http://127.0.0.1:9",
@@ -176,7 +187,7 @@ describe.skipIf(binary === undefined)("the agent as `npm start` runs it", () => 
         await sleep(100);
       }
 
-      // What the other agents are shown: the description on one line.
+      // What the other agents are shown.
       nc = await connect({
         servers: server.url,
         authenticator: nkeyAuthenticator(new TextEncoder().encode(callerUser.seed)),
@@ -184,14 +195,7 @@ describe.skipIf(binary === undefined)("the agent as `npm start` runs it", () => 
       const caller = new Agents({ nc });
       const [found] = await caller.discover({ filter: { agent: "logkeeper" }, timeoutMs: 500 });
       await caller.close();
-      expect(found?.description).toBe("Keeps the logs of the orders server. Ask it what happened in a time range.");
-
-      // And what the person who started it is shown: that the text was
-      // cleaned, then the description in use, under the address.
-      const lines = out.split("\n");
-      expect(lines[0]).toBe(CLEANED);
-      expect(lines[1]).toBe("logkeeper agent listening on agents.prompt.logkeeper.test.main");
-      expect(lines[2]).toBe("description: Keeps the logs of the orders server. Ask it what happened in a time range.");
+      return { lines: out.split("\n"), registered: found?.description, running: child.exitCode === null };
     } finally {
       await nc?.close();
       if (child !== undefined && child.exitCode === null) {
@@ -203,5 +207,31 @@ describe.skipIf(binary === undefined)("the agent as `npm start` runs it", () => 
       await server.stop();
       await rm(dir, { recursive: true, force: true });
     }
+  }
+
+  it("registers the cleaned description, and its startup lines say it", async () => {
+    // As a quoted value in a `.env` gives it: on two lines.
+    const agent = await started(START, "Keeps the logs of the orders server.\nAsk it what happened in a time range.");
+    // What the other agents are shown: the description on one line.
+    expect(agent.registered).toBe("Keeps the logs of the orders server. Ask it what happened in a time range.");
+    // And what the person who started it is shown: that the text was
+    // cleaned, then the description in use, under the address.
+    expect(agent.lines[0]).toBe(CLEANED);
+    expect(agent.lines[1]).toBe("logkeeper agent listening on agents.prompt.logkeeper.test.main");
+    expect(agent.lines[2]).toBe("description: Keeps the logs of the orders server. Ask it what happened in a time range.");
+  });
+
+  // A value that is not UTF-8, as a shell sets one: `Caf`, the byte E9 (an
+  // e with an acute accent in Latin-1), ` orders`. The shell sets it here,
+  // since Node hands a child process only valid text. Node reads the byte as
+  // U+FFFD; the Python agent reads half a character and makes it U+FFFD, so
+  // both register the same text.
+  it.skipIf(process.platform === "win32")("with a description that is not UTF-8, it runs, and U+FFFD stands for the byte", async () => {
+    const setIt = `AGENT_DESCRIPTION="$(printf 'Caf\\351 orders')" exec "$0" "$@"`;
+    const agent = await started(["/bin/sh", "-c", setIt, ...START]);
+    const text = `Caf${String.fromCodePoint(0xfffd)} orders`;
+    expect(agent.running).toBe(true);
+    expect(agent.registered).toBe(text);
+    expect(agent.lines).toContain(`description: ${text}`);
   });
 });

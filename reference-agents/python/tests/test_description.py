@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import nats
@@ -54,8 +55,8 @@ ENV = {
 # The two lines an agent logs about a description it could not use as given.
 CLEANED = (
     "AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most 500 characters. "
-    "A line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), "
-    "runs of spaces become one, and a longer text is cut to its first 500 characters."
+    "What is not valid Unicode becomes U+FFFD, a line break, a tab, a control or an invisible character becomes a space "
+    "(the zero width joiner and non-joiner stay), runs of spaces become one, and a longer text is cut to its first 500 characters."
 )
 NO_TEXT = "AGENT_DESCRIPTION holds no text: the default description is used."
 
@@ -119,10 +120,19 @@ def test_logs_to_stdout_unless_told_where(capsys: pytest.CaptureFixture[str]) ->
     assert capsys.readouterr().out == f"{CLEANED}\n"
 
 
-@pytest.mark.skipif(binary is None, reason="needs nats-server on PATH")
-async def test_the_agent_as_it_is_started_registers_the_cleaned_description_and_its_startup_lines_say_it(
-    tmp_path: Path,
-) -> None:
+@dataclass
+class Started:
+    """What an agent that was started showed: its startup lines, what discovery
+    returned for it, and whether it was still running then."""
+
+    lines: list[str]
+    registered: list[str]
+    running: bool
+
+
+async def started(tmp_path: Path, description: str) -> Started:
+    """Start the agent as a person starts it, wait for its startup lines, ask
+    discovery what it registered, and stop it."""
     users = {name: new_user() for name in ("agent", "caller")}
     server = LocalNatsServer.start(binary, list(users.values()))  # type: ignore[arg-type]
     child: subprocess.Popen[bytes] | None = None
@@ -145,8 +155,7 @@ async def test_the_agent_as_it_is_started_registers_the_cleaned_description_and_
             "AGENT_KIND": "logkeeper",
             "AGENT_OWNER": "test",
             "AGENT_NAME": "main",
-            # As the environment can give it: on two lines.
-            "AGENT_DESCRIPTION": "Keeps the logs of the orders server.\nAsk it what happened in a time range.",
+            "AGENT_DESCRIPTION": description,
             "AGENT_READY_FILE": str(ready),
             # Nothing prompts the agent, so no model is called.
             "MODEL_PROXY_URL": "http://127.0.0.1:9",
@@ -174,7 +183,7 @@ async def test_the_agent_as_it_is_started_registers_the_cleaned_description_and_
         else:
             raise AssertionError(failed())
 
-        # What the other agents are shown: the description on one line.
+        # What the other agents are shown.
         nc = await nats.connect(server.url, nkeys_seed_str=users["caller"].seed)
         caller = Agents(nc=nc)
         try:
@@ -182,16 +191,7 @@ async def test_the_agent_as_it_is_started_registers_the_cleaned_description_and_
         finally:
             await caller.close()
             await nc.close()
-        assert [a.description for a in found] == [
-            "Keeps the logs of the orders server. Ask it what happened in a time range."
-        ]
-
-        # And what the person who started it is shown: that the text was
-        # cleaned, then the description in use, under the address.
-        lines = said().split("\n")
-        assert lines[0] == CLEANED
-        assert lines[1] == "logkeeper agent listening on agents.prompt.logkeeper.test.main"
-        assert lines[2] == "description: Keeps the logs of the orders server. Ask it what happened in a time range."
+        return Started(said().split("\n"), [a.description for a in found], child.poll() is None)
     finally:
         if child is not None and child.poll() is None:
             child.terminate()
@@ -200,3 +200,34 @@ async def test_the_agent_as_it_is_started_registers_the_cleaned_description_and_
             except subprocess.TimeoutExpired:
                 child.kill()
         server.stop()
+
+
+@pytest.mark.skipif(binary is None, reason="needs nats-server on PATH")
+async def test_the_agent_as_it_is_started_registers_the_cleaned_description_and_its_startup_lines_say_it(
+    tmp_path: Path,
+) -> None:
+    # As the environment can give it: on two lines.
+    agent = await started(tmp_path, "Keeps the logs of the orders server.\nAsk it what happened in a time range.")
+    # What the other agents are shown: the description on one line.
+    assert agent.registered == ["Keeps the logs of the orders server. Ask it what happened in a time range."]
+    # And what the person who started it is shown: that the text was cleaned,
+    # then the description in use, under the address.
+    assert agent.lines[0] == CLEANED
+    assert agent.lines[1] == "logkeeper agent listening on agents.prompt.logkeeper.test.main"
+    assert agent.lines[2] == "description: Keeps the logs of the orders server. Ask it what happened in a time range."
+
+
+@pytest.mark.skipif(binary is None, reason="needs nats-server on PATH")
+async def test_with_a_description_that_is_not_utf8_it_runs_and_the_replacement_character_stands_for_the_byte(
+    tmp_path: Path,
+) -> None:
+    # A value that is not UTF-8, as a shell sets one: ``Caf``, the byte E9 (an
+    # e with an acute accent in Latin-1), `` orders``. Python reads the byte as
+    # half a character, which it cannot print: the agent died at its startup
+    # line. Node reads the byte as U+FFFD, so both agents register the same.
+    agent = await started(tmp_path, os.fsdecode(b"Caf\xe9 orders"))
+    text = f"Caf{chr(0xFFFD)} orders"
+    assert agent.running
+    assert agent.registered == [text]
+    assert agent.lines[0] == CLEANED
+    assert f"description: {text}" in agent.lines

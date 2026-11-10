@@ -110,6 +110,51 @@
    "name": "ideographic space",
    "in": "wide\u3000space",
    "out": "wide space"
+  },
+  {
+   "name": "zero width non-joiner stays",
+   "in": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 \u06a9\u0645\u06a9",
+   "out": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 \u06a9\u0645\u06a9"
+  },
+  {
+   "name": "zero width joiner stays",
+   "in": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67 here",
+   "out": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67 here"
+  },
+  {
+   "name": "byte order mark after a ligature",
+   "in": "of\ufb01\ufeffce",
+   "out": "of\ufb01 ce"
+  },
+  {
+   "name": "annotation anchor after a compatibility ideograph",
+   "in": "a\uf900\ufff9b",
+   "out": "a\uf900 b"
+  },
+  {
+   "name": "byte order mark at the start",
+   "in": "\ufeffstart",
+   "out": "start"
+  },
+  {
+   "name": "tag characters",
+   "in": "plain\udb40\udc41\udb40\udc42 text",
+   "out": "plain text"
+  },
+  {
+   "name": "a lone surrogate becomes the replacement character",
+   "in": "cut in an emoji \ud83d",
+   "out": "cut in an emoji \ufffd"
+  },
+  {
+   "name": "a lone low surrogate in the middle",
+   "in": "a\udc80b",
+   "out": "a\ufffdb"
+  },
+  {
+   "name": "the replacement character stays",
+   "in": "kept \ufffd as it is",
+   "out": "kept \ufffd as it is"
   }
  ],
  "entry": [
@@ -281,6 +326,28 @@
    "in": "nbsp\u00a0here",
    "verdict": "ok",
    "value": "nbsp here"
+  },
+  {
+   "name": "zero width non-joiner is allowed",
+   "in": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645",
+   "verdict": "ok",
+   "value": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"
+  },
+  {
+   "name": "zero width joiner is allowed",
+   "in": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67",
+   "verdict": "ok",
+   "value": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67"
+  },
+  {
+   "name": "byte order mark after a ligature",
+   "in": "of\ufb01\ufeffce",
+   "verdict": "control"
+  },
+  {
+   "name": "tag characters",
+   "in": "plain\udb40\udc41 text",
+   "verdict": "control"
   }
  ]
 }

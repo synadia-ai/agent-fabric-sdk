@@ -9,13 +9,16 @@
 // It is one line of plain text of at most 500 characters. `cleanDescription`
 // makes any text fit and never refuses one:
 //
-//   1. every control, invisible, line-break and space character becomes a
+//   1. half a character becomes U+FFFD, the replacement character: a
+//      surrogate that is not part of a pair, which a text cut inside an
+//      emoji holds, and which a program cannot always print;
+//   2. every control, invisible, line-break and space character becomes a
 //      plain space (the Unicode categories Cc, Cf, Zl, Zp and Zs). Two
 //      invisible characters stay, the zero width non-joiner and joiner
 //      (U+200C, U+200D): Persian, the Indic scripts and emoji sequences are
 //      spelled with them;
-//   2. runs of spaces become one, and the spaces at both ends go;
-//   3. a text longer than 500 characters is cut to its first 500, and a
+//   3. runs of spaces become one, and the spaces at both ends go;
+//   4. a text longer than 500 characters is cut to its first 500, and a
 //      space the cut leaves at the end goes too.
 //
 // A character is a Unicode code point, never a byte or a UTF-16 unit, and a
@@ -33,9 +36,15 @@ const NOT_PLAIN = /^[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Zs}]$/u;
 const ZERO_WIDTH_NON_JOINER = 0x200c;
 const ZERO_WIDTH_JOINER = 0x200d;
 
-/** One code point as plain text: itself, or a space in its place. */
+// What takes the place of half a character: U+FFFD, the replacement character.
+const REPLACEMENT = String.fromCodePoint(0xfffd);
+
+/** One code point as plain text: itself, a space in its place, or U+FFFD for half of one. */
 function plain(point: string): string {
   const code = point.codePointAt(0);
+  // A surrogate that is not part of a pair: a text cut inside an emoji has
+  // one. A pair arrives here as one code point above U+FFFF, never as these.
+  if (code !== undefined && code >= 0xd800 && code <= 0xdfff) return REPLACEMENT;
   if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) return point;
   return NOT_PLAIN.test(point) ? " " : point;
 }

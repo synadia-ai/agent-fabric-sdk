@@ -5,23 +5,21 @@
 // lists in code-point order, as the Python command does, with each agent's
 // description under its row, as one line of plain text.
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CallerModule from "../../src/caller.js";
 import { recordingIO } from "../support/command-io.js";
 
-// What each listed agent registered as its description; one registered none.
-// FAMILY is three emoji held together by two zero width joiners, which stay.
-const { DESCRIPTIONS, FAMILY } = vi.hoisted(() => {
-  const FAMILY = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
-  const DESCRIPTIONS: Record<string, string | undefined> = {
-    "agents.prompt.b": `Writes two\tlines.\n\u001b[31mNever more. ${FAMILY}`,
-    "agents.prompt.a_x":
-      "Keeps the logs of the orders server. Ask it what happened in a time range.",
-    "agents.prompt.B": undefined,
-    "agents.prompt.a-x": " \n ",
-  };
-  return { DESCRIPTIONS, FAMILY };
-});
+/** One agent as discovery hands it to the command. */
+interface Listed {
+  readonly promptSubject: string;
+  readonly agent: string;
+  readonly identity: string | undefined;
+  readonly idSigVerified: boolean;
+  readonly description: string | undefined;
+}
+
+// What the replaced caller lists; each test sets it.
+const world = vi.hoisted(() => ({ agents: [] as Listed[] }));
 
 vi.mock("../../src/caller.js", async (importOriginal) => {
   const real = await importOriginal<typeof CallerModule>();
@@ -49,18 +47,7 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
             },
           });
         },
-        list: () =>
-          Promise.resolve(
-            ["agents.prompt.b", "agents.prompt.a_x", "agents.prompt.B", "agents.prompt.a-x"].map(
-              (promptSubject) => ({
-                promptSubject,
-                agent: "k",
-                identity: undefined,
-                idSigVerified: false,
-                description: DESCRIPTIONS[promptSubject],
-              }),
-            ),
-          ),
+        list: () => Promise.resolve(world.agents),
         close: () => Promise.resolve(),
       }),
   };
@@ -68,9 +55,16 @@ vi.mock("../../src/caller.js", async (importOriginal) => {
 
 const { EXIT_FAILED, EXIT_OK, runCommand } = await import("../../src/command.js");
 
+const ENV = { NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" };
+
+/** An agent of kind `k` that registered no identity. */
+function listed(promptSubject: string, description?: string): Listed {
+  return { promptSubject, agent: "k", identity: undefined, idSigVerified: false, description };
+}
+
 describe("a prompt that never goes out", () => {
   it("ends with one line and exit 1, its root's rejection handled", async () => {
-    const io = recordingIO({ NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" });
+    const io = recordingIO(ENV);
     expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_FAILED);
     // Let any unhandled rejection surface before the test ends.
     await new Promise((r) => setTimeout(r, 50));
@@ -80,8 +74,23 @@ describe("a prompt that never goes out", () => {
 });
 
 describe("agents", () => {
+  // Three emoji held together by two zero width joiners, which stay.
+  const FAMILY = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
+  const DIRTY = `Writes two\tlines.\n\u001b[31mNever more. ${FAMILY}`;
+  const LOGS = "Keeps the logs of the orders server. Ask it what happened in a time range.";
+
+  beforeEach(() => {
+    // What each agent registered as its description; one registered none.
+    world.agents = [
+      listed("agents.prompt.b", DIRTY),
+      listed("agents.prompt.a_x", LOGS),
+      listed("agents.prompt.B"),
+      listed("agents.prompt.a-x", " \n "),
+    ];
+  });
+
   it("lists by code point, the Python command's order", async () => {
-    const io = recordingIO({ NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" });
+    const io = recordingIO(ENV);
     await runCommand(["agents", "--json"], io);
     const order = (JSON.parse(io.stdout()) as Array<{ address: string }>).map((a) => a.address);
     expect(order).toEqual([
@@ -93,14 +102,14 @@ describe("agents", () => {
   });
 
   it("prints each description under its row, after a tab, as one line of plain text", async () => {
-    const io = recordingIO({ NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" });
+    const io = recordingIO(ENV);
     expect(await runCommand(["agents"], io)).toBe(EXIT_OK);
     expect(io.stdout()).toBe(
       "agents.prompt.B\tk\tagent identity: none\n" +
         // No description, or nothing left of one: no line.
         "agents.prompt.a-x\tk\tagent identity: none\n" +
         "agents.prompt.a_x\tk\tagent identity: none\n" +
-        "\tKeeps the logs of the orders server. Ask it what happened in a time range.\n" +
+        `\t${LOGS}\n` +
         "agents.prompt.b\tk\tagent identity: none\n" +
         // A line break, a tab and an escape sequence's control character: spaces.
         // The joiners inside the emoji stay, so it stays one emoji.
@@ -109,14 +118,30 @@ describe("agents", () => {
   });
 
   it("leaves the description as it was registered in --json", async () => {
-    const io = recordingIO({ NATS_CREDS: "a.creds", NATS_URL: "nats://127.0.0.1:1" });
+    const io = recordingIO(ENV);
     await runCommand(["agents", "--json"], io);
-    const listed = JSON.parse(io.stdout()) as Array<{ address: string; description?: string }>;
-    expect(listed.map((a) => a.description)).toEqual([
-      undefined,
-      " \n ",
-      "Keeps the logs of the orders server. Ask it what happened in a time range.",
-      `Writes two\tlines.\n\u001b[31mNever more. ${FAMILY}`,
-    ]);
+    const all = JSON.parse(io.stdout()) as Array<{ address: string; description?: string }>;
+    expect(all.map((a) => a.description)).toEqual([undefined, " \n ", LOGS, DIRTY]);
+  });
+
+  // Half a character: a text cut inside an emoji ends in one. A program that
+  // writes UTF-8 cannot print it, and the Python command stopped the list
+  // there. Both commands print U+FFFD in its place, and every agent.
+  it("lists every agent when a description holds half a character, with U+FFFD in its place", async () => {
+    world.agents = [
+      listed("agents.prompt.a", "First."),
+      listed("agents.prompt.b", `cut in an emoji ${String.fromCharCode(0xd83d)}`),
+      listed("agents.prompt.c", "Third."),
+    ];
+    const io = recordingIO(ENV);
+    expect(await runCommand(["agents"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(
+      "agents.prompt.a\tk\tagent identity: none\n" +
+        "\tFirst.\n" +
+        "agents.prompt.b\tk\tagent identity: none\n" +
+        `\tcut in an emoji ${String.fromCodePoint(0xfffd)}\n` +
+        "agents.prompt.c\tk\tagent identity: none\n" +
+        "\tThird.\n",
+    );
   });
 });

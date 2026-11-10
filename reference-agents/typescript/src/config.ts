@@ -197,8 +197,8 @@ export function loadConfig(env: NodeJS.ProcessEnv, log: (line: string) => void =
       cleaned === ""
         ? "AGENT_DESCRIPTION holds no text: the default description is used."
         : `AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most ${DESCRIPTION_LIMIT} characters. ` +
-            "A line break, a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner stay), " +
-            `runs of spaces become one, and a longer text is cut to its first ${DESCRIPTION_LIMIT} characters.`,
+            "What is not valid Unicode becomes U+FFFD, a line break, a tab, a control or an invisible character becomes a space " +
+            `(the zero width joiner and non-joiner stay), runs of spaces become one, and a longer text is cut to its first ${DESCRIPTION_LIMIT} characters.`,
     );
   }
   const description = cleaned !== "" ? cleaned : `${kind} agent (${model})`;

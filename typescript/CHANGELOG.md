@@ -35,8 +35,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `agent-fabric agents` prints each agent's description, what the agent says it does, on a line
   of its own under the agent's row, after a tab. The description is printed as one line of plain
   text: a line break, a tab, a control or an invisible character becomes a space (the zero width
-  joiner and non-joiner stay), runs of spaces become one, and a text longer than 500 characters
-  is cut, so a description cannot break the list or reach the terminal as an escape sequence. An
+  joiner and non-joiner stay), half a character (a surrogate that is not part of a pair) becomes
+  U+FFFD, runs of spaces become one, and a text longer than 500 characters is cut. So a
+  description cannot break the list, stop it, or reach the terminal as an escape sequence. An
   agent with no description has no such line. `--json` gives the description as it was
   registered, as before.
 - `resolveScratchPad`, the add-ons' ScratchPad settings, takes the connection the plugin's
