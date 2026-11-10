@@ -20,7 +20,7 @@ from typing import Literal
 
 from synadia_ai.agents import Agent, Query, ResponseChunk
 
-from ._description import clean_description, plain_line, terminal_text
+from ._description import clean_description, plain_line, terminal_text, well_formed
 from .caller import (
     CANNOT_ANSWER,
     NATS_CREDS_VAR,
@@ -290,12 +290,14 @@ async def _prompt(
     # The reply and a question are the agent's own text. A terminal is sent
     # them as text it only shows (``terminal_text``), so no escape sequence in
     # them clears the screen or writes over a line. A pipe or a file gets them
-    # as they came: a script reads the exact reply.
+    # as they came: a script reads the exact reply. Half a character, which a
+    # reply cut inside an emoji ends in, cannot be written as UTF-8 either
+    # way: U+FFFD is written in its place.
     def to_out(text: str) -> str:
-        return terminal_text(text) if io.out_is_terminal else text
+        return terminal_text(text) if io.out_is_terminal else well_formed(text)
 
     def to_err(text: str) -> str:
-        return terminal_text(text) if io.err_is_terminal else text
+        return terminal_text(text) if io.err_is_terminal else well_formed(text)
 
     reply: list[str] = []
     async for msg in started.stream:
@@ -308,7 +310,9 @@ async def _prompt(
             answer = await io.read_line()
             await msg.reply(answer if answer and answer.strip() else CANNOT_ANSWER)
     root = await started.root_id
-    whole = "".join(reply)
+    # The whole reply as one text. Two halves of a character that came in two
+    # chunks are that character again, as a JavaScript string joins them.
+    whole = "".join(reply).encode("utf-16", "surrogatepass").decode("utf-16", "surrogatepass")
     references = find_references(whole)
     if parsed.json:
         io.out(f"{_json({'root': root, 'text': whole, 'references': references})}\n")
@@ -332,8 +336,30 @@ def _write(stream: object) -> Callable[[str], None]:
     return write
 
 
+# The error handlers under which a stream writes something in the place of a
+# character its encoding cannot hold. Under any other it stops with an error.
+_NEVER_STOPS = frozenset(
+    {"replace", "backslashreplace", "xmlcharrefreplace", "namereplace", "ignore"}
+)
+
+
+def _never_stopping(stream: object) -> None:
+    """Have ``stream`` replace what its encoding cannot hold instead of raising.
+
+    A terminal that is not UTF-8 cannot show every character an agent
+    registered or replied, and Python's stdout stops at the first one. It
+    writes ``?`` there now, and the rest of the output with it. A stream that
+    cannot be told (it is not a text file) is left as it is.
+    """
+    reconfigure = getattr(stream, "reconfigure", None)
+    if callable(reconfigure) and getattr(stream, "errors", None) not in _NEVER_STOPS:
+        reconfigure(errors="replace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """The console script: run the command on the process's own streams."""
+    _never_stopping(sys.stdout)
+    _never_stopping(sys.stderr)
     io = CommandIO(
         out=_write(sys.stdout),
         err=_write(sys.stderr),

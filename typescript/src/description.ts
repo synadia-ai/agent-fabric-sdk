@@ -23,7 +23,10 @@
 // A reply and a question are another agent's text as well, over as many
 // lines as the agent wrote. `terminalText` is for a terminal: the line breaks
 // and the tabs stay, and every other control or format character is shown as
-// U+FFFD, so an escape sequence is printed and never run.
+// U+FFFD, so an escape sequence is printed and never run. For a pipe or a
+// file the text is left as it came, but for half a character, which UTF-8
+// cannot hold: `wellFormed` writes U+FFFD for it, in every runtime and as the
+// Python command does.
 
 /** The most characters, counted as Unicode code points, a description has. */
 export const DESCRIPTION_LIMIT = 500;
@@ -44,6 +47,19 @@ function plain(point: string): string {
   if (code !== undefined && code >= 0xd800 && code <= 0xdfff) return REPLACEMENT;
   if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) return point;
   return NOT_PLAIN.test(point) ? " " : point;
+}
+
+/**
+ * `text` with U+FFFD for half a character, and nothing else changed: the
+ * text a program that writes UTF-8 can write.
+ */
+export function wellFormed(text: string): string {
+  let whole = "";
+  for (const point of text) {
+    const code = point.codePointAt(0);
+    whole += code !== undefined && code >= 0xd800 && code <= 0xdfff ? REPLACEMENT : point;
+  }
+  return whole;
 }
 
 // One code point that a terminal may act on instead of showing it: a control

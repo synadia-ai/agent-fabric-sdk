@@ -8,6 +8,7 @@ registered or sent. The TypeScript suite's ``command.test.ts`` and
 from __future__ import annotations
 
 import asyncio
+import io as stdio
 import json
 import re
 import shutil
@@ -504,3 +505,67 @@ async def test_json_is_left_as_it_is_on_a_terminal_too_the_text_as_it_came(
     io, rec = recording_io(_ENV, ["green"], out_is_terminal=True, err_is_terminal=True)
     assert await run_command(["prompt", "writer", "hi", "--json"], io) == EXIT_OK
     assert json.loads(rec.out) == {"root": "0" * 32, "text": "".join(_REPLY), "references": []}
+
+
+# A reply cut inside an emoji: its two chunks each hold half a character, which
+# cannot be written as UTF-8. The command stopped there with nothing printed.
+# Both commands write U+FFFD for each half, and the whole reply in --json,
+# where the halves are one character again.
+_CUT = [f"thumbs {chr(0xD83D)}", f"{chr(0xDC4D)} up", _Ask(f"which {chr(0xD83D)}?")]
+
+
+@pytest.mark.parametrize("terminal", [False, True], ids=["a pipe or a file", "a terminal"])
+async def test_a_reply_that_arrives_cut_inside_an_emoji_is_printed_with_u_fffd_for_each_half(
+    monkeypatch: pytest.MonkeyPatch, terminal: bool
+) -> None:
+    _listing(monkeypatch, [], target=_WRITER, served=_CUT)
+    io, rec = recording_io(_ENV, [], out_is_terminal=terminal, err_is_terminal=terminal)
+    assert await run_command(["prompt", "writer", "hi"], io) == EXIT_OK
+    assert rec.out == f"thumbs {_FFFD}{_FFFD} up\n"
+    assert f"? which {_FFFD}?\n" in rec.err
+    # What a stream that writes UTF-8 takes.
+    assert (rec.out + rec.err).encode()
+
+
+async def test_json_gives_a_reply_cut_inside_an_emoji_whole_the_typescript_commands_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, [], target=_WRITER, served=_CUT)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["prompt", "writer", "hi", "--json"], io) == EXIT_OK
+    assert rec.out.encode() == (
+        f'{{"root":"{"0" * 32}","text":"thumbs {chr(0x1F44D)} up","references":[]}}\n'.encode()
+    )
+
+
+# A stdout that is not UTF-8, a terminal set to Latin-1, cannot hold every
+# character an agent registered or replied: U+FFFD among them, which the list
+# prints for half a character. Python's stdout stops at the first such
+# character. ``main`` has both outputs write ``?`` in its place.
+def _latin_1(errors: str) -> tuple[stdio.TextIOWrapper, stdio.BytesIO]:
+    raw = stdio.BytesIO()
+    return stdio.TextIOWrapper(raw, encoding="iso8859-1", errors=errors), raw
+
+
+def test_main_has_a_stream_that_would_stop_replace_what_it_cannot_encode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out, raw_out = _latin_1("strict")
+    err, raw_err = _latin_1("backslashreplace")
+    monkeypatch.setattr(cli.sys, "stdout", out)
+    monkeypatch.setattr(cli.sys, "stderr", err)
+    assert cli.main(["--help"]) == EXIT_OK
+    # A stream that stopped replaces; one that already wrote something in the
+    # character's place, as stderr does, is left as it is.
+    assert (out.errors, err.errors) == ("replace", "backslashreplace")
+    out.write(f"caf\u00e9 \u2192 {_FFFD}\n")
+    out.flush()
+    assert raw_out.getvalue().endswith(b"caf\xe9 ? ?\n")
+    assert raw_err.getvalue() == b""
+
+
+def test_main_leaves_a_stream_it_cannot_tell_as_it_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    out = stdio.StringIO()  # not a text file over bytes: nothing to encode
+    monkeypatch.setattr(cli.sys, "stdout", out)
+    assert cli.main(["--help"]) == EXIT_OK
+    assert out.getvalue() == f"{USAGE}\n"

@@ -259,6 +259,40 @@ describe("prompt, the reply and a question", () => {
   });
 });
 
+// A reply cut inside an emoji: its two chunks each hold half a character,
+// which cannot be written as UTF-8. The Python command stopped there with
+// nothing printed. Both commands write U+FFFD for each half, and the whole
+// reply in --json, where the halves are one character again.
+describe("prompt, a reply that arrives cut inside an emoji", () => {
+  const FFFD = String.fromCodePoint(0xfffd);
+
+  beforeEach(() => {
+    world.served = [
+      `thumbs ${String.fromCharCode(0xd83d)}`,
+      `${String.fromCharCode(0xdc4d)} up`,
+      { ask: `which ${String.fromCharCode(0xd83d)}?` },
+    ];
+  });
+
+  it.each([
+    ["a pipe or a file", {}],
+    ["a terminal", { out: true, err: true }],
+  ])("prints it, to %s, with U+FFFD for each half", async (_name, terminal) => {
+    const io = recordingIO(ENV, [], terminal);
+    expect(await runCommand(["prompt", "writer", "hi"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(`thumbs ${FFFD}${FFFD} up\n`);
+    expect(io.stderr()).toContain(`? which ${FFFD}?\n`);
+  });
+
+  it("gives the whole reply in --json, the emoji whole: the bytes the Python command writes", async () => {
+    const io = recordingIO(ENV);
+    expect(await runCommand(["prompt", "writer", "hi", "--json"], io)).toBe(EXIT_OK);
+    expect(io.stdout()).toBe(
+      `{"root":"${"0".repeat(32)}","text":"thumbs ${String.fromCodePoint(0x1f44d)} up","references":[]}\n`,
+    );
+  });
+});
+
 describe("agents", () => {
   // Three emoji held together by two zero width joiners, which stay.
   const FAMILY = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);

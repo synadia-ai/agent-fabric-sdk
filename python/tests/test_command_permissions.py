@@ -80,6 +80,10 @@ async def world(nats_server_operator: RunningServer) -> AsyncIterator[World]:
             # A question and a reply with escape sequences in them.
             await stream.ask(PAINT_QUESTION, timeout=3.0)
             await stream.send(PAINT_REPLY)
+        elif envelope.prompt.startswith("cut:"):
+            # A reply cut inside an emoji: each chunk holds half of it.
+            await stream.send("thumbs " + chr(0xD83D))
+            await stream.send(chr(0xDC4D) + " up")
         elif envelope.prompt.startswith("ask:"):
             answer = await stream.ask("which colour?", timeout=3.0)
             w.answers.append(answer.prompt)
@@ -132,6 +136,8 @@ _ESC = b"\x1b"
 both_commands = pytest.mark.skipif(
     shutil.which("node") is None or not _TS_CLI.exists(), reason="no node or no TypeScript build"
 )
+
+needs_a_terminal = pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
 
 
 async def _run(
@@ -269,7 +275,7 @@ async def test_both_commands_and_examples_print_what_an_agent_registered_as_plai
 
 
 @both_commands
-@pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
+@needs_a_terminal
 async def test_both_commands_send_a_terminal_no_escape_sequence_and_a_pipe_the_exact_reply(
     world: World,
 ) -> None:
@@ -355,6 +361,88 @@ async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_char
     assert typescript_json[0] == 0
     assert b'"description":"cut in an emoji \\ud83d"' in typescript_json[1]
     assert python_json == typescript_json
+
+
+@both_commands
+@needs_a_terminal
+async def test_both_commands_print_a_reply_cut_inside_an_emoji_in_the_same_bytes(
+    world: World,
+) -> None:
+    # The writer's reply comes in two chunks, cut inside an emoji: each holds
+    # half a character, which cannot be written as UTF-8. The Python command
+    # exited 1 with nothing printed. Both print U+FFFD for each half.
+    prompt = ("prompt", "writer", "cut: it", "--creds", str(ERIN), "--url", world.server.url)
+    fffd = chr(0xFFFD)
+    for program in (_PYTHON, _TYPESCRIPT):
+        code, out, _err = await _run(program, *prompt)
+        assert (code, out) == (0, f"thumbs {fffd}{fffd} up\n".encode())
+        code, shown, _err = await _run_on_terminal(program, *prompt, terminal="stdout")
+        assert (code, shown) == (0, f"thumbs {fffd}{fffd} up\n".encode())
+    # In --json the reply is one text, and the two halves one character again.
+    as_json = [await _run(program, *prompt, "--json") for program in (_PYTHON, _TYPESCRIPT)]
+    assert [code for code, _out, _err in as_json] == [0, 0]
+    texts = [re.sub(rb'"root":"[0-9a-f]{32}"', b'"root":""', out) for _code, out, _err in as_json]
+    assert texts[0] == texts[1]
+    assert texts[0] == f'{{"root":"","text":"thumbs {chr(0x1F44D)} up","references":[]}}\n'.encode()
+
+
+@pytest.mark.parametrize(
+    ("env", "exact"),
+    [
+        # A terminal set to Latin-1, where the system has that locale.
+        ({"LC_ALL": "en_US.ISO8859-1", "PYTHONUTF8": "0", "PYTHONIOENCODING": ""}, False),
+        # The same encoding on any system.
+        ({"PYTHONIOENCODING": "iso8859-1"}, True),
+    ],
+    ids=["LC_ALL", "PYTHONIOENCODING"],
+)
+async def test_lists_every_agent_on_a_stdout_that_is_not_utf8(
+    world: World, env: dict[str, str], exact: bool
+) -> None:
+    # Three agents. Two descriptions hold what Latin-1 cannot: an arrow, and
+    # U+FFFD, which the list prints for half a character. Python's stdout
+    # stopped at the first of them. It writes ``?`` there, and every agent.
+    async def serve(kind: str, name: str, description: str) -> AgentService:
+        svc = AgentService(
+            nc=world.alice,
+            agent=kind,
+            owner="fabric",
+            session_name=name,
+            description=description,
+            heartbeat_interval_s=3600,
+            keepalive_interval_s=None,
+        )
+        svc.on_prompt(lambda _envelope, _stream: asyncio.sleep(0))
+        await svc.start()
+        return svc
+
+    extra = [
+        await serve("archive", "a1", "Keeps the caf\u00e9's orders \u2192 ask it."),
+        await serve("cutter", "c1", "cut in an emoji " + chr(0xD83D)),
+    ]
+    try:
+        code, out, err = await _run(
+            _PYTHON, "agents", "--creds", str(ERIN), "--url", world.server.url, env=env
+        )
+    finally:
+        for svc in extra:
+            await svc.stop()
+
+    assert (code, err) == (0, f"url {world.server.url}\n".encode())
+    rows = [line.split(b"\t")[0] for line in out.splitlines() if not line.startswith(b"\t")]
+    assert rows == [
+        b"agents.prompt.archive.fabric.a1",
+        b"agents.prompt.cutter.fabric.c1",
+        world.address.encode(),
+    ]
+    if exact:
+        assert out == (
+            b"agents.prompt.archive.fabric.a1\tarchive\tagent identity: none\n"
+            b"\tKeeps the caf\xe9's orders ? ask it.\n"
+            b"agents.prompt.cutter.fabric.c1\tcutter\tagent identity: none\n"
+            b"\tcut in an emoji ?\n"
+            + f"{world.address}\twriter\tagent identity: none\n\twrites\n".encode()
+        )
 
 
 async def test_streams_the_reply_and_the_root_and_reference_on_stderr(world: World) -> None:

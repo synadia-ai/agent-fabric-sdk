@@ -14,7 +14,9 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- `--json` no longer stops with a `UnicodeEncodeError` when a field of a listed agent, or a reply, holds half a character (a surrogate that is not part of a pair). It is written as its JSON escape, the bytes the TypeScript command writes, and a reader gets the same text back.
+- `--json` no longer stops with a `UnicodeEncodeError` when a field of a listed agent, or a reply, holds half a character (a surrogate that is not part of a pair). It is written as its JSON escape, the bytes the TypeScript command writes, and a reader gets the same text back. Two halves of one character that came in two chunks of a reply are that character again, as in the TypeScript command.
+- `agent-fabric prompt` no longer exits 1 with nothing printed when the reply, or a question, holds half a character, as a reply cut inside an emoji does. U+FFFD is written in its place, the bytes the TypeScript command writes.
+- The command no longer stops with a `UnicodeEncodeError` on a stdout that is not UTF-8, such as a terminal set to Latin-1. A character the encoding cannot hold is written as `?`; before, `agent-fabric agents` stopped at the first description that held one. Both outputs are set so when the command starts, unless they already write something in such a character's place, as stderr does.
 
 ## [0.2.0] — 2026-10-21
 

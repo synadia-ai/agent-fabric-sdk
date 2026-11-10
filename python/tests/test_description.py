@@ -16,6 +16,7 @@ from synadia_ai.agent_fabric._description import (
     DESCRIPTION_LIMIT,
     clean_description,
     terminal_text,
+    well_formed,
 )
 
 VECTORS = json.loads(
@@ -82,3 +83,13 @@ def test_terminal_text_leaves_every_kind_of_space_and_separator() -> None:
     # They are not control characters.
     spaces = "".join(map(chr, (0x20, 0xA0, 0x2003, 0x3000, 0x2028, 0x2029)))
     assert terminal_text(spaces) == spaces
+
+
+def test_well_formed_writes_u_fffd_for_half_a_character_and_changes_nothing_else() -> None:
+    high, low = chr(0xD83D), chr(0xDC4D)
+    rest = "\u001b[2J\ttab\r\n" + "".join(map(chr, (0x202E, 0x200D, 0xA0)))
+    assert well_formed(f"{rest}{high}") == f"{rest}{_FFFD}"
+    assert well_formed(f"{low}{rest}{low}{high}") == f"{_FFFD}{rest}{_FFFD}{_FFFD}"
+    assert well_formed(f"{chr(0x1F44D)}{rest}") == f"{chr(0x1F44D)}{rest}"
+    # The text can be written as UTF-8.
+    assert well_formed(f"{high}{rest}{low}").encode()

@@ -21,7 +21,10 @@ the same characters become a space or U+FFFD, and nothing is collapsed or cut.
 A reply and a question are another agent's text as well, over as many lines as
 the agent wrote. :func:`terminal_text` is for a terminal: the line breaks and
 the tabs stay, and every other control or format character is shown as U+FFFD,
-so an escape sequence is printed and never run.
+so an escape sequence is printed and never run. For a pipe or a file the text is
+left as it came, but for half a character, which UTF-8 cannot hold and Python
+cannot write: :func:`well_formed` writes U+FFFD for it, as the TypeScript
+command does.
 """
 
 from __future__ import annotations
@@ -49,6 +52,12 @@ def _plain(ch: str) -> str:
     if category == "Cs":
         return _REPLACEMENT
     return " " if category in _NOT_PLAIN and ch not in _KEPT else ch
+
+
+def well_formed(text: str) -> str:
+    """``text`` with U+FFFD for half a character, and nothing else changed: the
+    text a program that writes UTF-8 can write."""
+    return "".join(_REPLACEMENT if unicodedata.category(ch) == "Cs" else ch for ch in text)
 
 
 # The categories of a code point that a terminal may act on instead of showing

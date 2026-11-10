@@ -5,7 +5,12 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { cleanDescription, DESCRIPTION_LIMIT, terminalText } from "../../src/description.js";
+import {
+  cleanDescription,
+  DESCRIPTION_LIMIT,
+  terminalText,
+  wellFormed,
+} from "../../src/description.js";
 
 const vectors = JSON.parse(
   readFileSync(
@@ -75,5 +80,16 @@ describe("terminalText", () => {
   it("leaves every kind of space and separator: they are not control characters", () => {
     const spaces = at(0x20, 0xa0, 0x2003, 0x3000, 0x2028, 0x2029);
     expect(terminalText(spaces)).toBe(spaces);
+  });
+});
+
+describe("wellFormed", () => {
+  it("writes U+FFFD for half a character and changes nothing else", () => {
+    const [high, low] = [String.fromCharCode(0xd83d), String.fromCharCode(0xdc4d)];
+    const fffd = String.fromCodePoint(0xfffd);
+    const rest = `\u001b[2J\ttab\r\n${String.fromCodePoint(0x202e, 0x200d, 0xa0)}`;
+    expect(wellFormed(`${rest}${high}`)).toBe(`${rest}${fffd}`);
+    expect(wellFormed(`${low}${rest}${low}${high}`)).toBe(`${fffd}${rest}${fffd}${fffd}`);
+    expect(wellFormed(`${high}${low}${rest}`)).toBe(`${String.fromCodePoint(0x1f44d)}${rest}`);
   });
 });
