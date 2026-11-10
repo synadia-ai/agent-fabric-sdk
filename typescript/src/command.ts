@@ -13,7 +13,7 @@ import {
   fabricCaller,
   type FabricCaller,
 } from "./caller.js";
-import { cleanDescription } from "./description.js";
+import { cleanDescription, plainLine } from "./description.js";
 import { findReferences } from "./scratchpad.js";
 
 /** Success. */
@@ -237,7 +237,11 @@ async function listAgents(caller: FabricCaller, json: boolean, io: CommandIO): P
   }
   if (lines.length === 0) io.err("no agents\n");
   for (const l of lines) {
-    io.out(`${l.address}\t${l.kind}\t${describeIdentity(l)}\n`);
+    // Every field is text an agent registered, the kind as free as the
+    // description: each is printed as plain text, so a control character in
+    // one neither reaches the terminal nor adds a column or a row.
+    const row = [l.address, l.kind, describeIdentity(l)].map((field) => plainLine(String(field)));
+    io.out(`${row.join("\t")}\n`);
     // What the agent says it does, under its row: one line of plain text,
     // whatever was registered (`description.ts`), and no line for a service
     // that registered none. `--json` has it as it is.

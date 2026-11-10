@@ -19,7 +19,7 @@ from typing import Literal
 
 from synadia_ai.agents import Agent, Query, ResponseChunk
 
-from ._description import clean_description
+from ._description import clean_description, plain_line
 from .caller import (
     CANNOT_ANSWER,
     NATS_CREDS_VAR,
@@ -243,7 +243,11 @@ async def _list_agents(caller: FabricCaller, as_json: bool, io: CommandIO) -> in
     if not ordered:
         io.err("no agents\n")
     for line in ordered:
-        io.out(f"{line['address']}\t{line['kind']}\t{_describe_identity(line)}\n")
+        # Every field is text an agent registered, the kind as free as the
+        # description: each is printed as plain text, so a control character in
+        # one neither reaches the terminal nor adds a column or a row.
+        row = (line["address"], line["kind"], _describe_identity(line))
+        io.out("\t".join(plain_line(str(field)) for field in row) + "\n")
         # What the agent says it does, under its row: one line of plain text,
         # whatever was registered (``_description.py``). ``--json`` has it as it is.
         description = clean_description(str(line["description"]))

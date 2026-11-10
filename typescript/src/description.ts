@@ -1,5 +1,6 @@
-// An agent's description, as the `agent-fabric` command shows it: one line
-// of plain text. Not part of the package's exports.
+// What an agent registered, as the `agent-fabric` command shows it: plain
+// text, and for the description one line of it. Not part of the package's
+// exports.
 //
 // A description is free text the agent's own side registered. Before the
 // command prints one, half a character (a surrogate that is not part of a
@@ -13,6 +14,11 @@
 // terminal. Printable characters are never changed; a character is a
 // Unicode code point. Mirrors `synadia_ai/agent_fabric/_description.py`,
 // with the same test vectors.
+//
+// The other fields of a listed agent, its address, its kind and its
+// identity, are registered text too. `plainLine` applies the rule's first
+// step to one: the same characters become a space or U+FFFD, and nothing is
+// collapsed or cut.
 
 /** The most characters, counted as Unicode code points, a description has. */
 export const DESCRIPTION_LIMIT = 500;
@@ -33,6 +39,17 @@ function plain(point: string): string {
   if (code !== undefined && code >= 0xd800 && code <= 0xdfff) return REPLACEMENT;
   if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) return point;
   return NOT_PLAIN.test(point) ? " " : point;
+}
+
+/**
+ * `text` as it can be printed inside a line: every control, invisible,
+ * line-break and space character as a plain space, half a character as
+ * U+FFFD, everything else as it is. As many characters as it had.
+ */
+export function plainLine(text: string): string {
+  let line = "";
+  for (const point of text) line += plain(point);
+  return line;
 }
 
 /** `text` as one line of plain text of at most 500 characters; empty when nothing is left. */

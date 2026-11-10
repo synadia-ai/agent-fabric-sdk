@@ -144,4 +144,60 @@ describe("agents", () => {
         "\tThird.\n",
     );
   });
+
+  // The kind, the address and the identity are text an agent registered too:
+  // `metadata.agent` is as free as the description.
+  describe("the row's own fields", () => {
+    const ESC = String.fromCharCode(0x1b);
+    const OVERRIDE = String.fromCodePoint(0x202e); // right-to-left override
+    const HALF = String.fromCharCode(0xdc80); // half a character
+    const KIND = `wri${ESC}[31mter\tk2`;
+
+    beforeEach(() => {
+      world.agents = [
+        {
+          promptSubject: "agents.prompt.w\nx",
+          agent: KIND,
+          identity: `ACCOUNT${OVERRIDE}.USER`,
+          idSigVerified: true,
+          description: "Writes.",
+        },
+        { ...listed("agents.prompt.z", "Last."), agent: `half${HALF}` },
+      ];
+    });
+
+    it("are printed as plain text: an escape character in the kind does not reach the terminal", async () => {
+      const io = recordingIO(ENV);
+      expect(await runCommand(["agents"], io)).toBe(EXIT_OK);
+      expect(io.stdout()).toBe(
+        // The escape character and the tab in the kind, the line break in the
+        // address, the override in the identity: a space each, nothing cut.
+        "agents.prompt.w x\twri [31mter k2\tagent ACCOUNT .USER, verified\n" +
+          "\tWrites.\n" +
+          `agents.prompt.z\thalf${String.fromCodePoint(0xfffd)}\tagent identity: none\n` +
+          "\tLast.\n",
+      );
+    });
+
+    it("are left as they were registered in --json", async () => {
+      const io = recordingIO(ENV);
+      expect(await runCommand(["agents", "--json"], io)).toBe(EXIT_OK);
+      expect(JSON.parse(io.stdout())).toEqual([
+        {
+          address: "agents.prompt.w\nx",
+          kind: KIND,
+          identity: `ACCOUNT${OVERRIDE}.USER`,
+          verified: true,
+          description: "Writes.",
+        },
+        {
+          address: "agents.prompt.z",
+          kind: `half${HALF}`,
+          identity: null,
+          verified: false,
+          description: "Last.",
+        },
+      ]);
+    });
+  });
 });

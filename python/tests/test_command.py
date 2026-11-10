@@ -126,7 +126,7 @@ class _A:
     prompt_subject: str
     description: str = ""
     agent: str = "k"
-    identity: None = None
+    identity: str | None = None
     id_sig_verified: bool = False
 
 
@@ -234,3 +234,63 @@ async def test_lists_every_agent_when_a_description_holds_half_a_character(
     )
     # What a terminal takes: the whole output can be written as UTF-8.
     assert rec.out.encode()
+
+
+# The kind, the address and the identity are text an agent registered too:
+# ``metadata.agent`` is as free as the description.
+_ESC = chr(0x1B)
+_OVERRIDE = chr(0x202E)  # right-to-left override
+_HALF = chr(0xDC80)  # half a character
+_KIND = f"wri{_ESC}[31mter\tk2"
+_RAW_FIELDS = [
+    _A(
+        "agents.prompt.w\nx",
+        "Writes.",
+        agent=_KIND,
+        identity=f"ACCOUNT{_OVERRIDE}.USER",
+        id_sig_verified=True,
+    ),
+    _A("agents.prompt.z", "Last.", agent=f"half{_HALF}"),
+]
+
+
+async def test_the_rows_own_fields_are_printed_as_plain_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, _RAW_FIELDS)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["agents"], io) == EXIT_OK
+    assert rec.out == (
+        # The escape character and the tab in the kind, the line break in the
+        # address, the override in the identity: a space each, nothing cut.
+        "agents.prompt.w x\twri [31mter k2\tagent ACCOUNT .USER, verified\n"
+        "\tWrites.\n"
+        f"agents.prompt.z\thalf{chr(0xFFFD)}\tagent identity: none\n"
+        "\tLast.\n"
+    )
+    # What a terminal takes: the whole output can be written as UTF-8.
+    assert rec.out.encode()
+
+
+async def test_the_rows_own_fields_are_left_as_they_were_registered_in_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, _RAW_FIELDS)
+    io, rec = recording_io(_ENV)
+    assert await run_command(["agents", "--json"], io) == EXIT_OK
+    assert json.loads(rec.out) == [
+        {
+            "address": "agents.prompt.w\nx",
+            "kind": _KIND,
+            "identity": f"ACCOUNT{_OVERRIDE}.USER",
+            "verified": True,
+            "description": "Writes.",
+        },
+        {
+            "address": "agents.prompt.z",
+            "kind": f"half{_HALF}",
+            "identity": None,
+            "verified": False,
+            "description": "Last.",
+        },
+    ]

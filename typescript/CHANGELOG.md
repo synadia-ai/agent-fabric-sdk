@@ -32,14 +32,16 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- `agent-fabric agents` prints each agent's description, what the agent says it does, on a line
-  of its own under the agent's row, after a tab. The description is printed as one line of plain
-  text: a line break, a tab, a control or an invisible character becomes a space (the zero width
-  joiner and non-joiner stay), half a character (a surrogate that is not part of a pair) becomes
-  U+FFFD, runs of spaces become one, and a text longer than 500 characters is cut. So a
-  description cannot break the list, stop it, or reach the terminal as an escape sequence. An
-  agent with no description has no such line. `--json` gives the description as it was
-  registered, as before.
+- `agent-fabric agents`, text output: each agent's description, what the agent says it does, is
+  printed on a line of its own under the agent's row, after a tab; an agent with no description has
+  no such line. Everything the list prints is text an agent registered, and all of it is printed as
+  plain text. In every field, the address, the kind, the identity and the description, a line break,
+  a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner
+  stay), and half a character (a surrogate that is not part of a pair) becomes U+FFFD. The
+  description is also brought to one line: runs of spaces become one, and a text longer than 500
+  characters is cut. So nothing an agent registered adds a row or a column, stops the list, or
+  reaches the terminal as an escape sequence. `--json` gives every field as it was registered, as
+  before.
 - `resolveScratchPad`, the add-ons' ScratchPad settings, takes the connection the plugin's
   channel takes, so `sp` connects to the agent's server as the agent. After
   `options.scratchpad`'s `url` and `creds`, field by field: a non-empty `NATS_CONTEXT`'s

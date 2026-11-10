@@ -1,5 +1,6 @@
-"""An agent's description, as the ``agent-fabric`` command shows it: one line
-of plain text. Not part of the package's exports.
+"""What an agent registered, as the ``agent-fabric`` command shows it: plain
+text, and for the description one line of it. Not part of the package's
+exports.
 
 A description is free text the agent's own side registered. Before the command
 prints one, half a character (a surrogate that is not part of a pair) becomes
@@ -12,6 +13,10 @@ So a description is always one line that can be printed, and no escape sequence
 in it reaches the terminal. Printable characters are never changed; a character
 is a Unicode code point. Mirrors ``typescript/src/description.ts``, with the
 same test vectors.
+
+The other fields of a listed agent, its address, its kind and its identity, are
+registered text too. :func:`plain_line` applies the rule's first step to one:
+the same characters become a space or U+FFFD, and nothing is collapsed or cut.
 """
 
 from __future__ import annotations
@@ -41,10 +46,16 @@ def _plain(ch: str) -> str:
     return " " if category in _NOT_PLAIN and ch not in _KEPT else ch
 
 
+def plain_line(text: str) -> str:
+    """``text`` as it can be printed inside a line: every control, invisible,
+    line-break and space character as a plain space, half a character as
+    U+FFFD, everything else as it is. As many characters as it had."""
+    return "".join(_plain(ch) for ch in text)
+
+
 def clean_description(text: str) -> str:
     """``text`` as one line of plain text of at most 500 characters; empty when nothing is left."""
-    spaced = "".join(_plain(ch) for ch in text)
-    line = " ".join(part for part in spaced.split(" ") if part)
+    line = " ".join(part for part in plain_line(text).split(" ") if part)
     if len(line) <= DESCRIPTION_LIMIT:
         return line
     return line[:DESCRIPTION_LIMIT].rstrip(" ")
