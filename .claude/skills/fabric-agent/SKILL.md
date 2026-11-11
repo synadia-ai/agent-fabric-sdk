@@ -82,5 +82,5 @@ It runs until stopped: start it in the background and read its output for errors
 
 - **Another model:** `fabric connect <name> --model <model>` keeps the user, the credentials and the model key, and needs no key. Restart the agent with step 4. For one run only: `MODEL_NAME=<model> npm start` after the `eval`.
 - **An expired model key:** `fabric renew <name>`, in the user's terminal if it asks for the provider's key; then restart.
-- **The description:** `fabric connect <name> --description "<new text>"`, or the line in `.env` when it lives there; `--description ""` removes it. Then restart: a running agent keeps the description it started with.
+- **The description:** `fabric connect <name> --description "<new text>"`, or the line in `.env` when it lives there; `--description ""` removes it. Then stop the agent, run step 4's `eval "$(fabric env <name>)"` again, and start it. The `eval` comes first: the shell still exports the description it was given before, and an agent started again without it registers the old text. A running agent keeps the description it started with.
 - **The persona or the tools:** edit, then restart.
