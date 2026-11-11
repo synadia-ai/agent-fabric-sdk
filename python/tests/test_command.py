@@ -8,12 +8,14 @@ registered or sent. The TypeScript suite's ``command.test.ts`` and
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io as stdio
 import json
+import logging
 import re
 import shutil
 import subprocess
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -569,3 +571,77 @@ def test_main_leaves_a_stream_it_cannot_tell_as_it_is(monkeypatch: pytest.Monkey
     monkeypatch.setattr(cli.sys, "stdout", out)
     assert cli.main(["--help"]) == EXIT_OK
     assert out.getvalue() == f"{USAGE}\n"
+
+
+# A program that set up no logging has Python write a log record to stderr as
+# it is. The protocol SDK's client logs what an agent sent, the words of a
+# refusal among it. ``main`` has every record written as one line of plain
+# text, and leaves the protocol SDK's warnings out, as the TypeScript command
+# does.
+@contextlib.contextmanager
+def _no_logging_set_up() -> Iterator[logging.Logger]:
+    """The root logger without a handler, as a program that set up no logging
+    has it. pytest hangs its own on it while a test runs: they are put back."""
+    root = logging.getLogger()
+    theirs = root.handlers[:]
+    for handler in theirs:
+        root.removeHandler(handler)
+    try:
+        yield root
+    finally:
+        for handler in root.handlers[:]:
+            root.removeHandler(handler)
+        for handler in theirs:
+            root.addHandler(handler)
+
+
+async def _logs(_argv: Sequence[str], _io: cli.CommandIO) -> int:
+    """In the command's place: what a library and the two SDKs may log while it runs."""
+    logging.getLogger("some.library").warning("a\x1b[2J\n%s", "b")
+    logging.getLogger("synadia_ai.agent_fabric").warning("nats: %s", "no\x1b[31m route")
+    sdk = logging.getLogger("synadia_ai.agents.agent")
+    sdk.warning("service error on %s: code=%s desc=%s", "_INBOX.x", "500", "no\x1b[2J way")
+    sdk.error("mux: route message hook failed (subject=%s)", "agents.\x1b[2J")
+    logging.getLogger("synadia_ai.agents").warning("the same family")
+    logging.getLogger("synadia_ai.agent_service").warning("another package")
+    return EXIT_OK
+
+
+def test_main_prints_a_log_record_as_one_line_of_plain_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    err = stdio.StringIO()
+    monkeypatch.setattr(cli.sys, "stderr", err)
+    monkeypatch.setattr(cli, "run_command", _logs)
+    with _no_logging_set_up():
+        assert cli.main(["agents"]) == EXIT_OK
+    # No escape character and no line break of a record's own. The protocol
+    # SDK's two warnings are not there; its error is.
+    assert err.getvalue() == (
+        "a [2J b\n"
+        "nats: no [31m route\n"
+        "mux: route message hook failed (subject=agents. [2J)\n"
+        "another package\n"
+    )
+
+
+def test_main_leaves_the_logging_a_program_set_up_as_it_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    err = stdio.StringIO()
+    monkeypatch.setattr(cli.sys, "stderr", err)
+    monkeypatch.setattr(cli, "run_command", _logs)
+    seen: list[str] = []
+
+    class Mine(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.append(record.getMessage())
+
+    mine = Mine()
+    with _no_logging_set_up() as root:
+        root.addHandler(mine)
+        assert cli.main(["agents"]) == EXIT_OK
+        assert root.handlers == [mine]
+    # Every record went to the program's own handler, as it was logged.
+    assert len(seen) == 6 and seen[0] == "a\x1b[2J\nb"
+    assert err.getvalue() == ""

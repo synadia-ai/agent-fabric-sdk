@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import os
 import re
@@ -356,6 +357,42 @@ def _never_stopping(stream: object) -> None:
         reconfigure(errors="replace")
 
 
+# The protocol SDK's loggers: this one and the ones under it.
+_PROTOCOL_SDK = "synadia_ai.agents"
+
+
+class _PlainLog(logging.Handler):
+    """A log record as the command prints everything else: one line of plain text.
+
+    The protocol SDK's client logs a warning that quotes what an agent sent:
+    the words of a refusal, the subject of a heartbeat it could not read. In
+    a program that set up no logging, Python writes such a record to stderr
+    as it is, an escape sequence in it too. This handler writes the record's
+    message by the rule for a field (``plain_line``), through the command's
+    own stderr.
+
+    The protocol SDK's records below an error are not printed. They repeat
+    what the command prints itself, a refusal after ``no reply:``, or tell of
+    something it passes over. The TypeScript command prints none of them, and
+    the two commands write the same lines.
+    """
+
+    def __init__(self, write: Callable[[str], None]) -> None:
+        super().__init__()
+        self._write = write
+
+    def emit(self, record: logging.LogRecord) -> None:
+        name = record.name
+        if record.levelno < logging.ERROR and (
+            name == _PROTOCOL_SDK or name.startswith(f"{_PROTOCOL_SDK}.")
+        ):
+            return
+        try:
+            self._write(f"{plain_line(record.getMessage())}\n")
+        except Exception:
+            self.handleError(record)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """The console script: run the command on the process's own streams."""
     _never_stopping(sys.stdout)
@@ -368,6 +405,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         out_is_terminal=sys.stdout.isatty(),
         err_is_terminal=sys.stderr.isatty(),
     )
+    # A program that set up logging itself keeps what it set up.
+    root = logging.getLogger()
+    if not root.handlers:
+        root.addHandler(_PlainLog(io.err))
     return asyncio.run(run_command(sys.argv[1:] if argv is None else argv, io))
 
 

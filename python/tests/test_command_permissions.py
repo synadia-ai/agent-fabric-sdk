@@ -8,6 +8,7 @@ stdin, and the exit codes. The TypeScript suite's ``command.test.ts``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -272,6 +273,94 @@ async def test_both_commands_and_examples_print_what_an_agent_registered_as_plai
     assert rows[0] == rows[1]
     assert address + b"\twri [31mter\tagent identity: none" in rows[0]
     assert all(_ESC not in out for _code, out, _err in examples)
+
+
+def _root_masked(err: bytes) -> bytes:
+    """stderr with the task's root id, which differs from run to run, taken out."""
+    return re.sub(rb"root [0-9a-f]{32}", b"root", err)
+
+
+@both_commands
+async def test_both_commands_print_a_refused_prompt_in_the_same_bytes(world: World) -> None:
+    # The writer's handler raises for a prompt that starts with ``fail:``, and
+    # its host refuses the prompt with ``handler error``. The protocol SDK's
+    # Python client logs a warning for a refusal, and Python wrote it to
+    # stderr: one line more than the TypeScript command, which logs nothing.
+    prompt = ("prompt", "writer", "fail: now", "--creds", str(ERIN), "--url", world.server.url)
+    refused = [await _run(program, *prompt) for program in (_PYTHON, _TYPESCRIPT)]
+    python, typescript = [(code, out, _root_masked(err)) for code, out, err in refused]
+    assert python == typescript
+    assert python == (
+        1,
+        b"",
+        f"url {world.server.url}\n→ {world.address} (agent identity: none)\nroot\n"
+        "agent-fabric: no reply: service error 500: handler error\n".encode(),
+    )
+
+
+@both_commands
+async def test_both_commands_print_a_refusals_words_as_plain_text_and_nothing_of_a_log(
+    world: World,
+) -> None:
+    # A program that speaks NATS refuses every prompt with words of its own:
+    # an escape sequence that clears the screen. The words are printed once,
+    # after ``no reply:``, as plain text. The warning the protocol SDK's Python
+    # client logs for the refusal quoted them as they came, and Python wrote
+    # it to stderr.
+    address = "agents.prompt.refuser.fabric.raw"
+
+    async def refuse(msg: Msg) -> None:
+        await world.alice.publish(
+            msg.reply,
+            b"",
+            headers={"Nats-Service-Error-Code": "500", "Nats-Service-Error": "no\x1b[2J way"},
+        )
+
+    registered = await _registered(world, "refuser", address)
+    serving = await world.alice.subscribe(address, cb=refuse)
+    await world.alice.flush()
+    prompt = ("prompt", "refuser", "hi", "--creds", str(ERIN), "--url", world.server.url)
+    try:
+        refused = [await _run(program, *prompt) for program in (_PYTHON, _TYPESCRIPT)]
+    finally:
+        await serving.unsubscribe()
+        await registered.unsubscribe()
+    python, typescript = [(code, out, _root_masked(err)) for code, out, err in refused]
+    assert _ESC not in python[2] and _ESC not in typescript[2]
+    assert python == typescript
+    assert python == (
+        1,
+        b"",
+        f"url {world.server.url}\n→ {address} (agent identity: none)\nroot\n"
+        "agent-fabric: no reply: service error 500: no [2J way\n".encode(),
+    )
+
+
+@both_commands
+async def test_both_commands_print_nothing_for_a_heartbeat_they_cannot_read(world: World) -> None:
+    # Any program of the account can publish where the heartbeats go. One
+    # publishes what is no heartbeat, on a subject that holds an escape
+    # sequence, twenty times a second. The protocol SDK's Python client logs a
+    # warning with the subject for each, and Python wrote them to stderr, for
+    # whoever listed the agents. Neither command prints a line for them.
+    async def beat() -> None:
+        while True:
+            await world.alice.publish("agents.hb.x\x1b[2J.fabric.s", b"not json")
+            await asyncio.sleep(0.05)
+
+    beating = asyncio.create_task(beat())
+    try:
+        listed = [
+            await _run(program, "agents", "--creds", str(ERIN), "--url", world.server.url)
+            for program in (_PYTHON, _TYPESCRIPT)
+        ]
+    finally:
+        beating.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beating
+    expected = f"{world.address}\twriter\tagent identity: none\n\twrites\n".encode()
+    for code, out, err in listed:
+        assert (code, out, err) == (0, expected, f"url {world.server.url}\n".encode())
 
 
 @both_commands
