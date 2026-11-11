@@ -18,7 +18,9 @@
 // exactly once across both processes; every model call of both processes
 // carried the same two trace headers, the served thread's; the journal's
 // result holds the answer. And the limit, stated: the prompt that was being
-// served when the first process died ended without the reply.
+// served when the first process died ended without the reply. And the
+// durable entry point's description: `AGENT_DESCRIPTION`, given on two lines,
+// is registered as one, and the startup lines say it.
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -40,6 +42,7 @@ const binary = await natsServerOnPath();
 const HERE = import.meta.dirname;
 const AGENT_DIR = join(HERE, "..");
 const ANSWER = "the fabric has agents, and this one survived a crash";
+const DESCRIPTION = "Answers from a journaled run. Survives a restart.";
 
 interface Seen {
   readonly headers: IncomingMessage["headers"];
@@ -155,6 +158,7 @@ describe.skipIf(binary === undefined || engineUnavailable !== undefined)("the du
       AGENT_KIND: "assistant",
       AGENT_OWNER: "test",
       AGENT_NAME: "durable",
+      AGENT_DESCRIPTION: DESCRIPTION.replace(". ", ".\n"),
       AGENT_REPLY_TIMEOUT_MS: "120000",
       SCRATCHPAD_VOLUME: "",
     };
@@ -179,6 +183,13 @@ describe.skipIf(binary === undefined || engineUnavailable !== undefined)("the du
     const first = await startAgent(1);
     const [found] = await caller.discover({ filter: { agent: "assistant" }, timeoutMs: 2_000 });
     expect(found).toBeDefined();
+    // The description, cleaned to one line: registered, and on the startup lines.
+    expect(found!.description).toBe(DESCRIPTION);
+    for (let i = 0; !logs.includes(`description: ${DESCRIPTION}\n`); i += 1) {
+      if (i > 50) throw new Error(`no description line:\n${logs}`);
+      await sleep(100);
+    }
+    expect(logs).toContain("[1] AGENT_DESCRIPTION was cleaned: ");
 
     // The prompt, read in the background: the agent serving it will die.
     const chunks: string[] = [];

@@ -8,9 +8,14 @@ stdin, and the exit codes. The TypeScript suite's ``command.test.ts``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import os
 import re
-from typing import TYPE_CHECKING, Any
+import shutil
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
 
 import nats
 import pytest
@@ -33,6 +38,13 @@ ALICE = identity_fixture("operator/alice.creds")
 ERIN = identity_fixture("operator/erin.creds")
 REF = "sp-r1:rwxmJU9MR2qrq6urq6urq6urq6urq6urAAAAAAAAAAkQb4WlVJM_S1l6lm-1"
 ROOT_LINE = re.compile(r"^root ([0-9a-f]{32})$", re.MULTILINE)
+# What the writer asks and replies to a prompt that starts with ``paint:``: it
+# colours the text, clears the screen and moves up a line.
+PAINT_QUESTION = "which \x1b[31mcolour?"
+PAINT_REPLY = "\x1b[2Jcleared\tthe\nscreen \x1b[1A"
+# What it replies to a prompt that starts with ``accents:``: a character
+# Latin-1 holds, one it does not, and one above U+FFFF.
+ACCENTS_REPLY = f"caf\u00e9 \u2192 {chr(0x1F44D)}"
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -68,7 +80,17 @@ async def world(nats_server_operator: RunningServer) -> AsyncIterator[World]:
     async def handler(envelope: Any, stream: Any) -> None:
         if envelope.prompt.startswith("fail:"):
             raise RuntimeError("refused")
-        if envelope.prompt.startswith("ask:"):
+        if envelope.prompt.startswith("paint:"):
+            # A question and a reply with escape sequences in them.
+            await stream.ask(PAINT_QUESTION, timeout=3.0)
+            await stream.send(PAINT_REPLY)
+        elif envelope.prompt.startswith("accents:"):
+            await stream.send(ACCENTS_REPLY)
+        elif envelope.prompt.startswith("cut:"):
+            # A reply cut inside an emoji: each chunk holds half of it.
+            await stream.send("thumbs " + chr(0xD83D))
+            await stream.send(chr(0xDC4D) + " up")
+        elif envelope.prompt.startswith("ask:"):
             answer = await stream.ask("which colour?", timeout=3.0)
             w.answers.append(answer.prompt)
             await stream.send(f"got {answer.prompt}")
@@ -88,8 +110,8 @@ async def world(nats_server_operator: RunningServer) -> AsyncIterator[World]:
 async def test_lists_the_agents(world: World) -> None:
     io, rec = recording_io(world.env)
     assert await run_command(["agents"], io) == EXIT_OK
-    # The host registers no identity of its own.
-    assert rec.out == f"{world.address}\twriter\tagent identity: none\n"
+    # The host registers no identity of its own. Its description is under its row.
+    assert rec.out == f"{world.address}\twriter\tagent identity: none\n\twrites\n"
     assert rec.err == f"url {world.server.url}\n"
 
 
@@ -105,6 +127,473 @@ async def test_lists_the_agents_as_json(world: World) -> None:
             "description": "writes",
         }
     ]
+
+
+_REPO = Path(__file__).resolve().parents[2]
+_TS_CLI = _REPO / "typescript" / "dist" / "cli.js"
+# The two commands as a person runs them, and the two packaged examples that
+# list the agents.
+_PYTHON = (sys.executable, "-m", "synadia_ai.agent_fabric.cli")
+_TYPESCRIPT = ("node", str(_TS_CLI))
+_PYTHON_EXAMPLE = (sys.executable, str(_REPO / "python" / "examples" / "list_agents.py"))
+_TYPESCRIPT_EXAMPLE = ("node", str(_REPO / "typescript" / "examples" / "list-agents.mjs"))
+_ESC = b"\x1b"
+
+both_commands = pytest.mark.skipif(
+    shutil.which("node") is None or not _TS_CLI.exists(), reason="no node or no TypeScript build"
+)
+
+needs_a_terminal = pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
+
+
+async def _run(
+    program: tuple[str, ...], *args: str, env: dict[str, str] | None = None
+) -> tuple[int | None, bytes, bytes]:
+    """Run a command or an example as a program: its exit code, stdout and stderr."""
+    proc = await asyncio.create_subprocess_exec(
+        *program,
+        *args,
+        env={**os.environ, **(env or {})},
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate()
+    return proc.returncode, out, err
+
+
+# How long a command on a terminal may run, in seconds: many times what any of
+# these runs takes.
+_TERMINAL_LIMIT_S = 60.0
+
+
+async def _run_on_terminal(
+    program: tuple[str, ...],
+    *args: str,
+    terminal: Literal["stdout", "stderr"],
+    limit_s: float = _TERMINAL_LIMIT_S,
+) -> tuple[int | None, bytes, bytes]:
+    """Run a command with a terminal as one of its two outputs.
+
+    Returns its exit code, what the terminal was sent, and the other output,
+    which is a pipe. A command that has not ended after ``limit_s`` seconds
+    is stopped and fails the test, so one that hangs does not hang the suite.
+    """
+    import pty  # noqa: PLC0415 - not on Windows
+    import tty  # noqa: PLC0415
+
+    master, slave = pty.openpty()
+    try:
+        # As the command wrote it: no line break turned into two characters.
+        tty.setraw(slave)
+        pipe = asyncio.subprocess.PIPE
+        proc = await asyncio.create_subprocess_exec(
+            *program,
+            *args,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=slave if terminal == "stdout" else pipe,
+            stderr=slave if terminal == "stderr" else pipe,
+        )
+    finally:
+        os.close(slave)
+
+    def sent() -> bytes:
+        parts: list[bytes] = []
+        while True:
+            try:
+                part = os.read(master, 4096)
+            except OSError:  # how Linux ends a terminal's output
+                break
+            if not part:
+                break
+            parts.append(part)
+        return b"".join(parts)
+
+    try:
+        shown = asyncio.get_running_loop().run_in_executor(None, sent)
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), limit_s)
+        except TimeoutError:
+            # Stopped, the command closes its side of the terminal, which ends
+            # the terminal's output too.
+            proc.kill()
+            await proc.wait()
+            pytest.fail(
+                f"{' '.join((*program, *args))} had not ended after {limit_s:g} s; "
+                f"the terminal was sent {await shown!r}"
+            )
+        return proc.returncode, await shown, out if terminal == "stderr" else err
+    finally:
+        os.close(master)
+
+
+async def _registered(world: World, kind: str, address: str) -> Any:
+    """An agent that registered ``kind`` and ``address`` as they are.
+
+    A program that speaks NATS answers discovery itself, with whatever it
+    likes: here an escape sequence in the kind and in the address, which the
+    protocol SDK's host would not register.
+    """
+    info = json.dumps(
+        {
+            "type": "io.nats.micro.v1.info_response",
+            "name": "agents",
+            "id": "raw1",
+            "version": "0.0.1",
+            "description": "",
+            "metadata": {"agent": kind, "owner": "fabric", "protocol_version": "0.3"},
+            "endpoints": [
+                {"name": "prompt", "subject": address, "queue_group": "agents", "metadata": {}}
+            ],
+        }
+    ).encode()
+
+    async def answer(msg: Msg) -> None:
+        await msg.respond(info)
+
+    sub = await world.alice.subscribe("$SRV.INFO.agents", cb=answer)
+    await world.alice.flush()
+    return sub
+
+
+@both_commands
+async def test_both_commands_and_examples_print_what_an_agent_registered_as_plain_text(
+    world: World,
+) -> None:
+    # An agent whose kind and address hold escape sequences: one that colours
+    # the text, one that clears the screen. Every line that names it, from
+    # either command and either example, has a space where the escape
+    # character was, so the terminal runs nothing.
+    kind = "wri\x1b[31mter"
+    sub = await _registered(world, kind, "agents.prompt.wri\x1b[2Jter.fabric.raw")
+    address = b"agents.prompt.wri [2Jter.fabric.raw"
+    creds = ("--creds", str(ERIN), "--url", world.server.url)
+    try:
+        missing = [await _run(p, "prompt", "nosuch", "hi", *creds) for p in (_PYTHON, _TYPESCRIPT)]
+        found = [
+            await _run(p, "prompt", kind, "hi", "--timeout", "5", *creds)
+            for p in (_PYTHON, _TYPESCRIPT)
+        ]
+        examples = [await _run(p, env=world.env) for p in (_PYTHON_EXAMPLE, _TYPESCRIPT_EXAMPLE)]
+    finally:
+        await sub.unsubscribe()
+
+    # No agent "nosuch": the error names every address that is there.
+    for code, out, err in missing:
+        assert (code, out) == (1, b"")
+        assert err.startswith(
+            f'url {world.server.url}\nagent-fabric: no agent "nosuch"; there: '.encode()
+        )
+        assert address in err and world.address.encode() in err
+        assert _ESC not in err
+    # The one agent of that kind: its address on the line that says who is prompted.
+    for code, _out, err in found:
+        assert code == 1  # nothing serves that address
+        assert b"\xe2\x86\x92 " + address + b" (agent identity: none)\n" in err
+        assert _ESC not in err
+    # The examples print one row per agent, in the order discovery answered.
+    rows = [sorted(out.splitlines()) for _code, out, _err in examples]
+    assert [code for code, _out, _err in examples] == [0, 0]
+    assert rows[0] == rows[1]
+    assert address + b"\twri [31mter\tagent identity: none" in rows[0]
+    assert all(_ESC not in out for _code, out, _err in examples)
+
+
+def _root_masked(err: bytes) -> bytes:
+    """stderr with the task's root id, which differs from run to run, taken out."""
+    return re.sub(rb"root [0-9a-f]{32}", b"root", err)
+
+
+@both_commands
+async def test_both_commands_print_a_refused_prompt_in_the_same_bytes(world: World) -> None:
+    # The writer's handler raises for a prompt that starts with ``fail:``, and
+    # its host refuses the prompt with ``handler error``. The protocol SDK's
+    # Python client logs a warning for a refusal, and Python wrote it to
+    # stderr: one line more than the TypeScript command, which logs nothing.
+    prompt = ("prompt", "writer", "fail: now", "--creds", str(ERIN), "--url", world.server.url)
+    refused = [await _run(program, *prompt) for program in (_PYTHON, _TYPESCRIPT)]
+    python, typescript = [(code, out, _root_masked(err)) for code, out, err in refused]
+    assert python == typescript
+    assert python == (
+        1,
+        b"",
+        f"url {world.server.url}\n→ {world.address} (agent identity: none)\nroot\n"
+        "agent-fabric: no reply: service error 500: handler error\n".encode(),
+    )
+
+
+@both_commands
+async def test_both_commands_print_a_refusals_words_as_plain_text_and_nothing_of_a_log(
+    world: World,
+) -> None:
+    # A program that speaks NATS refuses every prompt with words of its own:
+    # an escape sequence that clears the screen. The words are printed once,
+    # after ``no reply:``, as plain text. The warning the protocol SDK's Python
+    # client logs for the refusal quoted them as they came, and Python wrote
+    # it to stderr.
+    address = "agents.prompt.refuser.fabric.raw"
+
+    async def refuse(msg: Msg) -> None:
+        await world.alice.publish(
+            msg.reply,
+            b"",
+            headers={"Nats-Service-Error-Code": "500", "Nats-Service-Error": "no\x1b[2J way"},
+        )
+
+    registered = await _registered(world, "refuser", address)
+    serving = await world.alice.subscribe(address, cb=refuse)
+    await world.alice.flush()
+    prompt = ("prompt", "refuser", "hi", "--creds", str(ERIN), "--url", world.server.url)
+    try:
+        refused = [await _run(program, *prompt) for program in (_PYTHON, _TYPESCRIPT)]
+    finally:
+        await serving.unsubscribe()
+        await registered.unsubscribe()
+    python, typescript = [(code, out, _root_masked(err)) for code, out, err in refused]
+    assert _ESC not in python[2] and _ESC not in typescript[2]
+    assert python == typescript
+    assert python == (
+        1,
+        b"",
+        f"url {world.server.url}\n→ {address} (agent identity: none)\nroot\n"
+        "agent-fabric: no reply: service error 500: no [2J way\n".encode(),
+    )
+
+
+@both_commands
+async def test_both_commands_print_nothing_for_a_heartbeat_they_cannot_read(world: World) -> None:
+    # Any program of the account can publish where the heartbeats go. One
+    # publishes what is no heartbeat, on a subject that holds an escape
+    # sequence, twenty times a second. The protocol SDK's Python client logs a
+    # warning with the subject for each, and Python wrote them to stderr, for
+    # whoever listed the agents. Neither command prints a line for them.
+    async def beat() -> None:
+        while True:
+            await world.alice.publish("agents.hb.x\x1b[2J.fabric.s", b"not json")
+            await asyncio.sleep(0.05)
+
+    beating = asyncio.create_task(beat())
+    try:
+        listed = [
+            await _run(program, "agents", "--creds", str(ERIN), "--url", world.server.url)
+            for program in (_PYTHON, _TYPESCRIPT)
+        ]
+    finally:
+        beating.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beating
+    expected = f"{world.address}\twriter\tagent identity: none\n\twrites\n".encode()
+    for code, out, err in listed:
+        assert (code, out, err) == (0, expected, f"url {world.server.url}\n".encode())
+
+
+@both_commands
+@needs_a_terminal
+async def test_both_commands_send_a_terminal_no_escape_sequence_and_a_pipe_the_exact_reply(
+    world: World,
+) -> None:
+    # The writer's question and reply hold escape sequences. Where an output
+    # is a terminal, both commands send it U+FFFD for each escape character,
+    # the same bytes from both. Where it is a pipe, they write what came.
+    prompt = ("prompt", "writer", "paint: it", "--creds", str(ERIN), "--url", world.server.url)
+    fffd = chr(0xFFFD)
+    question_shown = f"? which {fffd}[31mcolour?\n".encode()
+    reply_shown = f"{fffd}[2Jcleared\tthe\nscreen {fffd}[1A\n".encode()
+    seen = []
+    for program in (_PYTHON, _TYPESCRIPT):
+        # The reply on a terminal, the question on a pipe.
+        code, shown, err = await _run_on_terminal(program, *prompt, terminal="stdout")
+        assert (code, shown) == (0, reply_shown)
+        assert f"? {PAINT_QUESTION}\n".encode() in err
+        # The question on a terminal, the reply on a pipe.
+        code, shown, out = await _run_on_terminal(program, *prompt, terminal="stderr")
+        assert (code, out) == (0, f"{PAINT_REPLY}\n".encode())
+        assert question_shown in shown
+        assert _ESC not in shown
+        seen.append(re.sub(rb"root [0-9a-f]{32}", b"root", shown))
+    assert seen[0] == seen[1]
+
+
+@both_commands
+async def test_both_commands_list_every_agent_in_the_same_bytes_past_half_a_character(
+    world: World,
+) -> None:
+    # Two more agents beside the writer, in its account. The middle one of the
+    # three registered a description that ends in half a character, a text cut
+    # inside an emoji. Python cannot write that to a terminal: the Python
+    # command stopped there and never listed the writer. Both commands, run as
+    # programs, print U+FFFD in its place and all three agents.
+    async def serve(kind: str, name: str, description: str) -> AgentService:
+        svc = AgentService(
+            nc=world.alice,
+            agent=kind,
+            owner="fabric",
+            session_name=name,
+            description=description,
+            heartbeat_interval_s=3600,
+            keepalive_interval_s=None,
+        )
+        svc.on_prompt(lambda _envelope, _stream: asyncio.sleep(0))
+        await svc.start()
+        return svc
+
+    async def listing(
+        program: tuple[str, ...], *, json: bool = False
+    ) -> tuple[int | None, bytes, bytes]:
+        flags = ("--json",) if json else ()
+        return await _run(
+            program, "agents", *flags, "--creds", str(ERIN), "--url", world.server.url
+        )
+
+    extra = [
+        await serve("archive", "a1", "Keeps what was written."),
+        await serve("cutter", "c1", "cut in an emoji " + chr(0xD83D)),
+    ]
+    try:
+        python = await listing(_PYTHON)
+        typescript = await listing(_TYPESCRIPT)
+        python_json = await listing(_PYTHON, json=True)
+        typescript_json = await listing(_TYPESCRIPT, json=True)
+    finally:
+        for svc in extra:
+            await svc.stop()
+
+    expected = (
+        "agents.prompt.archive.fabric.a1\tarchive\tagent identity: none\n"
+        "\tKeeps what was written.\n"
+        "agents.prompt.cutter.fabric.c1\tcutter\tagent identity: none\n"
+        f"\tcut in an emoji {chr(0xFFFD)}\n"
+        f"{world.address}\twriter\tagent identity: none\n"
+        "\twrites\n"
+    ).encode()
+    url = f"url {world.server.url}\n".encode()
+    assert python == (0, expected, url)
+    assert typescript == (0, expected, url)
+    # And ``--json``, which gives the description as it was registered: half a
+    # character as its JSON escape, the same bytes from both.
+    assert typescript_json[0] == 0
+    assert b'"description":"cut in an emoji \\ud83d"' in typescript_json[1]
+    assert python_json == typescript_json
+
+
+@both_commands
+@needs_a_terminal
+async def test_both_commands_print_a_reply_cut_inside_an_emoji_in_the_same_bytes(
+    world: World,
+) -> None:
+    # The writer's reply comes in two chunks, cut inside an emoji: each holds
+    # half a character, which cannot be written as UTF-8. The Python command
+    # exited 1 with nothing printed. Both print U+FFFD for each half.
+    prompt = ("prompt", "writer", "cut: it", "--creds", str(ERIN), "--url", world.server.url)
+    fffd = chr(0xFFFD)
+    for program in (_PYTHON, _TYPESCRIPT):
+        code, out, _err = await _run(program, *prompt)
+        assert (code, out) == (0, f"thumbs {fffd}{fffd} up\n".encode())
+        code, shown, _err = await _run_on_terminal(program, *prompt, terminal="stdout")
+        assert (code, shown) == (0, f"thumbs {fffd}{fffd} up\n".encode())
+    # In --json the reply is one text, and the two halves one character again.
+    as_json = [await _run(program, *prompt, "--json") for program in (_PYTHON, _TYPESCRIPT)]
+    assert [code for code, _out, _err in as_json] == [0, 0]
+    texts = [re.sub(rb'"root":"[0-9a-f]{32}"', b'"root":""', out) for _code, out, _err in as_json]
+    assert texts[0] == texts[1]
+    assert texts[0] == f'{{"root":"","text":"thumbs {chr(0x1F44D)} up","references":[]}}\n'.encode()
+
+
+@pytest.mark.parametrize(
+    ("env", "exact"),
+    [
+        # A terminal set to Latin-1, where the system has that locale.
+        ({"LC_ALL": "en_US.ISO8859-1", "PYTHONUTF8": "0", "PYTHONIOENCODING": ""}, False),
+        # The same encoding on any system.
+        ({"PYTHONIOENCODING": "iso8859-1"}, True),
+    ],
+    ids=["LC_ALL", "PYTHONIOENCODING"],
+)
+async def test_lists_every_agent_on_a_stdout_that_is_not_utf8(
+    world: World, env: dict[str, str], exact: bool
+) -> None:
+    # Three agents. Two descriptions hold what Latin-1 cannot: an arrow, and
+    # U+FFFD, which the list prints for half a character. Python's stdout
+    # stopped at the first of them. It writes ``?`` there, and every agent.
+    async def serve(kind: str, name: str, description: str) -> AgentService:
+        svc = AgentService(
+            nc=world.alice,
+            agent=kind,
+            owner="fabric",
+            session_name=name,
+            description=description,
+            heartbeat_interval_s=3600,
+            keepalive_interval_s=None,
+        )
+        svc.on_prompt(lambda _envelope, _stream: asyncio.sleep(0))
+        await svc.start()
+        return svc
+
+    extra = [
+        await serve("archive", "a1", "Keeps the caf\u00e9's orders \u2192 ask it."),
+        await serve("cutter", "c1", "cut in an emoji " + chr(0xD83D)),
+    ]
+    try:
+        code, out, err = await _run(
+            _PYTHON, "agents", "--creds", str(ERIN), "--url", world.server.url, env=env
+        )
+        as_json = await _run(
+            _PYTHON, "agents", "--json", "--creds", str(ERIN), "--url", world.server.url, env=env
+        )
+    finally:
+        for svc in extra:
+            await svc.stop()
+
+    # ``--json`` gives each description as it was registered, on this stdout
+    # too: what its encoding cannot hold is written as a JSON escape.
+    assert as_json[0] == 0
+    assert [agent["description"] for agent in json.loads(as_json[1])] == [
+        "Keeps the caf\u00e9's orders \u2192 ask it.",
+        "cut in an emoji " + chr(0xD83D),
+        "writes",
+    ]
+    assert (code, err) == (0, f"url {world.server.url}\n".encode())
+    rows = [line.split(b"\t")[0] for line in out.splitlines() if not line.startswith(b"\t")]
+    assert rows == [
+        b"agents.prompt.archive.fabric.a1",
+        b"agents.prompt.cutter.fabric.c1",
+        world.address.encode(),
+    ]
+    if exact:
+        assert out == (
+            b"agents.prompt.archive.fabric.a1\tarchive\tagent identity: none\n"
+            b"\tKeeps the caf\xe9's orders ? ask it.\n"
+            b"agents.prompt.cutter.fabric.c1\tcutter\tagent identity: none\n"
+            b"\tcut in an emoji ?\n"
+            + f"{world.address}\twriter\tagent identity: none\n\twrites\n".encode()
+        )
+
+
+@pytest.mark.parametrize("encoding", ["ascii", "cp1252"])
+async def test_json_gives_the_reply_as_it_came_on_a_stdout_that_is_not_utf8(
+    world: World, encoding: str
+) -> None:
+    # Such a stdout writes ``?`` for a character it cannot hold. In ``--json``
+    # that was valid JSON that is not the reply, with no word of it. The
+    # command writes ``--json`` in ASCII there, a JSON escape for every other
+    # character: a reader gets the reply back.
+    code, out, _err = await _run(
+        _PYTHON,
+        *("prompt", "writer", "accents: it", "--json"),
+        *("--creds", str(ERIN), "--url", world.server.url),
+        env={"PYTHONIOENCODING": encoding},
+    )
+    assert code == 0
+    assert out.isascii() and b"?" not in out
+    assert json.loads(out)["text"] == ACCENTS_REPLY
+    # Without ``--json`` the stream writes the reply, ``?`` where it must.
+    code, out, _err = await _run(
+        _PYTHON,
+        *("prompt", "writer", "accents: it"),
+        *("--creds", str(ERIN), "--url", world.server.url),
+        env={"PYTHONIOENCODING": encoding},
+    )
+    assert (code, out) == (0, ACCENTS_REPLY.encode(encoding, "replace") + b"\n")
 
 
 async def test_streams_the_reply_and_the_root_and_reference_on_stderr(world: World) -> None:

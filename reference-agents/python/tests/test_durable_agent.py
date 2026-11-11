@@ -18,8 +18,10 @@ journal has one ``step-end`` per step; the fake saw the first model turn
 exactly once across both processes; every model call of both processes
 carried the same two trace headers, the served thread's; the journal's result
 holds the answer. And the limit, stated: the prompt that was being served
-when the first process died ended without the reply. The same test as the
-TypeScript agent's ``test/durable-agent.test.ts``.
+when the first process died ended without the reply. And the durable entry
+point's description: ``AGENT_DESCRIPTION``, given on two lines, is registered
+as one, and the startup lines say it. The same test as the TypeScript agent's
+``test/durable-agent.test.ts``.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ binary = nats_server_on_path()
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
 ANSWER = "the fabric has agents, and this one survived a crash"
+DESCRIPTION = "Answers from a journaled run. Survives a restart."
 
 
 @dataclass
@@ -146,6 +149,7 @@ async def test_the_run_completes_after_a_kill_without_repeating_a_journaled_mode
             "AGENT_KIND": "assistant",
             "AGENT_OWNER": "test",
             "AGENT_NAME": "durable",
+            "AGENT_DESCRIPTION": DESCRIPTION.replace(". ", ".\n"),
             "AGENT_REPLY_TIMEOUT_MS": "120000",
             "SCRATCHPAD_VOLUME": "",
         }
@@ -178,6 +182,14 @@ async def test_the_run_completes_after_a_kill_without_repeating_a_journaled_mode
         )
         found = await caller.discover(timeout=2.0, filter=DiscoverFilter(agent="assistant"))
         assert found
+        # The description, cleaned to one line: registered, and on the startup lines.
+        assert found[0].description == DESCRIPTION
+        for _ in range(50):
+            if f"description: {DESCRIPTION}\n" in logs.read_text():
+                break
+            await asyncio.sleep(0.1)
+        assert f"description: {DESCRIPTION}\n" in logs.read_text()
+        assert "AGENT_DESCRIPTION was cleaned: " in logs.read_text()
 
         # The prompt, read in the background: the agent serving it will die.
         chunks: list[str] = []

@@ -13,6 +13,7 @@ import {
   fabricCaller,
   type FabricCaller,
 } from "./caller.js";
+import { cleanDescription, plainLine, terminalText, wellFormed } from "./description.js";
 import { findReferences } from "./scratchpad.js";
 
 /** Success. */
@@ -29,9 +30,12 @@ export const USAGE = `usage: agent-fabric agents [options]
        agent-fabric prompt <address or kind> "<text>" [options]
 
 List the agents on the Synadia Agent Fabric, or prompt one, with the creds
-file the console gave you. The reply streams to stdout; the server's URL,
-the agent, the task's root id and a ScratchPad reference go to stderr. A
-question the agent asks is printed on stderr and answered from stdin.
+file the console gave you. The list has one row per agent: its address, its
+kind and its identity. Under a row, after a tab, comes the agent's
+description, what it says it does, when it has one. The reply streams to
+stdout; the server's URL, the agent, the task's root id and a ScratchPad
+reference go to stderr. A question the agent asks is printed on stderr and
+answered from stdin.
 
 options:
   --creds <file>    the creds file (default: $${NATS_CREDS_VAR})
@@ -53,6 +57,10 @@ export interface CommandIO {
   err(text: string): void;
   /** One line from stdin, without its newline; `null` at its end. */
   readLine(): Promise<string | null>;
+  /** Whether stdout is a terminal. A pipe or a file is not; unset, it is not. */
+  readonly outIsTerminal?: boolean;
+  /** Whether stderr is a terminal. */
+  readonly errIsTerminal?: boolean;
   /** The environment: `NATS_CREDS`, `NATS_URL`. */
   readonly env: Readonly<Record<string, string | undefined>>;
 }
@@ -185,12 +193,15 @@ export async function runCommand(argv: ReadonlyArray<string>, io: CommandIO): Pr
     return await prompt(caller, parsed.who!, parsed.text!, parsed, io);
   } catch (err) {
     if (err instanceof FabricCallerError) {
-      io.err(`agent-fabric: ${err.message}\n`);
+      // The message names the agents that are there by their addresses,
+      // text they registered: printed as plain text, on one line. The error
+      // itself keeps it as it is.
+      io.err(`agent-fabric: ${plainLine(err.message)}\n`);
     } else {
       // The agent refused the prompt or failed while serving it. The
       // protocol carries a code and a few words; the reason is in the
-      // agent's own output.
-      io.err(`agent-fabric: no reply: ${message(err)}\n`);
+      // agent's own output. The words are the agent's: plain text too.
+      io.err(`agent-fabric: no reply: ${plainLine(message(err))}\n`);
     }
     return EXIT_FAILED;
   } finally {
@@ -232,7 +243,19 @@ async function listAgents(caller: FabricCaller, json: boolean, io: CommandIO): P
     return EXIT_OK;
   }
   if (lines.length === 0) io.err("no agents\n");
-  for (const l of lines) io.out(`${l.address}\t${l.kind}\t${describeIdentity(l)}\n`);
+  for (const l of lines) {
+    // Every field is text an agent registered, the kind as free as the
+    // description: each is printed as plain text, so a control character in
+    // one neither reaches the terminal nor adds a column or a row.
+    const row = [l.address, l.kind, describeIdentity(l)].map((field) => plainLine(String(field)));
+    io.out(`${row.join("\t")}\n`);
+    // What the agent says it does, under its row: one line of plain text,
+    // whatever was registered (`description.ts`), and no line for a service
+    // that registered none. `--json` has it as it is.
+    const registered: unknown = l.description;
+    const description = typeof registered === "string" ? cleanDescription(registered) : "";
+    if (description !== "") io.out(`\t${description}\n`);
+  }
   return EXIT_OK;
 }
 
@@ -251,7 +274,10 @@ async function prompt(
   io: CommandIO,
 ): Promise<number> {
   const target = await caller.find(who);
-  io.err(`→ ${target.promptSubject} (${describeIdentity(agentLine(target))})\n`);
+  // The address and the identity are text the agent registered: plain text
+  // on the terminal, as in the list.
+  const identity = plainLine(describeIdentity(agentLine(target)));
+  io.err(`→ ${plainLine(target.promptSubject)} (${identity})\n`);
   const { stream, rootId } = await caller.prompt(target, text, {
     maxWaitMs: Math.round(opts.timeoutS * 1000),
   });
@@ -261,13 +287,23 @@ async function prompt(
     (root) => io.err(`root ${root}\n`),
     () => {},
   );
+  // The reply and a question are the agent's own text. A terminal is sent
+  // them as text it only shows (`terminalText`), so no escape sequence in
+  // them clears the screen or writes over a line. A pipe or a file gets them
+  // as they came: a script reads the exact reply. Half a character, which a
+  // reply cut inside an emoji ends in, cannot be written as UTF-8 either
+  // way: U+FFFD is written in its place.
+  const shown = (text: string, terminal: boolean | undefined): string =>
+    terminal === true ? terminalText(text) : wellFormed(text);
+  const toOut = (text: string): string => shown(text, io.outIsTerminal);
+  const toErr = (text: string): string => shown(text, io.errIsTerminal);
   let reply = "";
   for await (const msg of stream) {
     if (msg.type === "response") {
       reply += msg.text;
-      if (!opts.json) io.out(msg.text);
+      if (!opts.json) io.out(toOut(msg.text));
     } else if (msg.type === "query") {
-      io.err(`? ${msg.prompt}\n`);
+      io.err(`? ${toErr(msg.prompt)}\n`);
       const answer = await io.readLine();
       await msg.reply(answer === null || answer.trim() === "" ? CANNOT_ANSWER : answer);
     }

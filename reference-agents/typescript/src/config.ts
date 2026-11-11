@@ -8,6 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import type { NatsConnectionSource } from "@synadia-ai/agents";
+import { cleanDescription, DESCRIPTION_LIMIT } from "./description.js";
 
 /**
  * Which of the agent tools the model is offered (`tools.ts` has the
@@ -33,6 +34,11 @@ export interface AgentConfig {
     readonly owner: string;
     /** The instance name; several agents of one kind and owner differ here. */
     readonly name: string;
+    /**
+     * What the agent does, as discovery shows it to the other agents, which
+     * choose whom to ask by it (`AGENT_DESCRIPTION`): one line of plain text
+     * (`description.ts`), or `<kind> agent (<model>)` when none is given.
+     */
     readonly description: string;
     readonly systemPrompt: string;
     /** `any` serves everyone; `signed` refuses prompts without a verified signature. */
@@ -76,6 +82,7 @@ const DEFAULTS = {
   systemPrompt:
     "You are a helpful agent on the Synadia Agent Fabric. Answer briefly and clearly, in plain text. " +
     "Your tools reach the other agents: discover_agents lists them, prompt_agent asks one of them to do something. " +
+    "Choose an agent by what its description says it does. " +
     "Answer yourself unless the task asks for another agent or clearly needs one; never invent a tool result.",
   minSenderTrust: "any",
   tools: "blocking",
@@ -86,9 +93,10 @@ const DEFAULTS = {
 /**
  * Read the configuration from `env`. Throws one error naming every
  * variable that is missing, so a first start fails once with the whole
- * list rather than once per variable.
+ * list rather than once per variable. `log` gets a line when a value is
+ * used changed: a description that had to be cleaned.
  */
-export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
+export function loadConfig(env: NodeJS.ProcessEnv, log: (line: string) => void = console.log): AgentConfig {
   const missing: string[] = [];
   const need = (name: string): string => {
     const value = env[name];
@@ -178,6 +186,22 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
     promptFile !== undefined
       ? readFileSync(promptFile, "utf8").trim()
       : (optional("AGENT_SYSTEM_PROMPT") ?? DEFAULTS.systemPrompt);
+  // The description: what the other agents read when they choose whom to
+  // ask. It is one line of plain text (`description.ts`), so a text that
+  // is not is used cleaned, and the log says so. Unset, or with nothing
+  // left of it, the agent registers the default.
+  const described = optional("AGENT_DESCRIPTION");
+  const cleaned = described !== undefined ? cleanDescription(described) : "";
+  if (described !== undefined && cleaned !== described) {
+    log(
+      cleaned === ""
+        ? "AGENT_DESCRIPTION holds no text: the default description is used."
+        : `AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most ${DESCRIPTION_LIMIT} characters. ` +
+            "What is not valid Unicode becomes U+FFFD, a line break, a tab, a control or an invisible character becomes a space " +
+            `(the zero width joiner and non-joiner stay), runs of spaces become one, and a longer text is cut to its first ${DESCRIPTION_LIMIT} characters.`,
+    );
+  }
+  const description = cleaned !== "" ? cleaned : `${kind} agent (${model})`;
 
   return {
     nats,
@@ -185,7 +209,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AgentConfig {
       kind,
       owner,
       name,
-      description: optional("AGENT_DESCRIPTION") ?? `${kind} agent (${model})`,
+      description,
       systemPrompt,
       minSenderTrust,
       tools: toolsSetting,

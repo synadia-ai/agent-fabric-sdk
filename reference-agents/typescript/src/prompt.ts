@@ -13,6 +13,13 @@
 // end is repeated on its own line, to paste into the next prompt. The
 // package's own command, `agent-fabric prompt`, does the same.
 //
+// What the agent registered, replied or said in a refusal is another
+// program's text. The address, the identity and a refusal's words are
+// printed as plain text on one line. The reply is written as it came when
+// stdout is a pipe or a file; a terminal is sent it as text it only shows,
+// U+FFFD for every control character but a line break and a tab, so an
+// escape sequence in a reply is printed and never run (`description.ts`).
+//
 //   PROMPT_TIMEOUT_MS   how long to wait for the whole reply; default ten
 //                       minutes, because a chain of agents takes minutes
 
@@ -24,6 +31,7 @@ import {
   findReferences,
   type FabricCaller,
 } from "@synadia-ai/agent-fabric";
+import { plainLine, terminalText } from "./description.js";
 
 const [who, ...rest] = process.argv.slice(2);
 const text = rest.join(" ");
@@ -51,7 +59,11 @@ try {
   const target = await caller.find(who);
   // The agent's own registered identity, not this prompt's signature.
   const identity = target.identity === undefined ? "agent identity: none" : `agent ${target.identity}${target.idSigVerified ? ", verified" : ""}`;
-  console.error(`→ ${target.promptSubject} (${identity})`);
+  // Both are text the agent registered: plain text on the terminal.
+  console.error(`→ ${plainLine(target.promptSubject)} (${plainLine(identity)})`);
+  // The reply is the agent's own text. A terminal is sent it as text it only
+  // shows; a pipe or a file gets it as it came, so a script reads the exact reply.
+  const shown = process.stdout.isTTY === true ? terminalText : (chunk: string) => chunk;
 
   const started = Date.now();
   let reply = "";
@@ -65,7 +77,7 @@ try {
   );
   for await (const msg of stream) {
     if (msg.type === "response") {
-      process.stdout.write(msg.text);
+      process.stdout.write(shown(msg.text));
       reply += msg.text;
     } else if (msg.type === "query") {
       // The agent asked something mid-reply; a command line has no one to ask.
@@ -78,12 +90,14 @@ try {
   console.error(`${((Date.now() - started) / 1000).toFixed(1)} s`);
 } catch (err) {
   if (err instanceof FabricCallerError) {
-    // No such agent, or more than one of that kind: the message names what is there.
-    console.error(err.message);
+    // No such agent, or more than one of that kind: the message names what
+    // is there, by the addresses the agents registered.
+    console.error(plainLine(err.message));
   } else {
     // The agent refused the prompt or failed while serving it. The protocol
     // carries a code and a few words; the reason is in the agent's own log.
-    console.error(`\nno reply: ${err instanceof Error ? err.message : String(err)}; the agent's own output says why`);
+    // The words are the agent's: plain text too.
+    console.error(`\nno reply: ${plainLine(err instanceof Error ? err.message : String(err))}; the agent's own output says why`);
   }
   process.exitCode = 1;
 } finally {

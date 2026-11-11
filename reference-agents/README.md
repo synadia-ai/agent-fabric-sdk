@@ -52,7 +52,7 @@ Copy `typescript/` or `python/`, and `env.example` to `.env`. A copy of `typescr
 | Variable | What it sets |
 | --- | --- |
 | `AGENT_KIND`, `AGENT_OWNER`, `AGENT_NAME` | the address, `agents.prompt.<kind>.<owner>.<name>`, which other agents find and prompt |
-| `AGENT_DESCRIPTION` | what discovery shows; another agent's model reads it to decide whom to ask, so say what the agent is for |
+| `AGENT_DESCRIPTION` | what the agent does, for the agents that choose whom to ask and the people who read the console: one line of plain text, at most 500 characters. `fabric connect --description` (fabric 0.19.0 or later) and the **Description** field of the console's **Connect an agent** supply it; a restart applies a change. "The description", below |
 | `AGENT_SYSTEM_PROMPT`, or `AGENT_SYSTEM_PROMPT_FILE` for a longer one | the persona |
 | `AGENT_MIN_SENDER_TRUST` | whose prompts the agent serves: `signed` refuses an unsigned prompt; `any`, the default when unset, serves it too; a signature that does not verify is refused either way. The reference agents, agents set up by `fabric` or the console, the console and `npm run prompt` (`python -m fabric_agent.prompt`) sign theirs; a prompt sent by hand with `nats req` is unsigned. `fabric env` (fabric 0.18.0 or later) and the console's `.env` set it, and a variable of the environment wins over the same one in `.env` |
 | `AGENT_TOOLS` | which agent tools the model sees: `blocking` (the default: `discover_agents`, `prompt_agent`, `answer_agent`), `all` (the six), or `none` for a role that must answer itself |
@@ -62,9 +62,22 @@ Copy `typescript/` or `python/`, and `env.example` to `.env`. A copy of `typescr
 | `NATS_URL`, `NATS_CREDS` | where the fabric is, and this agent's own user; one user per agent |
 | `AGENT_DURABLE` | `1` hosts the durable workflows and offers `start_workflow`; off by default. The connection must reach a durable engine on `de.api.v1.*`: on the fabric, the tenant's import, made by the console's onboarding |
 
+**The description.** `AGENT_DESCRIPTION` says what the agent does, what to ask it, and what it can reach or never does, in one to three sentences in the third person:
+
+```sh
+AGENT_DESCRIPTION=Keeps the logs of the orders server. Ask it what happened in a time range. Reads only; changes nothing on the server.
+```
+
+- **Who reads it.** The other agents of the account, when their models look for someone to ask: `discover_agents` returns it with each agent, and the default persona tells the model to choose by it. The account's callers read it too, and so do the account's people: the console shows it on its Agents page and on the agent's own page, read from the agent's registration. Never another account.
+- **It is a claim, and no secret.** The agent's own side writes it. Nothing signs it: the registration's signature covers the identity and the address only. Put no key and no password in it, and nothing the whole account may not read.
+- **The rule.** One line of plain text, at most 500 characters. The agent cleans what it is given and never refuses it: a line break, a tab, a control or an invisible character becomes a space, runs of spaces become one, and a longer text is cut to its first 500 characters. Two invisible characters stay, the zero width joiner and non-joiner: Persian, the Indic scripts and emoji sequences are spelled with them. Half a character, which a text cut inside an emoji or a value that is not UTF-8 holds, becomes U+FFFD, the replacement character. It logs one line when it changed the text. Unset, or with nothing left of it, the agent registers the default, `<kind> agent (<model>)`, which tells another agent little. In `.env`, put a text that holds a `#` in double quotes, and no quote of the same kind inside: a value in quotes ends at the next one.
+- **Where it comes from.** `fabric connect <name> --description "…"` (fabric 0.19.0 or later) keeps it with the agent, and `fabric env` then exports `AGENT_DESCRIPTION`; for an agent without one it unsets the variable. The console's **Connect an agent** has a **Description** field, in both of its ways. Both check the text as it is typed. Or write the line into `.env` yourself; the environment wins over `.env`.
+- **Changing it.** Set it again, then stop the agent, bring the new text into its shell, and start it. After `fabric connect <name> --description "…"` that is `eval "$(fabric env <name>)"` once more, before the start: the shell still exports the description it was given before, the environment wins over `.env`, and an agent started again without the `eval` registers the old text. A running agent keeps the description it started with. The startup line `description: …` says which one that is.
+
 **In the code.**
 
 - **The persona's default** is in `src/config.ts` (`fabric_agent/config.py`), with every variable the agent reads.
+- **The description's rule** is `cleanDescription` in `src/description.ts` (`clean_description` in `fabric_agent/description.py`), a page each. Both languages are tested with the same vectors, `test-fixtures/description-vectors.json`.
 - **The model loop** is `converse` in `src/model.ts` (`fabric_agent/model.py`): one request per model call, on the OpenAI chat-completions API or Anthropic's Messages API by `MODEL_PROVIDER`, each tool call run, until the model answers in words. An empty answer is never the reply: while a call it started still waits or runs, the model is told what waits and asked again, up to twice; with nothing open, it is asked once more. Then the prompt fails with the reason, never `ok` with nothing. Another model API changes here; keep the trace headers on every call. Stated honestly, on Anthropic's API: the reply's thinking goes back unchanged within a turn, and the API checks it against the system prompt and the tools it was made with, so a durable run resumed after a restart with another persona, `AGENT_TOOLS` or ScratchPad setting is refused; let runs finish before changing them. A prompt of whitespace alone is refused too.
 - **What a prompt does** is `serve` in `agent.ts` (`agent.py`): what goes in front of the model, and what happens to the reply. The history is kept per caller, keyed by the verified sender's agent ID, for the 32 callers served last (`history.ts`, `history.py`). A caller whose signature did not verify gets none, so what one caller said is never shown to the model serving another. An exchange keeps the prompt and the reply, not the tool traffic between them. When the model used tools, one line in front of the reply names them and the agents it prompted, for example `[tools used: discover_agents; prompt_agent x2 to agents.prompt.researcher.acme.r1, agents.prompt.checker.acme.c1]`, with no arguments and no results. Without that line, a model that delegated is shown its earlier prompts each answered at once with a finished reply, and it learns from those examples to answer the next prompt the same way, without its tools. `AGENT_MAX_HISTORY=0` turns the history off: the model gets the system prompt and the prompt, nothing else. That fits an agent whose prompts are independent tasks.
 - **A tool of your own** goes in `src/tools.ts` (`fabric_agent/tools.py`), next to the agent tools: its definition in the list `toolRunner` (`tool_runner`) gives the model, and a branch in its `call`.
@@ -97,8 +110,8 @@ A fabric provides what an agent needs: a NATS URL and a credentials file per age
 
 The console's **Connect an agent** sets an agent up in one of two ways, both choosing **Your own agent**:
 
-- **The `fabric` CLI**, on a computer you work on: `fabric connect <name> --harness sdk --kind <kind>` makes its user and its model key, and `eval "$(fabric env <name>)" && npm start` runs it. `fabric env` exports every connection variable, so `.env` holds only the persona, the kind, the description and the tools.
-- **Environment variables**, for a server, a container or CI: the console creates the agent and hands out its files once, `<name>.creds` and `<name>.env`. In `typescript/`, the env file becomes `.env` with the creds beside it, and `npm start` reads it; in a container, `--env-file <name>.env` with the creds mounted where `NATS_CREDS` names them. The page shows the commands for this computer, Docker and Kubernetes.
+- **The `fabric` CLI**, on a computer you work on: `fabric connect <name> --harness sdk --kind <kind> --description "<what it does>"` makes its user and its model key, and `eval "$(fabric env <name>)" && npm start` runs it. `fabric env` exports every connection variable, and the description when the agent was given one (fabric 0.19.0 or later), so `.env` holds only the persona, the kind and the tools.
+- **Environment variables**, for a server, a container or CI: the console creates the agent and hands out its files once, `<name>.creds` and `<name>.env`. In `typescript/`, the env file becomes `.env` with the creds beside it, and `npm start` reads it; in a container, `--env-file <name>.env` with the creds mounted where `NATS_CREDS` names them. The page shows the commands for this computer, Docker and Kubernetes; what its **Description** field holds is set by those commands, as `AGENT_DESCRIPTION`, and is never in the env file.
 
 The steps below do the same by hand, one variable at a time.
 
@@ -123,6 +136,7 @@ npm start
 
 ```
 assistant agent listening on agents.prompt.assistant.me.main
+description: assistant agent (anthropic/claude-sonnet-5)
 identity: ABTGF33Z…A5HRIPUG.UD345LCY…M3X3MYLO6
 model: anthropic/claude-sonnet-5 through http://localhost:18281/api, on the OpenAI chat-completions API
 scratchpad: off
@@ -133,7 +147,7 @@ press Ctrl+C to stop (the conversation lives in memory and is gone on restart)
 
 ```sh
 AGENT_KIND=helper
-AGENT_DESCRIPTION=Does arithmetic and counting, exactly, and shows its working
+AGENT_DESCRIPTION=Does arithmetic and counting, exactly, and shows its working. Ask it for a sum, a product or a count. It asks no other agent.
 AGENT_TOOLS=none
 ```
 
@@ -142,7 +156,7 @@ uv run python -m fabric_agent.echo   # once, for the identity to issue its key f
 uv run python -m fabric_agent
 ```
 
-`AGENT_TOOLS=none` keeps the helper answering itself rather than delegating.
+`AGENT_TOOLS=none` keeps the helper answering itself rather than delegating. Its description is what the assistant's model will choose it by; the assistant above has none, so its startup line shows the default.
 
 **One prompts the other.** The caller signs with a user of its own. In `typescript/`, a file `.env.caller` with the caller's `NATS_URL` and `NATS_CREDS` alone:
 
@@ -157,7 +171,7 @@ The arithmetic agent (helper.me.main) said: **23 times 4 is 92.**
 15.1 s
 ```
 
-The assistant's model called `discover_agents`, read the helper's description, and called `prompt_agent` with the helper's address. The assistant's terminal shows each model call and tool call as it happens. From `python/` the Python caller does the same: `uv run python -m fabric_agent.prompt .env.caller assistant "…"`.
+The prompt named no agent, only what was needed. The assistant's model called `discover_agents`, read in the helper's description that it does arithmetic, and called `prompt_agent` with the helper's address. The assistant's terminal shows each model call and tool call as it happens. From `python/` the Python caller does the same: `uv run python -m fabric_agent.prompt .env.caller assistant "…"`.
 
 **In the console,** the threads page has one tree of two threads. The root is the assistant's: its model calls with their tokens, and each tool call as a row, `discover_agents` with the list it got back and `prompt_agent` with the address and the prompt it sent. The helper's thread hangs under the `prompt_agent` call, with its own model call. It hangs there because the assistant's client carries the fabric package's prompt interceptor, which writes an edge naming the served thread as the parent and the model's tool-call id as the call.
 

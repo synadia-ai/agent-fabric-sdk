@@ -3,17 +3,20 @@
 One process, one agent, one set of variables; the file that holds them is one
 ``.env`` per agent (see ``env.example``), read by :func:`load_env_file`, which
 does what Node's ``--env-file`` does for the TypeScript agent: ``KEY=VALUE``
-lines, ``#`` comments, no interpolation. Nothing here is a secret the
-repository tracks: the credentials file and the virtual key are paths and
-values in that untracked file.
+lines, ``#`` comments, a value in quotes taken whole, no interpolation.
+Nothing here is a secret the repository tracks: the credentials file and the
+virtual key are paths and values in that untracked file.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Mapping
+
+from .description import DESCRIPTION_LIMIT, clean_description
 
 #: Which of the agent tools the model is offered (see ``AgentIdentityConfig.tools``).
 ToolsSetting = Literal["blocking", "all", "none"]
@@ -26,6 +29,7 @@ DEFAULT_NAME = "main"
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful agent on the Synadia Agent Fabric. Answer briefly and clearly, in plain text. "
     "Your tools reach the other agents: discover_agents lists them, prompt_agent asks one of them to do something. "
+    "Choose an agent by what its description says it does. "
     "Answer yourself unless the task asks for another agent or clearly needs one; never invent a tool result."
 )
 DEFAULT_TOOLS = "blocking"
@@ -52,6 +56,10 @@ class AgentIdentityConfig:
     kind: str
     owner: str
     name: str
+    #: What the agent does, as discovery shows it to the other agents, which
+    #: choose whom to ask by it (``AGENT_DESCRIPTION``): one line of plain
+    #: text (``description.py``), or ``<kind> agent (<model>)`` when none is
+    #: given.
     description: str
     system_prompt: str
     min_sender_trust: Literal["any", "signed"]
@@ -107,19 +115,31 @@ def load_env_file(path: str | Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        value = value.strip()
-        # An inline comment after the value, as in env.example.
-        if "  #" in value:
-            value = value.split("  #", 1)[0].rstrip()
-        values[key.strip()] = value.strip().strip('"').strip("'")
+        values[key.strip()] = _env_value(value.strip())
     return values
 
 
-def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
+def _env_value(value: str) -> str:
+    """The value of one ``KEY=VALUE`` line, without its quotes and its comment."""
+    # A value in quotes runs to the closing quote, and inside the quotes
+    # nothing starts a comment: a ``#`` there is text, after two spaces too.
+    # What follows the closing quote, a comment, is not part of the value.
+    if value[:1] in ('"', "'"):
+        end = value.find(value[0], 1)
+        if end > 0:
+            return value[1:end]
+    # An inline comment after the value, as in env.example.
+    if "  #" in value:
+        value = value.split("  #", 1)[0].rstrip()
+    return value.strip('"').strip("'")
+
+
+def load_config(env: Mapping[str, str] | None = None, log: Callable[[str], None] = print) -> AgentConfig:
     """Read the configuration from ``env`` (default: the process environment).
 
     Raises one error naming every variable that is missing, so a first start
-    fails once with the whole list rather than once per variable.
+    fails once with the whole list rather than once per variable. ``log`` gets
+    a line when a value is used changed: a description that had to be cleaned.
     """
     e = dict(os.environ if env is None else env)
     missing: list[str] = []
@@ -214,6 +234,21 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         if prompt_file is not None
         else optional("AGENT_SYSTEM_PROMPT") or DEFAULT_SYSTEM_PROMPT
     )
+    # The description: what the other agents read when they choose whom to
+    # ask. It is one line of plain text (``description.py``), so a text that is
+    # not is used cleaned, and the log says so. Unset, or with nothing left of
+    # it, the agent registers the default.
+    described = optional("AGENT_DESCRIPTION")
+    cleaned = clean_description(described) if described is not None else ""
+    if described is not None and cleaned != described:
+        log(
+            "AGENT_DESCRIPTION holds no text: the default description is used."
+            if cleaned == ""
+            else f"AGENT_DESCRIPTION was cleaned: a description is one line of plain text of at most {DESCRIPTION_LIMIT} characters. "
+            "What is not valid Unicode becomes U+FFFD, a line break, a tab, a control or an invisible character becomes a space "
+            f"(the zero width joiner and non-joiner stay), runs of spaces become one, and a longer text is cut to its first {DESCRIPTION_LIMIT} characters."
+        )
+    description = cleaned or f"{kind} agent ({model})"
 
     return AgentConfig(
         nats=nats,
@@ -221,7 +256,7 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
             kind=kind,
             owner=owner,
             name=name,
-            description=optional("AGENT_DESCRIPTION") or f"{kind} agent ({model})",
+            description=description,
             system_prompt=system_prompt,
             min_sender_trust=min_sender_trust,  # type: ignore[arg-type]
             tools=tools_setting,  # type: ignore[arg-type]

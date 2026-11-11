@@ -14,6 +14,13 @@ own line, to paste into the next prompt. The same caller as the TypeScript
 agent's ``src/prompt.ts``; the package's own command, ``agent-fabric prompt``,
 does the same.
 
+What the agent registered, replied or said in a refusal is another program's
+text. The address, the identity and a refusal's words are printed as plain
+text on one line. The reply is written as it came when stdout is a pipe or a
+file; a terminal is sent it as text it only shows, U+FFFD for every control
+character but a line break and a tab, so an escape sequence in a reply is
+printed and never run (``description.py``).
+
     PROMPT_TIMEOUT_MS   how long to wait for the whole reply; default ten
                         minutes, because a chain of agents takes minutes
 """
@@ -21,6 +28,7 @@ does the same.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 import time
@@ -35,6 +43,22 @@ from synadia_ai.agent_fabric import (
 from synadia_ai.agents import Query, ResponseChunk
 
 from .config import load_env_file
+from .description import plain_line, terminal_text, well_formed
+
+
+class _PlainLog(logging.Handler):
+    """A log record as one line of plain text on stderr.
+
+    The protocol SDK logs a warning that quotes what an agent sent, the words
+    of a refusal among it, and a program that set up no logging has Python
+    write it to stderr as it is. Its records below an error are not printed:
+    a refusal is printed below, after ``no reply:``.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno < logging.ERROR and f"{record.name}.".startswith("synadia_ai.agents."):
+            return
+        print(plain_line(record.getMessage()), file=sys.stderr)
 
 
 async def main() -> int:
@@ -46,6 +70,8 @@ async def main() -> int:
     if "NATS_CREDS" not in env:
         print("the env file must name NATS_CREDS (and NATS_URL); see env.example", file=sys.stderr)
         return 2
+    if not logging.getLogger().handlers:
+        logging.getLogger().addHandler(_PlainLog())
 
     try:
         caller = await fabric_caller(creds=env["NATS_CREDS"], url=env.get("NATS_URL", "nats://127.0.0.1:4222"))
@@ -58,7 +84,12 @@ async def main() -> int:
         # The agent's own registered identity, not this prompt's signature.
         verified = ", verified" if target.id_sig_verified else ""
         identity = f"agent {target.identity}{verified}" if target.identity else "agent identity: none"
-        print(f"→ {target.prompt_subject} ({identity})", file=sys.stderr)
+        # Both are text the agent registered: plain text on the terminal.
+        print(f"→ {plain_line(target.prompt_subject)} ({plain_line(identity)})", file=sys.stderr)
+        # The reply is the agent's own text. A terminal is sent it as text it
+        # only shows; a pipe or a file gets it as it came, so a script reads
+        # the exact reply. Half a character cannot be written either way.
+        shown = terminal_text if sys.stdout.isatty() else well_formed
 
         started = time.monotonic()
         reply: list[str] = []
@@ -69,7 +100,7 @@ async def main() -> int:
         )
         async for msg in prompt.stream:
             if isinstance(msg, ResponseChunk):
-                print(msg.text, end="", flush=True)
+                print(shown(msg.text), end="", flush=True)
                 reply.append(msg.text)
             elif isinstance(msg, Query):
                 # The agent asked something mid-reply; a command line has no one to ask.
@@ -81,13 +112,15 @@ async def main() -> int:
         print(f"{time.monotonic() - started:.1f} s", file=sys.stderr)
         return 0
     except FabricCallerError as err:
-        # No such agent, or more than one of that kind: the message names what is there.
-        print(err, file=sys.stderr)
+        # No such agent, or more than one of that kind: the message names what
+        # is there, by the addresses the agents registered.
+        print(plain_line(str(err)), file=sys.stderr)
         return 1
     except Exception as err:  # noqa: BLE001 — one line for whoever is at the command line
         # The agent refused the prompt or failed while serving it. The protocol
         # carries a code and a few words; the reason is in the agent's own log.
-        print(f"\nno reply: {err}; the agent's own output says why", file=sys.stderr)
+        # The words are the agent's: plain text too.
+        print(f"\nno reply: {plain_line(str(err))}; the agent's own output says why", file=sys.stderr)
         return 1
     finally:
         await caller.close()

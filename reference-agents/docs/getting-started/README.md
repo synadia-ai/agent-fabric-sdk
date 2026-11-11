@@ -17,7 +17,7 @@ The order is a teaching order: echo, then a model, then a persona, then memory. 
 | --- | --- | --- | --- |
 | 1 | answers every prompt with the prompt | the agent on the fabric, under a signed identity | (1) receives prompts, signed |
 | 2 | asks a model, through the proxy | a thread with a model call and its tokens | (2) the model through the proxy, two trace headers on every call |
-| 3 | has a persona | the same, in character | |
+| 3 | has a persona, and a description | the same, in character, and what it tells the others it does | |
 | 4 | remembers the conversation | an answer that needs the earlier prompt | |
 | 5 | can discover and prompt other agents | a child thread under a tool call | (3) `discover_agents` and `prompt_agent` |
 | 6 | hands work over through ScratchPad | a commit, a grant and a read on the timeline | (4) commit, read, the least-authority grant |
