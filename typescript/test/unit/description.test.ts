@@ -32,6 +32,73 @@ describe("cleanDescription, against the shared vectors", () => {
   });
 });
 
+// The text is read only as far as its result needs, one character past the
+// limit, and the result is the one that cleaning the whole text first and
+// cutting it then gives.
+describe("cleanDescription, at the cut", () => {
+  const FFFD = String.fromCodePoint(0xfffd);
+  const JOINER = String.fromCodePoint(0x200d);
+  const THUMB = String.fromCodePoint(0x1f44d); // one character, two UTF-16 units
+  const HALF = String.fromCharCode(0xd83d); // half a character
+  const a = (count: number): string => "a".repeat(count);
+
+  it("cuts after the 500th character, whatever stands there", () => {
+    // A space the cut leaves at the end goes; nothing else does.
+    expect(cleanDescription(`${a(498)} z`)).toBe(`${a(498)} z`);
+    expect(cleanDescription(`${a(499)} z`)).toBe(a(499));
+    expect(cleanDescription(`${a(500)} z`)).toBe(a(500));
+    expect(cleanDescription(`${a(499)}${JOINER}z`)).toBe(`${a(499)}${JOINER}`);
+    expect(cleanDescription(`${a(499)}${THUMB}z`)).toBe(`${a(499)}${THUMB}`);
+    expect(cleanDescription(`${a(499)}${HALF}z`)).toBe(`${a(499)}${FFFD}`);
+    expect(cleanDescription(`${a(500)}${THUMB}`)).toBe(a(500));
+    expect(cleanDescription(`${a(500)}${HALF}`)).toBe(a(500));
+  });
+
+  // The rule the plain way, for the texts below: the whole text first, then
+  // the cut.
+  function wholeFirst(text: string): string {
+    const line = Array.from(text, (point) => (point === HALF ? FFFD : point))
+      .join("")
+      .replace(/ +/g, " ")
+      .replace(/^ | $/g, "");
+    const points = Array.from(line);
+    if (points.length <= DESCRIPTION_LIMIT) return line;
+    return points.slice(0, DESCRIPTION_LIMIT).join("").replace(/ $/, "");
+  }
+
+  it("gives what cleaning the whole text first gives, for 498 to 503 characters", () => {
+    // At the boundary: a space, a joiner, a character above U+FFFF, half a
+    // character. After it: nothing, more text, more spaces, the same again.
+    for (let length = 498; length <= 503; length++) {
+      for (const boundary of [" ", JOINER, THUMB, HALF]) {
+        const tails = ["", "z", " z", "  ", "zzzzzz", boundary, `${boundary}${boundary}z`];
+        for (const tail of tails) {
+          const text = `${a(length - 1)}${boundary}${tail}`;
+          const label = `${length} characters, U+${boundary.codePointAt(0)!.toString(16)} last, then ${JSON.stringify(tail)}`;
+          expect([label, cleanDescription(text)]).toEqual([label, wholeFirst(text)]);
+        }
+      }
+    }
+  });
+
+  it("stops reading one character past the limit", () => {
+    // A text that counts how much of it is read: a hundred thousand
+    // characters, a space after every six. Only its iteration is used, as
+    // the rule reads a text.
+    let read = 0;
+    const long = {
+      *[Symbol.iterator](): Generator<string> {
+        for (let i = 0; i < 100_000; i++) {
+          read += 1;
+          yield i % 7 === 6 ? " " : "a";
+        }
+      },
+    } as unknown as string;
+    expect(cleanDescription(long)).toBe("aaaaaa ".repeat(72).slice(0, DESCRIPTION_LIMIT));
+    expect(read).toBe(DESCRIPTION_LIMIT + 1);
+  });
+});
+
 // A reply or a question as a terminal is sent it. The same cases as the
 // Python suite's.
 describe("terminalText", () => {

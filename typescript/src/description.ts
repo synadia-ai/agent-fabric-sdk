@@ -107,11 +107,13 @@ export function cleanDescription(text: string): string {
     // Runs of spaces become one, and none leads.
     if (next === " " && (points.length === 0 || points[points.length - 1] === " ")) continue;
     points.push(next);
+    // One character past the limit settles the result: the text is cut to
+    // its first 500, whatever follows. So nothing more is read, and a text
+    // of any size costs what its first characters cost.
+    if (points.length > DESCRIPTION_LIMIT) break;
   }
+  if (points.length > DESCRIPTION_LIMIT) points.length = DESCRIPTION_LIMIT;
+  // The space that ended the text, or that the cut left at the end.
   if (points[points.length - 1] === " ") points.pop();
-  if (points.length > DESCRIPTION_LIMIT) {
-    points.length = DESCRIPTION_LIMIT;
-    if (points[points.length - 1] === " ") points.pop();
-  }
   return points.join("");
 }

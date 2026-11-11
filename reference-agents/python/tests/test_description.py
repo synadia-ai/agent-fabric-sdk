@@ -16,8 +16,10 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import nats
 import pytest
@@ -43,6 +45,59 @@ def test_clean_description_against_the_shared_vectors(vector: dict[str, str]) ->
     assert clean_description(vector["in"]) == vector["out"]
     # A cleaned text is a description: cleaning it again changes nothing.
     assert clean_description(vector["out"]) == vector["out"]
+
+
+# The text is read only as far as its result needs, one character past the
+# limit, and the result is the one that cleaning the whole text first and
+# cutting it then gives.
+_JOINER = chr(0x200D)
+_THUMB = chr(0x1F44D)  # one character, two UTF-16 units
+_HIGH = chr(0xD83D)  # half a character
+
+
+def test_cuts_after_the_500th_character_whatever_stands_there() -> None:
+    # A space the cut leaves at the end goes; nothing else does.
+    a = "a" * 499
+    assert clean_description(f"{a[1:]} z") == f"{a[1:]} z"
+    assert clean_description(f"{a} z") == a
+    assert clean_description(f"{a}a z") == f"{a}a"
+    assert clean_description(f"{a}{_JOINER}z") == f"{a}{_JOINER}"
+    assert clean_description(f"{a}{_THUMB}z") == f"{a}{_THUMB}"
+    assert clean_description(f"{a}{_HIGH}z") == f"{a}{chr(0xFFFD)}"
+    assert clean_description(f"{a}a{_THUMB}") == f"{a}a"
+    assert clean_description(f"{a}a{_HIGH}") == f"{a}a"
+
+
+def _whole_first(text: str) -> str:
+    """The rule the plain way, for the texts below: the whole text first, then the cut."""
+    line = " ".join(part for part in text.replace(_HIGH, chr(0xFFFD)).split(" ") if part)
+    return line if len(line) <= DESCRIPTION_LIMIT else line[:DESCRIPTION_LIMIT].rstrip(" ")
+
+
+@pytest.mark.parametrize("length", range(498, 504))
+def test_gives_what_cleaning_the_whole_text_first_gives(length: int) -> None:
+    # At the boundary: a space, a joiner, a character above U+FFFF, half a
+    # character. After it: nothing, more text, more spaces, the same again.
+    for boundary in (" ", _JOINER, _THUMB, _HIGH):
+        for tail in ("", "z", " z", "  ", "zzzzzz", boundary, f"{boundary}{boundary}z"):
+            text = "a" * (length - 1) + boundary + tail
+            label = f"U+{ord(boundary):x} last, then {tail!r}"
+            assert (label, clean_description(text)) == (label, _whole_first(text))
+
+
+def test_stops_reading_one_character_past_the_limit() -> None:
+    # A text that counts how much of it is read: a hundred thousand characters,
+    # a space after every six. Only its iteration is used, as the rule reads a text.
+    read = 0
+
+    def long() -> Iterator[str]:
+        nonlocal read
+        for i in range(100_000):
+            read += 1
+            yield " " if i % 7 == 6 else "a"
+
+    assert clean_description(cast("str", long())) == ("aaaaaa " * 72)[:DESCRIPTION_LIMIT]
+    assert read == DESCRIPTION_LIMIT + 1
 
 
 ENV = {

@@ -88,7 +88,20 @@ def plain_line(text: str) -> str:
 
 def clean_description(text: str) -> str:
     """``text`` as one line of plain text of at most 500 characters; empty when nothing is left."""
-    line = " ".join(part for part in plain_line(text).split(" ") if part)
-    if len(line) <= DESCRIPTION_LIMIT:
-        return line
-    return line[:DESCRIPTION_LIMIT].rstrip(" ")
+    points: list[str] = []
+    for ch in text:
+        nxt = _plain(ch)
+        # Runs of spaces become one, and none leads.
+        if nxt == " " and (not points or points[-1] == " "):
+            continue
+        points.append(nxt)
+        # One character past the limit settles the result: the text is cut to
+        # its first 500, whatever follows. So nothing more is read, and a text
+        # of any size costs what its first characters cost.
+        if len(points) > DESCRIPTION_LIMIT:
+            break
+    del points[DESCRIPTION_LIMIT:]
+    # The space that ended the text, or that the cut left at the end.
+    if points and points[-1] == " ":
+        points.pop()
+    return "".join(points)
