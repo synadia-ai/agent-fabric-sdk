@@ -4,6 +4,25 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## The agents' descriptions, the add-ons 0.3.4
+
+[bundles-v0.1.7.json](bundles-v0.1.7.json) describes the prepared `bundles-v0.1.7` assets.
+The protocol source is `synadia-agents` main at `a1bfb47` (#242): the pi, Claude Code and OpenClaw channels register what an agent says it does as its service's `description`, cleaned to one line of at most 500 characters, which other agents read when they discover it and choose whom to ask; it is set in the harness's own variable (`SYNADIA_PI_DESCRIPTION`, `SYNADIA_CLAUDE_CODE_DESCRIPTION`, `SYNADIA_OPENCLAW_DESCRIPTION`), in `SYNADIA_DESCRIPTION`, which all three read, or in the channel's config, the first that is set winning; OpenClaw's `NATS_DESCRIPTION` keeps working, after the two; a description never stops a channel from starting.
+The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7.
+The Fabric source is `06a85fc`: the three add-ons at 0.3.4, their own code unchanged from 0.3.3; each package's README names its description variable.
+ScratchPad is unchanged from `bundles-v0.1.6`: `sp-v0.1.8`.
+The archives hold the members of `bundles-v0.1.6`'s, with the same names, types and modes, but for one chunk of OpenClaw's compiled code, which is named by its content.
+What differs is the channels' compiled code (pi's `nats-channel.js`, Claude Code's `server.js`, OpenClaw's `index.js`, `setup-entry.js` and that chunk), Claude Code's `configure` skill, OpenClaw's `openclaw.plugin.json`, each `README.md`, `BUILD`, each package's `package.json`, and Claude Code's plugin and marketplace manifests, whose versions name the new commits; the add-ons' compiled code and the whole ScratchPad skill are byte for byte `bundles-v0.1.6`'s.
+In each archive and each npm package, the channel's compiled code holds its harness's description variable, `SYNADIA_DESCRIPTION` and the four warnings a description can get; `bundles-v0.1.6`'s holds none of them.
+Each archive's `bin/BUILD.json` names `sp-v0.1.8`, and its four executables match the release's hashes.
+At `06a85fc`, against `synadia-agents` at `a1bfb47`, the fabric package's and the three add-ons' typecheck, lint, format check and tests pass.
+Each archive installed with `fabric plugins install --from` into an empty home, with fabric v0.18.0 and with a build of fabric v0.19.0 before its release, and each installed folder equals its archive.
+From the second home, against a NATS server on the build machine alone, with no deployment and no credentials, so unsigned: pi 0.85.1 started with the pi bundle's channel, add-on and skill, and the Claude Code bundle's server started as its `.mcp.json` starts it; each loaded the add-on and registered a description given with a tab or a line break and runs of spaces as one cleaned line, read back from its service's info, with one warning.
+OpenClaw's bundle was not started.
+Each npm package holds its archive's plugin folder file for file, and none has dependencies.
+The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
+Not yet checked against a test deployment: agents of the three harnesses connected with `fabric connect` and a description, each read by another agent in discovery, are owed before publication.
+
 ## ScratchPad's sp-v0.1.8, the add-ons 0.3.3
 
 [bundles-v0.1.6.json](bundles-v0.1.6.json) describes the prepared `bundles-v0.1.6` assets.
