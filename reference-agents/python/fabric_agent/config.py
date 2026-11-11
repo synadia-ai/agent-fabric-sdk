@@ -3,9 +3,9 @@
 One process, one agent, one set of variables; the file that holds them is one
 ``.env`` per agent (see ``env.example``), read by :func:`load_env_file`, which
 does what Node's ``--env-file`` does for the TypeScript agent: ``KEY=VALUE``
-lines, ``#`` comments, no interpolation. Nothing here is a secret the
-repository tracks: the credentials file and the virtual key are paths and
-values in that untracked file.
+lines, ``#`` comments, a value in quotes taken whole, no interpolation.
+Nothing here is a secret the repository tracks: the credentials file and the
+virtual key are paths and values in that untracked file.
 """
 
 from __future__ import annotations
@@ -115,12 +115,23 @@ def load_env_file(path: str | Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        value = value.strip()
-        # An inline comment after the value, as in env.example.
-        if "  #" in value:
-            value = value.split("  #", 1)[0].rstrip()
-        values[key.strip()] = value.strip().strip('"').strip("'")
+        values[key.strip()] = _env_value(value.strip())
     return values
+
+
+def _env_value(value: str) -> str:
+    """The value of one ``KEY=VALUE`` line, without its quotes and its comment."""
+    # A value in quotes runs to the closing quote, and inside the quotes
+    # nothing starts a comment: a ``#`` there is text, after two spaces too.
+    # What follows the closing quote, a comment, is not part of the value.
+    if value[:1] in ('"', "'"):
+        end = value.find(value[0], 1)
+        if end > 0:
+            return value[1:end]
+    # An inline comment after the value, as in env.example.
+    if "  #" in value:
+        value = value.split("  #", 1)[0].rstrip()
+    return value.strip('"').strip("'")
 
 
 def load_config(env: Mapping[str, str] | None = None, log: Callable[[str], None] = print) -> AgentConfig:
