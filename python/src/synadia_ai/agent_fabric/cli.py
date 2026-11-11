@@ -9,6 +9,7 @@ flags, lines and exit codes.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import json
 import logging
 import math
@@ -79,6 +80,9 @@ class CommandIO:
     out_is_terminal: bool = False
     #: Whether stderr is a terminal.
     err_is_terminal: bool = False
+    #: Whether stdout writes UTF-8. One that does not cannot hold every
+    #: character, so ``--json`` is written in ASCII for it.
+    out_is_utf8: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,7 +244,13 @@ def _describe_identity(line: Mapping[str, object]) -> str:
 _HALF = re.compile(f"[{chr(0xD800)}-{chr(0xDFFF)}]")
 
 
-def _json(value: object) -> str:
+def _json(value: object, *, utf8: bool = True) -> str:
+    # A stdout that is not UTF-8 cannot hold every character, and writes ``?``
+    # for one it cannot. So for such a stdout every character outside ASCII is
+    # written as its JSON escape: valid JSON in any encoding, and the reader
+    # gets the same text back.
+    if not utf8:
+        return json.dumps(value, separators=(",", ":"), ensure_ascii=True)
     # The TypeScript command's bytes: no spaces, non-ASCII as it is. Half a
     # character is written as its escape, as JSON.stringify writes it: the
     # reader gets the same text back, and Python cannot write it otherwise.
@@ -254,7 +264,7 @@ async def _list_agents(caller: FabricCaller, as_json: bool, io: CommandIO) -> in
         lines.setdefault(a.prompt_subject, _agent_line(a))
     ordered = [lines[k] for k in sorted(lines)]
     if as_json:
-        io.out(f"{_json(ordered)}\n")
+        io.out(f"{_json(ordered, utf8=io.out_is_utf8)}\n")
         return EXIT_OK
     if not ordered:
         io.err("no agents\n")
@@ -316,7 +326,8 @@ async def _prompt(
     whole = "".join(reply).encode("utf-16", "surrogatepass").decode("utf-16", "surrogatepass")
     references = find_references(whole)
     if parsed.json:
-        io.out(f"{_json({'root': root, 'text': whole, 'references': references})}\n")
+        result = {"root": root, "text": whole, "references": references}
+        io.out(f"{_json(result, utf8=io.out_is_utf8)}\n")
     else:
         io.out("\n")
     if references:
@@ -355,6 +366,21 @@ def _never_stopping(stream: object) -> None:
     reconfigure = getattr(stream, "reconfigure", None)
     if callable(reconfigure) and getattr(stream, "errors", None) not in _NEVER_STOPS:
         reconfigure(errors="replace")
+
+
+def _writes_utf8(stream: object) -> bool:
+    """Whether what ``stream`` is given is written as UTF-8.
+
+    A stream that cannot be told (it is not a text file) is taken to hold any
+    text.
+    """
+    encoding = getattr(stream, "encoding", None)
+    if not isinstance(encoding, str):
+        return True
+    try:
+        return codecs.lookup(encoding).name == "utf-8"
+    except LookupError:
+        return False
 
 
 # The protocol SDK's loggers: this one and the ones under it.
@@ -404,6 +430,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         env=os.environ,
         out_is_terminal=sys.stdout.isatty(),
         err_is_terminal=sys.stderr.isatty(),
+        out_is_utf8=_writes_utf8(sys.stdout),
     )
     # A program that set up logging itself keeps what it set up.
     root = logging.getLogger()

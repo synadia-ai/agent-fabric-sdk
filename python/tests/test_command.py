@@ -573,6 +573,72 @@ def test_main_leaves_a_stream_it_cannot_tell_as_it_is(monkeypatch: pytest.Monkey
     assert out.getvalue() == f"{USAGE}\n"
 
 
+# Under ``replace`` such a stdout writes ``?`` for a character it cannot hold,
+# in ``--json`` too: valid JSON that is not the text. So ``--json`` is written
+# in ASCII for it, every other character as its JSON escape.
+_ACCENTS = f"caf\u00e9 \u2192 {chr(0x1F44D)}"
+
+
+async def test_json_lists_in_ascii_for_a_stdout_that_is_not_utf8(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    description = f"{_ACCENTS} cut {chr(0xD83D)}"
+    _listing(monkeypatch, [_A("agents.prompt.b", description, agent="caf\u00e9")])
+    io, rec = recording_io(_ENV, out_is_utf8=False)
+    assert await run_command(["agents", "--json"], io) == EXIT_OK
+    assert rec.out == (
+        '[{"address":"agents.prompt.b","kind":"caf\\u00e9","identity":null,"verified":false,'
+        '"description":"caf\\u00e9 \\u2192 \\ud83d\\udc4d cut \\ud83d"}]\n'
+    )
+    # What any encoding can hold, and the text as it was registered.
+    assert rec.out.isascii()
+    assert json.loads(rec.out)[0]["description"] == description
+
+
+async def test_json_gives_the_reply_in_ascii_for_a_stdout_that_is_not_utf8(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _listing(monkeypatch, [], target=_WRITER, served=[_ACCENTS[:5], _ACCENTS[5:]])
+    io, rec = recording_io(_ENV, out_is_utf8=False)
+    assert await run_command(["prompt", "writer", "hi", "--json"], io) == EXIT_OK
+    assert rec.out == (
+        f'{{"root":"{"0" * 32}","text":"caf\\u00e9 \\u2192 \\ud83d\\udc4d","references":[]}}\n'
+    )
+    assert json.loads(rec.out)["text"] == _ACCENTS
+
+
+async def test_without_json_the_reply_is_written_as_it_came_for_a_stdout_that_is_not_utf8(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The stream itself writes ``?`` where its encoding cannot hold a character.
+    _listing(monkeypatch, [], target=_WRITER, served=[_ACCENTS])
+    io, rec = recording_io(_ENV, out_is_utf8=False)
+    assert await run_command(["prompt", "writer", "hi"], io) == EXIT_OK
+    assert rec.out == f"{_ACCENTS}\n"
+
+
+@pytest.mark.parametrize(
+    ("encoding", "utf8"),
+    [("utf-8", True), ("UTF8", True), ("iso8859-1", False), ("ascii", False), ("cp1252", False)],
+)
+def test_main_tells_the_command_whether_stdout_writes_utf8(
+    monkeypatch: pytest.MonkeyPatch, encoding: str, utf8: bool
+) -> None:
+    told: list[bool] = []
+
+    async def run(_argv: Sequence[str], io: cli.CommandIO) -> int:
+        told.append(io.out_is_utf8)
+        return EXIT_OK
+
+    monkeypatch.setattr(cli, "run_command", run)
+    monkeypatch.setattr(cli.sys, "stdout", stdio.TextIOWrapper(stdio.BytesIO(), encoding=encoding))
+    assert cli.main(["agents"]) == EXIT_OK
+    # A stream that is not a text file over bytes has nothing to encode.
+    monkeypatch.setattr(cli.sys, "stdout", stdio.StringIO())
+    assert cli.main(["agents"]) == EXIT_OK
+    assert told == [utf8, True]
+
+
 # A program that set up no logging has Python write a log record to stderr as
 # it is. The protocol SDK's client logs what an agent sent, the words of a
 # refusal among it. ``main`` has every record written as one line of plain

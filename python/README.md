@@ -64,7 +64,10 @@ command.
   so an escape sequence in a reply is printed and never run; line breaks and
   tabs stay, and so do the zero width joiner and non-joiner. When stdout is a
   pipe or a file, the reply is written as it came, so a script reads the
-  exact text. `--json` always gives the text as it came.
+  exact text. One limit: a stdout that is not UTF-8 gets `?` for a character
+  its encoding cannot hold. `--json` gives the text as it came on any stdout:
+  on one that is not UTF-8 it is written in ASCII, with a JSON escape for
+  every other character, so a reader gets the same text back.
 - On stderr: the URL, the agent and its identity, `root <id>` (the task's root id, which is
   how the console finds the task), and `reference: <token>` when the reply
   hands back a ScratchPad reference. What an agent registered or said in a

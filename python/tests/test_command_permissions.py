@@ -42,6 +42,9 @@ ROOT_LINE = re.compile(r"^root ([0-9a-f]{32})$", re.MULTILINE)
 # colours the text, clears the screen and moves up a line.
 PAINT_QUESTION = "which \x1b[31mcolour?"
 PAINT_REPLY = "\x1b[2Jcleared\tthe\nscreen \x1b[1A"
+# What it replies to a prompt that starts with ``accents:``: a character
+# Latin-1 holds, one it does not, and one above U+FFFF.
+ACCENTS_REPLY = f"caf\u00e9 \u2192 {chr(0x1F44D)}"
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -81,6 +84,8 @@ async def world(nats_server_operator: RunningServer) -> AsyncIterator[World]:
             # A question and a reply with escape sequences in them.
             await stream.ask(PAINT_QUESTION, timeout=3.0)
             await stream.send(PAINT_REPLY)
+        elif envelope.prompt.startswith("accents:"):
+            await stream.send(ACCENTS_REPLY)
         elif envelope.prompt.startswith("cut:"):
             # A reply cut inside an emoji: each chunk holds half of it.
             await stream.send("thumbs " + chr(0xD83D))
@@ -513,10 +518,21 @@ async def test_lists_every_agent_on_a_stdout_that_is_not_utf8(
         code, out, err = await _run(
             _PYTHON, "agents", "--creds", str(ERIN), "--url", world.server.url, env=env
         )
+        as_json = await _run(
+            _PYTHON, "agents", "--json", "--creds", str(ERIN), "--url", world.server.url, env=env
+        )
     finally:
         for svc in extra:
             await svc.stop()
 
+    # ``--json`` gives each description as it was registered, on this stdout
+    # too: what its encoding cannot hold is written as a JSON escape.
+    assert as_json[0] == 0
+    assert [agent["description"] for agent in json.loads(as_json[1])] == [
+        "Keeps the caf\u00e9's orders \u2192 ask it.",
+        "cut in an emoji " + chr(0xD83D),
+        "writes",
+    ]
     assert (code, err) == (0, f"url {world.server.url}\n".encode())
     rows = [line.split(b"\t")[0] for line in out.splitlines() if not line.startswith(b"\t")]
     assert rows == [
@@ -532,6 +548,33 @@ async def test_lists_every_agent_on_a_stdout_that_is_not_utf8(
             b"\tcut in an emoji ?\n"
             + f"{world.address}\twriter\tagent identity: none\n\twrites\n".encode()
         )
+
+
+@pytest.mark.parametrize("encoding", ["ascii", "cp1252"])
+async def test_json_gives_the_reply_as_it_came_on_a_stdout_that_is_not_utf8(
+    world: World, encoding: str
+) -> None:
+    # Such a stdout writes ``?`` for a character it cannot hold. In ``--json``
+    # that was valid JSON that is not the reply, with no word of it. The
+    # command writes ``--json`` in ASCII there, a JSON escape for every other
+    # character: a reader gets the reply back.
+    code, out, _err = await _run(
+        _PYTHON,
+        *("prompt", "writer", "accents: it", "--json"),
+        *("--creds", str(ERIN), "--url", world.server.url),
+        env={"PYTHONIOENCODING": encoding},
+    )
+    assert code == 0
+    assert out.isascii() and b"?" not in out
+    assert json.loads(out)["text"] == ACCENTS_REPLY
+    # Without ``--json`` the stream writes the reply, ``?`` where it must.
+    code, out, _err = await _run(
+        _PYTHON,
+        *("prompt", "writer", "accents: it"),
+        *("--creds", str(ERIN), "--url", world.server.url),
+        env={"PYTHONIOENCODING": encoding},
+    )
+    assert (code, out) == (0, ACCENTS_REPLY.encode(encoding, "replace") + b"\n")
 
 
 async def test_streams_the_reply_and_the_root_and_reference_on_stderr(world: World) -> None:

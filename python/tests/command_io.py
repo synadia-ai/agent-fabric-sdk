@@ -1,6 +1,7 @@
 """A ``CommandIO`` for the command's tests: stdout and stderr collected, stdin a list of lines.
 
-Neither output is a terminal unless the test says so.
+Neither output is a terminal, and stdout writes UTF-8, unless the test says
+otherwise.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ def recording_io(
     *,
     out_is_terminal: bool = False,
     err_is_terminal: bool = False,
+    out_is_utf8: bool = True,
 ) -> tuple[CommandIO, Recording]:
     rec = Recording()
     lines = list(stdin)
@@ -45,5 +47,6 @@ def recording_io(
         env=dict(env or {}),
         out_is_terminal=out_is_terminal,
         err_is_terminal=err_is_terminal,
+        out_is_utf8=out_is_utf8,
     )
     return io, rec
