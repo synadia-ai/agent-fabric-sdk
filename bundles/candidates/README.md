@@ -21,7 +21,12 @@ From the second home, against a NATS server on the build machine alone, with no 
 OpenClaw's bundle was not started.
 Each npm package holds its archive's plugin folder file for file, and none has dependencies.
 The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
-Not yet checked against a test deployment: agents of the three harnesses connected with `fabric connect` and a description, each read by another agent in discovery, are owed before publication.
+Checked before publication with a build of fabric v0.19.0 before its release against a test deployment, in a throwaway home: each archive installed with `fabric plugins install --from`; a pi 0.85.1, an OpenClaw 2026.10.8 and a Claude Code 2.1.322 agent connected with `fabric connect --description`, each with its own text, one of them with an umlaut, an apostrophe and an exclamation mark, run the CLI's way, signed, each answering a console prompt.
+Each agent's service info, asked on `$SRV.INFO.agents` with one of the three agents' credentials, held the text given as its `description`, byte for byte; OpenClaw's holds it in its metadata too.
+A turn typed at pi called `discover_agents` and listed the other two agents' descriptions word for word.
+A turn typed at Claude Code asked for the agent that keeps a server's logs, without its name: the model chose the pi agent by its description and sent it one `prompt_agent`, which made one task rooted at the typed agent, with pi's thread beneath.
+A second `fabric connect --description` changed pi's text, and its service info held the new one once `fabric env` was evaluated again and pi restarted; a text with `$` and one of 501 characters were each refused with exit 2 and the rule in the message, and neither the agent's settings nor its service info changed; `--description ""` cleared it, `fabric env` wrote an `unset` for pi's variable, and the restarted pi registered its own default text.
+Claude Code's turn was typed in a session started from a shell that held no `CLAUDE_PID`; started from a shell that held another Claude Code session's, the channel's server and its hooks kept their files under different pids, and the typed turn's call made a task of its own.
 
 ## ScratchPad's sp-v0.1.8, the add-ons 0.3.3
 
