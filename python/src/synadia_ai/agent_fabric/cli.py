@@ -383,6 +383,14 @@ def _writes_utf8(stream: object) -> bool:
         return False
 
 
+def _is_terminal(stream: object) -> bool:
+    """Whether ``stream`` is a terminal. One that cannot be asked, a replaced
+    stream without ``isatty``, is not: as the TypeScript command takes a
+    stream whose ``isTTY`` is not ``true``."""
+    isatty = getattr(stream, "isatty", None)
+    return callable(isatty) and isatty() is True
+
+
 # The protocol SDK's loggers: this one and the ones under it.
 _PROTOCOL_SDK = "synadia_ai.agents"
 
@@ -428,8 +436,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         err=_write(sys.stderr),
         read_line=_read_stdin_line,
         env=os.environ,
-        out_is_terminal=sys.stdout.isatty(),
-        err_is_terminal=sys.stderr.isatty(),
+        out_is_terminal=_is_terminal(sys.stdout),
+        err_is_terminal=_is_terminal(sys.stderr),
         out_is_utf8=_writes_utf8(sys.stdout),
     )
     # A program that set up logging itself keeps what it set up.

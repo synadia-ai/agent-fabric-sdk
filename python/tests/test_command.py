@@ -639,6 +639,52 @@ def test_main_tells_the_command_whether_stdout_writes_utf8(
     assert told == [utf8, True]
 
 
+# A program that calls ``main`` may have replaced a stream with one that can
+# only be written to. It cannot say whether it is a terminal, so it is none:
+# the TypeScript command's ``isTTY === true``.
+class _Bare:
+    def __init__(self) -> None:
+        self.written: list[str] = []
+
+    def write(self, text: str) -> None:
+        self.written.append(text)
+
+    def flush(self) -> None:
+        pass
+
+
+class _Terminal(_Bare):
+    def isatty(self) -> bool:
+        return True
+
+
+@pytest.mark.parametrize(
+    ("out", "err", "terminals"),
+    [
+        (_Bare(), _Bare(), (False, False)),
+        (_Terminal(), _Bare(), (True, False)),
+        (_Bare(), _Terminal(), (False, True)),
+    ],
+    ids=["neither can say", "stdout a terminal", "stderr a terminal"],
+)
+def test_main_takes_a_stream_that_cannot_say_whether_it_is_a_terminal_for_none(
+    monkeypatch: pytest.MonkeyPatch, out: _Bare, err: _Bare, terminals: tuple[bool, bool]
+) -> None:
+    told: list[tuple[bool, bool]] = []
+
+    async def run(_argv: Sequence[str], io: cli.CommandIO) -> int:
+        told.append((io.out_is_terminal, io.err_is_terminal))
+        io.out("written\n")
+        return EXIT_OK
+
+    monkeypatch.setattr(cli, "run_command", run)
+    monkeypatch.setattr(cli.sys, "stdout", out)
+    monkeypatch.setattr(cli.sys, "stderr", err)
+    assert cli.main(["agents"]) == EXIT_OK
+    assert told == [terminals]
+    assert out.written[-1] == "written\n"
+
+
 # A program that set up no logging has Python write a log record to stderr as
 # it is. The protocol SDK's client logs what an agent sent, the words of a
 # refusal among it. ``main`` has every record written as one line of plain
