@@ -26,6 +26,7 @@ credentials. pi reads the rest from its environment:
 | `NATS_SENDER_IDENTITY` | `signed`: the agent signs what it sends, which the fabric verifies |
 | `SYNADIA_PI_NAME` | the agent's name, the last token of its address `agents.prompt.pi.<owner>.<name>` |
 | `SYNADIA_OWNER` | the owner, the 4th token; defaults to `$USER` |
+| `SYNADIA_PI_DESCRIPTION` | optional: what the agent does, on one line of plain text of at most 500 characters. Other agents read it in discovery when they choose whom to ask |
 | `SCRATCHPAD_VOLUME`, `SCRATCHPAD_DIR` | optional: the agent's ScratchPad volume and its private workspace |
 
 `NATS_CONTEXT`, a NATS CLI context, wins over `NATS_URL` and `NATS_CREDS`.

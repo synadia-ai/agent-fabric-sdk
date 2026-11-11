@@ -47,6 +47,7 @@ environment:
 | `NATS_SENDER_IDENTITY` | `signed`: the agent signs what it sends, which the fabric verifies |
 | `SYNADIA_CLAUDE_CODE_NAME` | the agent's name, the last token of its address `agents.prompt.cc.<owner>.<name>` |
 | `SYNADIA_OWNER` | the owner, the 4th token |
+| `SYNADIA_CLAUDE_CODE_DESCRIPTION` | optional: what the agent does, on one line of plain text of at most 500 characters. Other agents read it in discovery when they choose whom to ask |
 | `ANTHROPIC_BASE_URL` | the fabric's model proxy |
 | `ANTHROPIC_AUTH_TOKEN` | the agent's model key: Claude Code's model calls go through the proxy with it |
 | `ANTHROPIC_API_KEY` | your own Anthropic API key: Claude Code turns channels on only with it |
