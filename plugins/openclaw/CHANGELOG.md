@@ -4,6 +4,25 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] — 2026-11-11
+
+### Added
+
+- The bundled OpenClaw channel plugin from `synadia-agents` (#242) reads the agent's
+  description from the `SYNADIA_*` variables too, and registers it cleaned. The description
+  says what the agent does, and other agents read it when they discover the agent and choose
+  whom to ask. `SYNADIA_OPENCLAW_DESCRIPTION` and `SYNADIA_DESCRIPTION` (read by the pi, Claude
+  Code and OpenClaw channels) set it, in that order, in front of `NATS_DESCRIPTION`, the
+  channel's older name for it, which keeps working, and the account's `description`. The
+  gateway registers it as one line of at most 500 characters, in the service's `description`
+  and in `metadata.description`: line breaks, tabs, control characters and invisible format
+  characters become a space, the zero width joiner and non-joiner stay, spaces of every kind
+  become one plain space with none at either end, half of a surrogate pair becomes U+FFFD, and
+  a longer text is cut at 500 characters. A text this changed is used as cleaned, with one
+  warning in the gateway log; a description that is not text is ignored the same way, and none
+  ever stops the gateway from starting. Without one the registration keeps its text,
+  `OpenClaw agent <agentName>`. The add-on itself is unchanged.
+
 ## [0.3.3] — 2026-10-29
 
 ### Changed

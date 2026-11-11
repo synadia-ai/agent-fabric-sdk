@@ -4,6 +4,23 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] — 2026-11-11
+
+### Added
+
+- The bundled PI channel plugin from `synadia-agents` (#242) lets a session say what it does: a
+  description, registered as the service's `description`, which other agents read when they
+  discover the session and choose whom to ask. Set it in `SYNADIA_PI_DESCRIPTION`, in
+  `SYNADIA_DESCRIPTION` (read by the pi, Claude Code and OpenClaw channels) or as the
+  `description` field of `nats-channel.json`, the first of the three that is set winning, or
+  with `/nats-configure description <text|clear>`, which writes the field. It is registered as
+  one line of at most 500 characters: line breaks, tabs, control characters and invisible
+  format characters become a space, the zero width joiner and non-joiner stay, spaces of every
+  kind become one plain space with none at either end, half of a surrogate pair becomes U+FFFD,
+  and a longer text is cut at 500 characters. A text this changed is used as cleaned, with one
+  warning at start; a description never stops the channel from starting. Without one the
+  registration keeps its text, `PI agent (<session>) in <cwd>`. The add-on itself is unchanged.
+
 ## [0.3.3] — 2026-10-29
 
 ### Changed
