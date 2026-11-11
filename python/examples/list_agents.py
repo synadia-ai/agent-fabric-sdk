@@ -25,8 +25,8 @@ def plain(text: object) -> str:
     for ch in str(text):
         category = unicodedata.category(ch)
         if category == "Cs":
-            line.append("�")
-        elif ch in "‌‍":
+            line.append("\ufffd")
+        elif ch in "\u200c\u200d":
             line.append(ch)
         else:
             line.append(" " if category in ("Cc", "Cf", "Zl", "Zp", "Zs") else ch)

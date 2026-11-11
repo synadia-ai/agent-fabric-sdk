@@ -16,7 +16,7 @@ function plain(text) {
   let line = "";
   for (const point of String(text)) {
     const code = point.codePointAt(0);
-    if (code >= 0xd800 && code <= 0xdfff) line += "�";
+    if (code >= 0xd800 && code <= 0xdfff) line += "\ufffd";
     else if (code === 0x200c || code === 0x200d) line += point;
     else line += /^[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Zs}]$/u.test(point) ? " " : point;
   }
