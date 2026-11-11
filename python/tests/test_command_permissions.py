@@ -162,13 +162,22 @@ async def _run(
     return proc.returncode, out, err
 
 
+# How long a command on a terminal may run, in seconds: many times what any of
+# these runs takes.
+_TERMINAL_LIMIT_S = 60.0
+
+
 async def _run_on_terminal(
-    program: tuple[str, ...], *args: str, terminal: Literal["stdout", "stderr"]
+    program: tuple[str, ...],
+    *args: str,
+    terminal: Literal["stdout", "stderr"],
+    limit_s: float = _TERMINAL_LIMIT_S,
 ) -> tuple[int | None, bytes, bytes]:
     """Run a command with a terminal as one of its two outputs.
 
     Returns its exit code, what the terminal was sent, and the other output,
-    which is a pipe.
+    which is a pipe. A command that has not ended after ``limit_s`` seconds
+    is stopped and fails the test, so one that hangs does not hang the suite.
     """
     import pty  # noqa: PLC0415 - not on Windows
     import tty  # noqa: PLC0415
@@ -202,7 +211,17 @@ async def _run_on_terminal(
 
     try:
         shown = asyncio.get_running_loop().run_in_executor(None, sent)
-        out, err = await proc.communicate()
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), limit_s)
+        except TimeoutError:
+            # Stopped, the command closes its side of the terminal, which ends
+            # the terminal's output too.
+            proc.kill()
+            await proc.wait()
+            pytest.fail(
+                f"{' '.join((*program, *args))} had not ended after {limit_s:g} s; "
+                f"the terminal was sent {await shown!r}"
+            )
         return proc.returncode, await shown, out if terminal == "stderr" else err
     finally:
         os.close(master)
