@@ -24,6 +24,16 @@ A character is a Unicode code point, never a byte or a UTF-16 unit, and a
 printable character is never changed. The same rule, with the same test
 vectors (``../../test-fixtures/description-vectors.json``), as
 ``../../typescript/src/description.ts``.
+
+The prompt tool (``prompt.py``) prints other text another agent wrote: the
+address and the identity it registered, the words of a refusal, its reply.
+:func:`plain_line` applies steps 1 and 2 to a text that is printed inside a
+line. :func:`terminal_text` is for a reply on a terminal, over as many lines
+as it has: the line breaks and the tabs stay, and every other control or
+format character is shown as U+FFFD, so an escape sequence is printed and
+never run. :func:`well_formed` is for a reply that goes to a pipe or a file:
+it is left as it came, but for half a character, which Python cannot write.
+The ``agent-fabric`` command prints these texts by the same three.
 """
 
 from __future__ import annotations
@@ -53,6 +63,35 @@ def _plain(ch: str) -> str:
     if category == "Cs":
         return _REPLACEMENT
     return " " if category in _NOT_PLAIN and ch not in _KEPT else ch
+
+
+def plain_line(text: str) -> str:
+    """``text`` as it can be printed inside a line: every control, invisible,
+    line-break and space character as a plain space, half a character as
+    U+FFFD, everything else as it is. As many characters as it had."""
+    return "".join(_plain(ch) for ch in text)
+
+
+def well_formed(text: str) -> str:
+    """``text`` with U+FFFD for half a character, and nothing else changed: the
+    text a program that writes UTF-8 can write."""
+    return "".join(_REPLACEMENT if unicodedata.category(ch) == "Cs" else ch for ch in text)
+
+
+# The categories of a code point that a terminal may act on instead of showing
+# it, a control character (the escape character among them) or a format
+# character, and of half a character.
+_NOT_SHOWN = frozenset({"Cc", "Cf", "Cs"})
+# A line break and a tab, and the zero width non-joiner and joiner.
+_SHOWN = frozenset({"\n", "\t"}) | _KEPT
+
+
+def terminal_text(text: str) -> str:
+    """``text`` as a terminal can be sent it, over as many lines as it has: every
+    control and format character as U+FFFD, and half a character too. A line
+    break (U+000A) and a tab stay, and so do the zero width non-joiner and
+    joiner. Everything else is as it is. As many characters as it had."""
+    return "".join(_REPLACEMENT if ch not in _SHOWN and unicodedata.category(ch) in _NOT_SHOWN else ch for ch in text)
 
 
 def clean_description(text: str) -> str:

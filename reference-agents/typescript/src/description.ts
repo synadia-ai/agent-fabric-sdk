@@ -25,6 +25,14 @@
 // printable character is never changed. The same rule, with the same test
 // vectors (`../../test-fixtures/description-vectors.json`), as
 // `../../python/fabric_agent/description.py`.
+//
+// The prompt tool (`prompt.ts`) prints other text another agent wrote: the
+// address and the identity it registered, the words of a refusal, its reply.
+// `plainLine` applies steps 1 and 2 to a text that is printed inside a line.
+// `terminalText` is for a reply on a terminal, over as many lines as it has:
+// the line breaks and the tabs stay, and every other control or format
+// character is shown as U+FFFD, so an escape sequence is printed and never
+// run. The `agent-fabric` command prints these texts by the same two.
 
 /** The most characters, counted as Unicode code points, a description has. */
 export const DESCRIPTION_LIMIT = 500;
@@ -47,6 +55,39 @@ function plain(point: string): string {
   if (code !== undefined && code >= 0xd800 && code <= 0xdfff) return REPLACEMENT;
   if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) return point;
   return NOT_PLAIN.test(point) ? " " : point;
+}
+
+/**
+ * `text` as it can be printed inside a line: every control, invisible,
+ * line-break and space character as a plain space, half a character as
+ * U+FFFD, everything else as it is. As many characters as it had.
+ */
+export function plainLine(text: string): string {
+  let line = "";
+  for (const point of text) line += plain(point);
+  return line;
+}
+
+// One code point that a terminal may act on instead of showing it: a control
+// character (the escape character among them) or a format character.
+const CONTROL_OR_FORMAT = /^[\p{Cc}\p{Cf}]$/u;
+
+/**
+ * `text` as a terminal can be sent it, over as many lines as it has: every
+ * control and format character as U+FFFD, and half a character too. A line
+ * break (U+000A) and a tab stay, and so do the zero width non-joiner and
+ * joiner. Everything else is as it is. As many characters as it had.
+ */
+export function terminalText(text: string): string {
+  let shown = "";
+  for (const point of text) {
+    const code = point.codePointAt(0);
+    if (point === "\n" || point === "\t") shown += point;
+    else if (code === ZERO_WIDTH_NON_JOINER || code === ZERO_WIDTH_JOINER) shown += point;
+    else if (code !== undefined && code >= 0xd800 && code <= 0xdfff) shown += REPLACEMENT;
+    else shown += CONTROL_OR_FORMAT.test(point) ? REPLACEMENT : point;
+  }
+  return shown;
 }
 
 /**

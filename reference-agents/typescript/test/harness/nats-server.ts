@@ -102,6 +102,19 @@ export class TestNatsServer {
             `accounts { TENANT { users: [ ${entries}, { user: "engine", password: "engine" } ], jetstream { max_streams: ${tenant.maxStreams}, ` +
             `max_mem: 0, max_file: 4GB, max_bytes_required: true } } }\n`,
     );
+    return TestNatsServer.#launch(binary, dir, config);
+  }
+
+  /**
+   * Start a server from a port-less configuration file, such as the
+   * operator-mode one in this repository's `test-fixtures/identity/`, whose
+   * users connect with `.creds` files: a real `(account, user)` identity.
+   */
+  static async startWithConfig(binary: string, config: string): Promise<TestNatsServer> {
+    return TestNatsServer.#launch(binary, await mkdtemp(join(tmpdir(), "fabric-examples-nats-")), config);
+  }
+
+  static async #launch(binary: string, dir: string, config: string): Promise<TestNatsServer> {
     const port = await freePort();
     const proc = spawn(binary, ["-a", "127.0.0.1", "-p", String(port), "-c", config], {
       stdio: ["ignore", "ignore", "pipe"],
