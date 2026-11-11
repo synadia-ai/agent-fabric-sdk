@@ -96,8 +96,9 @@ def clean_description(text: str) -> str:
             continue
         points.append(nxt)
         # One character past the limit settles the result: the text is cut to
-        # its first 500, whatever follows. So nothing more is read, and a text
-        # of any size costs what its first characters cost.
+        # its first 500, whatever follows. So nothing is read past the 501st
+        # character that is kept. Up to there every character is read: a run
+        # of spaces or controls to its end, though one space at most is kept.
         if len(points) > DESCRIPTION_LIMIT:
             break
     del points[DESCRIPTION_LIMIT:]

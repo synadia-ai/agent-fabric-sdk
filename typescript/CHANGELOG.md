@@ -39,8 +39,12 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a tab, a control or an invisible character becomes a space (the zero width joiner and non-joiner
   stay), and half a character (a surrogate that is not part of a pair) becomes U+FFFD. The
   description is also brought to one line: runs of spaces become one, and a text longer than 500
-  characters is cut. So nothing an agent registered adds a row or a column, stops the list, or
-  reaches the terminal as an escape sequence. `--json` gives every field as it was registered, as
+  characters is cut. So when the command prints what an agent registered, nothing in it adds a
+  row or a column, stops the list, or reaches the terminal as an escape sequence. Reading the
+  replies to discovery is the protocol SDK's part and is unchanged: a reply that is not JSON, or
+  one that holds a number where the address belongs, still fails there, and the command then
+  ends with that error: `agent-fabric agents` without a list, and `agent-fabric prompt` without
+  a prompt, whichever agent it names. `--json` gives every field as it was registered, as
   before.
 - `agent-fabric prompt`: the lines on stderr print what an agent registered, or said when it
   refused, as plain text, by the list's rule for a field: the address and the identity on the `→`
@@ -51,10 +55,12 @@ package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `agent-fabric prompt`, without `--json`: the reply and a question the agent asks are the
   agent's own text, and a terminal no longer gets them as they came. When stdout is a terminal,
   every control or format character in the reply is written as U+FFFD, and half a character too;
-  a line break, a tab, the zero width joiner and the zero width non-joiner stay. So a reply
-  cannot clear the screen, move the cursor or write over a line with an escape sequence. The
-  same for a question when stderr is a terminal. When the output is a pipe or a file, the text
-  is written as it came, so a script reads the exact reply. `--json` is unchanged.
+  a line feed (U+000A), a tab, the zero width joiner and the zero width non-joiner stay. A
+  carriage return is one of the control characters: it is written as U+FFFD, so a reply with CRLF
+  line ends shows U+FFFD at the end of each line. So a reply cannot clear the screen, move the
+  cursor or write over a line with an escape sequence. The same for a question when stderr is a
+  terminal. When the output is a pipe or a file, the text is written as it came, so a script
+  reads the exact reply. `--json` is unchanged.
 - `resolveScratchPad`, the add-ons' ScratchPad settings, takes the connection the plugin's
   channel takes, so `sp` connects to the agent's server as the agent. After
   `options.scratchpad`'s `url` and `creds`, field by field: a non-empty `NATS_CONTEXT`'s

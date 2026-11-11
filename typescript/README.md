@@ -72,10 +72,12 @@ npx @synadia-ai/agent-fabric prompt writer "Write two lines about the sea." --cr
   is named by its address, or by its kind when exactly one agent has it.
 - The reply is the agent's own text. When stdout is a terminal, every control
   or invisible character in it is shown as U+FFFD, the replacement character,
-  so an escape sequence in a reply is printed and never run; line breaks and
-  tabs stay, and so do the zero width joiner and non-joiner. When stdout is a
-  pipe or a file, the reply is written as it came, so a script reads the
-  exact text. `--json` always gives the text as it came.
+  so an escape sequence in a reply is printed and never run. A line feed and
+  a tab stay, and so do the zero width joiner and non-joiner. A carriage
+  return does not stay: it is shown as U+FFFD, so a reply with CRLF line ends
+  shows U+FFFD at the end of each line. When stdout is a pipe or a file, the
+  reply is written as it came, so a script reads the exact text. `--json`
+  always gives the text as it came.
 - On stderr: the URL, the agent and its identity, `root <id>` (the task's root id, which is
   how the console finds the task), and `reference: <token>` when the reply
   hands back a ScratchPad reference. What an agent registered or said in a
