@@ -29,7 +29,7 @@ cd agent-fabric-sdk/reference-agents/python
 uv run pytest -q      # the agent's tests; they need nats-server on PATH
 ```
 
-A few tests start the TypeScript agent, among them the one where the two prompt each other; they need `reference-agents/typescript` installed (`npm install` there) and `node` on PATH, and skip themselves otherwise. To run the agent against the packages' own checkouts instead, when you work on them, `make test-py CHECKOUTS=1` in `reference-agents/` (the reference agents' README, "Install").
+A few tests start the TypeScript agent, among them the one where the two prompt each other; they need `reference-agents/typescript` installed (`npm install` there) and `node` on PATH, and skip themselves otherwise. The tests of the agent tools, `tests/test_tools.py`, compare the definitions with the SDK's own contract files, in its checkout next to this repository (`../synadia-agents`), and skip themselves without it. To run the agent against the packages' own checkouts instead, when you work on them, `make test-py CHECKOUTS=1` in `reference-agents/` (the reference agents' README, "Install").
 
 ## What your fabric gives you
 

@@ -72,9 +72,15 @@ from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_
 # service, the prompt interceptor on each client that prompts.
 TRACING = fabric_tracing()
 
-# The contract's own files, in the SDK checkout this repository links: the
-# definitions a model reads and the shapes of what comes back.
+# The contract's own files, in the SDK's checkout next to this repository: the
+# definitions a model reads and the shapes of what comes back. A clone without
+# that checkout skips this file.
 CONTRACT_DIR = Path(__file__).resolve().parents[4] / "synadia-agents" / "test-fixtures" / "agent-tools"
+if not CONTRACT_DIR.is_dir():
+    pytest.skip(
+        "needs the protocol SDK's checkout next to this repository (../synadia-agents), for the agent tools' contract files",
+        allow_module_level=True,
+    )
 
 
 def contract(name: str) -> dict[str, Any]:
