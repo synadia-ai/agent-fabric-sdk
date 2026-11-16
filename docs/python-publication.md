@@ -39,8 +39,8 @@ passed installation on Python 3.11, 3.12 and 3.13. It does not rebuild.
 External runtime and build dependencies use the November 9 UTC cutoff,
 `2026-11-09T00:00:00Z`, for the November 16 release: at least seven days
 of hold-off. Only the two exact, first-party protocol packages are exempt
-from that date, so the three packages can be released in sequence. Update
-the recorded cutoff deliberately for a later release.
+from that date (both are on PyPI since 2026-10-14). Update the recorded
+cutoff deliberately for a later release.
 
 Local controls and artifact preparation:
 
