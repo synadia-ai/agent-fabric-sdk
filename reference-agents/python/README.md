@@ -44,7 +44,7 @@ New here? `../docs/getting-started/python.md` walks through this agent in six st
 
 ## Prerequisites
 
-- Python 3.12 or later and `uv`.
+- `uv`. On the first `uv run` it installs the Python this directory names (3.13, `.python-version`) when it is not there; the code needs 3.12 or later (`pyproject.toml`).
 - `nats-server` on PATH for the tests (`brew install nats-server`); without it the fabric tests skip themselves.
 - Nothing else: the four packages come from PyPI, as `uv.lock` names them, and `uv run` installs them on its first run. The protocol SDK (`synadia-ai-agents`, `synadia-ai-agent-service`) supplies `AgentTools`. The fabric package (`synadia-ai-agent-fabric`) supplies tracing, reference policy, and `native_scratchpad_from_env`. The thin durable SDK (`synadia-durable`) runs the durable workflows. `fabric_agent/agent.py` wires the prompt interceptor on `Agents`, then tracing, tools, and reference request interceptors on `AgentService`, plus heartbeat extras, the grant endpoint, and four concurrent prompts.
 - For the tests that start the TypeScript agent, the interop test among them: `../typescript` installed (`npm install` there) and `node` on PATH; they skip themselves otherwise.

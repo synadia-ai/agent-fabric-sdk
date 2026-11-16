@@ -17,7 +17,7 @@ The agent is `reference-agents/python/` in this repository. It is the reference 
 
 ## Before you start
 
-**The tools.** git, Python 3.12 or later and `uv`; `nats-server` on PATH for the tests. Nothing else: no Node, npm or bun, and no other checkout. Step 6 uses the native Python client and needs ScratchPad's service import in your account.
+**The tools.** git and `uv`; `nats-server` on PATH for the tests. Nothing else: no Node, npm or bun, no other checkout, and no Python of your own: on the first `uv run`, uv installs the Python the agent names (3.13, in `.python-version`) when it is not there. Step 6 uses the native Python client and needs ScratchPad's service import in your account.
 
 **The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). The durable workflows (`AGENT_DURABLE=1`) run on the thin durable SDK, `synadia-durable`. All four are on PyPI, and `uv` in `reference-agents/python` installs the versions its `uv.lock` names, on the first `uv run`.
 

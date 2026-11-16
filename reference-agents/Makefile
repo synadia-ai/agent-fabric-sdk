@@ -18,7 +18,11 @@
 #
 #   CHECKOUTS=1     with agent-py, test-py or test: the Python agent runs on the
 #                   four packages' checkouts instead of PyPI's, for testing
-#                   changes not yet released (`make test-py CHECKOUTS=1`)
+#                   changes not yet released (`make test-py CHECKOUTS=1`).
+#                   Without it, `make test` runs the TypeScript agent on the
+#                   checkouts and the Python one on PyPI's packages, so the
+#                   interop and byte-parity tests compare the two only while
+#                   the checkouts are what was released
 
 # The protocol SDK's checkout, next to this repository, on this branch: the
 # TypeScript agent's link and the Python agent's CHECKOUTS=1. `make setup`
@@ -36,6 +40,10 @@ CHECKOUTS     ?=
 # How the Python agent runs, from python/. With CHECKOUTS=1, uv layers the four
 # checkouts, installed editable, over the synced environment for that one run;
 # the environment, pyproject.toml and uv.lock stay on the published packages.
+# Every program starts as `python -m`, from the overlay's Python: a script of
+# the synced environment (its bin/pytest) would start that environment's
+# Python, without the checkouts. tests/test_checkouts.py checks which copies
+# are imported, in the tests and in a child, when CHECKOUTS=1.
 PY_RUN := uv run$(if $(CHECKOUTS), --with-editable ../../python \
   --with-editable ../../../$(SDK_DIR)/client-sdk/python \
   --with-editable ../../../$(SDK_DIR)/agent-sdk/python \
@@ -61,7 +69,7 @@ agent-py:
 
 # The Python tests: the same two, plus the TypeScript agent and the Python one prompting each other.
 test-py:
-	cd python && $(PY_RUN) pytest -q
+	cd python && CHECKOUTS=$(CHECKOUTS) SDK_DIR=$(SDK_DIR) DE_DIR=$(DE_DIR) $(PY_RUN) python -m pytest -q
 
 # Everything.
 test: test-ts test-py

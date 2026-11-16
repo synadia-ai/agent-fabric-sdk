@@ -30,7 +30,7 @@ requires-dist = [
     { name = "synadia-ai-agent-fabric", specifier = ">=0.3.0" },
     { name = "synadia-ai-agent-service", specifier = ">=0.5.0" },
     { name = "synadia-ai-agents", specifier = ">=0.8.1" },
-    { name = "synadia-durable", specifier = ">=0.2.0" },
+    { name = "synadia-durable", specifier = ">=0.2.0,<0.3" },
 ]
 
 [package.metadata.requires-dev]

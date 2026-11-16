@@ -88,11 +88,12 @@ Keep the four behaviours; the fifth is yours to keep or leave. An agent without 
 
 **The TypeScript agent alone** needs Node 22.13 or later with npm (for the native ScratchPad writer; Node 20.12 runs it without ScratchPad) and nothing else: `npm install` in `typescript/` takes the four packages from npm.
 
-**The Python agent alone** needs git, and Python 3.12 or later with `uv`, and nothing else: no other checkout, no Node. `uv run` in `python/` takes the four packages from PyPI, as `uv.lock` names them, on its first run. From nothing, with the agent's `.env` in place first ("Run it", below):
+**The Python agent alone** needs git and `uv`, and nothing else: no other checkout, no Node, and no Python of your own. On its first run, `uv run` in `python/` installs the Python the agent names (3.13, in `.python-version`) when it is not there, and the four packages from PyPI, as `uv.lock` names them. From nothing:
 
 ```sh
 git clone https://github.com/synadia-ai/agent-fabric-sdk.git
 cd agent-fabric-sdk/reference-agents/python
+eval "$(fabric env <name>)"     # an agent fabric connect set up; or cp env.example .env and fill it in ("Run it", below)
 uv run python -m fabric_agent
 ```
 
@@ -112,7 +113,9 @@ make agent-ts     # the TypeScript agent, from typescript/.env
 make agent-py     # the Python agent, from python/.env
 ```
 
-**The Python agent on the checkouts.** To test a change to one of the four packages before it is released, add `CHECKOUTS=1` to `make test-py`, `make agent-py` or `make test`. uv then installs the four checkouts editable (the two SDK packages and the thin durable SDK from the checkouts above, the fabric package from `../python`) over the synced environment, for that one run (`uv run --with-editable`). `pyproject.toml`, `uv.lock` and the environment stay on the published versions, so the next run without it is on PyPI's packages again.
+**The Python agent on the checkouts.** To test a change to one of the four packages before it is released, add `CHECKOUTS=1` to `make test-py`, `make agent-py` or `make test`. uv then installs the four checkouts editable (the two SDK packages and the thin durable SDK from the checkouts above, the fabric package from `../python`) over the synced environment, for that one run (`uv run --with-editable`). `pyproject.toml`, `uv.lock` and the environment stay on the published versions, so the next run without it is on PyPI's packages again. `tests/test_checkouts.py` checks, under `CHECKOUTS=1`, that the tests and the programs they start import the checkouts.
+
+**Which code `make test` compares.** A plain `make test` runs the TypeScript agent on the checkouts and the Python agent on PyPI's packages. Its interop and byte-parity tests then compare a checkout with a release, which agree only while the checkouts are what was released. Once a checkout moves ahead of its release, run `make test CHECKOUTS=1`, which puts both agents on the checkouts.
 
 ## Run it
 

@@ -14,7 +14,7 @@ dependencies = [
   "synadia-ai-agent-fabric>=0.3.0",
   # The thin durable SDK: the workflows behind ``start_workflow``
   # (``AGENT_DURABLE=1``).
-  "synadia-durable>=0.2.0",
+  "synadia-durable>=0.2.0,<0.3",
   "nats-py>=2.7",
   "httpx>=0.27",
 ]
