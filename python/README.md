@@ -11,7 +11,7 @@ hooks of the Synadia Agent Protocol SDK (`synadia-ai-agents`,
 - **Durable runs** joined to the task that started them:
   `durable_run_id(tool_call_id)`, `durable_trace()`, `durable_headers(trace)`
   and `with_durable_trace(trace, turn_count)`, with no dependency on a durable-execution library
-  ([`docs/durable.md`](../docs/durable.md)).
+  ([`docs/durable.md`](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/durable.md)).
 - **The `served` record**, for a harness plugin's add-on: the plugin's
   binding of a served thread to the harness's own thread id, two records
   per prompt (`served.json`). `build_served_record(…)` writes one, from the
@@ -200,4 +200,4 @@ The client accepts `sp-r1:` short tokens and existing `sp-ref:` tokens.
 Publication uses the short form when the service and the selected client support it.
 Copy the returned token unchanged into prompts and replies.
 The token survives client restarts; each content read still requires current authorization.
-See the [native client contract](../docs/scratchpad-native.md) for recovery and capability fallback.
+See the [native client contract](https://github.com/synadia-ai/agent-fabric-sdk/blob/main/docs/scratchpad-native.md) for recovery and capability fallback.
