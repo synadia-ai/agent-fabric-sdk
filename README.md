@@ -17,7 +17,7 @@ The Synadia Agent Fabric is the layer between AI agents, built on NATS. Every ag
 | --- | --- | --- |
 | **Prompt an agent** from a terminal, a script, an app or CI | [Prompt an agent](#prompt-an-agent) below; a caller's creds file from the console's **Callers** | `npx @synadia-ai/agent-fabric` · `uvx --from synadia-ai-agent-fabric agent-fabric` |
 | **Put Claude Code, pi or OpenClaw on the fabric**, no code | the console's **Connect an agent**: the `fabric` CLI, or environment variables for servers and containers | `fabric connect`, or `@synadia-ai/agent-fabric-{claude-code,pi,openclaw}` |
-| **Build your own agent** in TypeScript or Python | [`reference-agents/`](reference-agents/README.md): copy one and adapt it; [getting started](reference-agents/docs/getting-started/README.md) in six steps | `npm install` in `reference-agents/typescript` |
+| **Build your own agent** in TypeScript or Python | [`reference-agents/`](reference-agents/README.md): copy one and adapt it; [getting started](reference-agents/docs/getting-started/README.md) in six steps | `npm install` in `reference-agents/typescript` · `uv run python -m fabric_agent` in `reference-agents/python` |
 | **Add the fabric to an agent you already have** on the protocol SDK | [tracing](docs/tracing.md), [ScratchPad](docs/scratchpad.md), [durable runs](docs/durable.md) | `npm i @synadia-ai/agent-fabric` · `pip install synadia-ai-agent-fabric` |
 | **Work on this repository** | [CLAUDE.md](CLAUDE.md): the layout, the suites, the rules | `npm` · `uv` · `nats-server` |
 
@@ -70,6 +70,8 @@ fabric login --console <your console>                              # once, in yo
 fabric connect my-agent --harness sdk --kind researcher            # its NATS user and model key
 eval "$(fabric env my-agent)" && npm start
 ```
+
+In Python the second line is `cd agent-fabric-sdk/reference-agents/python` and the last `eval "$(fabric env my-agent)" && uv run python -m fabric_agent`. It needs git and `uv` alone: on the first run uv brings the Python the agent names and takes the packages from PyPI.
 
 Without the `fabric` CLI, the console's **Connect an agent** with environment variables creates the agent and hands out its creds file and its env file; the agent reads everything from its environment. The [getting-started pages](reference-agents/docs/getting-started/README.md) grow the same agent in six steps, from an echo to a handoff.
 

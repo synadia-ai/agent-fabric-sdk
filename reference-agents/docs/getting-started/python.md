@@ -1,6 +1,6 @@
 # Getting started: a Python agent on the fabric
 
-**Date:** 2026-09-26 · **Status:** every command on this page was run in this order, on a Mac, with `anthropic/claude-sonnet-5` through the model proxy, and the outputs shown are from those runs; the steps take about ten minutes once the prerequisites are in place. Since 2026-09-26 the page starts from a fabric you already have, and the same two agents ran step 5's two-agent case and step 6's handoff on such a fabric that day. The TypeScript page, `typescript.md`, is this page with TypeScript's commands. Stated honestly: step 3's description and the `description:` startup lines were added on 2026-11-10, from the agent's tests and not from a run of this page.
+**Date:** 2026-09-26 · **Status:** every command on this page was run in this order, on a Mac, with `anthropic/claude-sonnet-5` through the model proxy, and the outputs shown are from those runs; the steps take about ten minutes once the prerequisites are in place. Since 2026-09-26 the page starts from a fabric you already have, and the same two agents ran step 5's two-agent case and step 6's handoff on such a fabric that day. The TypeScript page, `typescript.md`, is this page with TypeScript's commands. Stated honestly: step 3's description and the `description:` startup lines were added on 2026-11-10, from the agent's tests and not from a run of this page. Since 2026-11-16 the agent takes its packages from PyPI; that day, in a fresh clone with no other checkout and no Node, `uv run pytest` passed and `uv run python -m fabric_agent` started the agent on a local nats-server, not on a fabric.
 
 You will put one agent on the fabric and grow it in six steps. Each step adds one thing, and after each you look at what the console shows and why.
 
@@ -17,19 +17,19 @@ The agent is `reference-agents/python/` in this repository. It is the reference 
 
 ## Before you start
 
-**The tools.** Python 3.12 or later and `uv`, Node 22.13 or later with npm for `make setup`; `nats-server` on PATH for the tests; until the packages are published, `bun`, with which `make setup` builds the SDK's TypeScript packages. Step 6 uses the native Python client and needs ScratchPad's service import in your account.
+**The tools.** git and `uv`; `nats-server` on PATH for the tests. Nothing else: no Node, npm or bun, no other checkout, and no Python of your own: on the first `uv run`, uv installs the Python the agent names (3.13, in `.python-version`) when it is not there. Step 6 uses the native Python client and needs ScratchPad's service import in your account.
 
-**The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). Until they are published, the SDK comes from its checkout next to this repository, and the fabric package is this repository's own (`../typescript`, `../python`). `make setup` in `reference-agents/` checks that the SDK's checkout is there and on the right branch, builds the TypeScript packages, and installs both agents. For Python nothing is built: `uv` installs the three packages editable from their directories (`pyproject.toml`, `[tool.uv.sources]`).
+**The packages.** The SDK speaks the agent protocol and nothing more: `@synadia-ai/agents` and `@synadia-ai/agent-service`, `synadia-ai-agents` and `synadia-ai-agent-service` in Python. What makes a prompt a thread in the console, tracing, is the fabric's own package, `@synadia-ai/agent-fabric` (`synadia-ai-agent-fabric` in Python). So are the fabric's rules for handing content over by ScratchPad reference, an extension of the SDK's agent tools (step 6). The durable workflows (`AGENT_DURABLE=1`) run on the thin durable SDK, `synadia-durable`. All four are on PyPI, and `uv` in `reference-agents/python` installs the versions its `uv.lock` names, on the first `uv run`.
 
 **Install and test the agent:**
 
 ```sh
-make setup            # in reference-agents/: the packages, then both agents
-cd python
-uv run pytest -q      # 8 tests; they need nats-server on PATH
+git clone https://github.com/synadia-ai/agent-fabric-sdk.git
+cd agent-fabric-sdk/reference-agents/python
+uv run pytest -q      # the agent's tests; they need nats-server on PATH
 ```
 
-One of the tests starts the TypeScript agent and has the two prompt each other; it needs `reference-agents/typescript` installed (`make setup` does it) and `node` on PATH, and skips itself otherwise.
+A few tests start the TypeScript agent, among them the one where the two prompt each other; they need `reference-agents/typescript` installed (`npm install` there) and `node` on PATH, and skip themselves otherwise. The tests of the agent tools, `tests/test_tools.py`, compare the definitions with the SDK's own contract files, in its checkout next to this repository (`../synadia-agents`), and skip themselves without it. To run the agent against the packages' own checkouts instead, when you work on them, `make test-py CHECKOUTS=1` in `reference-agents/` (the reference agents' README, "Install").
 
 ## What your fabric gives you
 

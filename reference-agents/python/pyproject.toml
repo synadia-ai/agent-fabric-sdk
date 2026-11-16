@@ -4,14 +4,17 @@ version = "0.1.0"
 description = "The Python reference agent of the Synadia Agent Fabric."
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
+# The four packages come from PyPI. To run this agent on their checkouts
+# instead, when you work on them: `make test-py CHECKOUTS=1` (or `agent-py`)
+# in reference-agents/, which leaves this file and uv.lock as they are.
 dependencies = [
-  "synadia-ai-agents",
-  "synadia-ai-agent-service",
+  "synadia-ai-agents>=0.8.1",
+  "synadia-ai-agent-service>=0.5.0",
   # The fabric package: tracing, on the two SDK packages' hooks.
-  "synadia-ai-agent-fabric",
+  "synadia-ai-agent-fabric>=0.3.0",
   # The thin durable SDK: the workflows behind ``start_workflow``
   # (``AGENT_DURABLE=1``).
-  "synadia-durable",
+  "synadia-durable>=0.2.0,<0.3",
   "nats-py>=2.7",
   "httpx>=0.27",
 ]
@@ -27,16 +30,6 @@ dev = [
 # Not a package to build: modules run in place (`uv run python -m fabric_agent`).
 [tool.uv]
 package = false
-
-# The two SDK packages from the checkout next door and the fabric package from
-# this repository, until they are published. One source for each SDK package here also
-# resolves the other packages' own dependencies on them, so one copy.
-[tool.uv.sources]
-synadia-ai-agents = { path = "../../../synadia-agents/client-sdk/python", editable = true }
-synadia-ai-agent-service = { path = "../../../synadia-agents/agent-sdk/python", editable = true }
-synadia-ai-agent-fabric = { path = "../../python", editable = true }
-# The thin durable SDK from its checkout next door, until it is published; the engine behind it.
-synadia-durable = { path = "../../../durable-sdk/python", editable = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

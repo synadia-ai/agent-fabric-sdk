@@ -21,7 +21,7 @@ The agent itself never sees the provider's key. It runs on its own model key, wh
 | `typescript/` | the TypeScript agent, its caller (`src/prompt.ts`), the echo agent of the first step (`src/echo.ts`), the tests |
 | `python/` | the Python agent, its caller (`fabric_agent/prompt.py`), the echo agent, the tests, among them the one where the two agents prompt each other |
 | `docs/getting-started/` | the walkthrough, one page per language: the same agent grown in six steps, from an echo to a handoff |
-| `Makefile`, `scripts/setup.sh` | `make setup` installs the packages; `make agent-ts`, `make agent-py`, `make test` |
+| `Makefile`, `scripts/setup.sh` | for work on this repository: `make setup` installs the packages; `make agent-ts`, `make agent-py`, `make test`; `CHECKOUTS=1` runs the Python agent on the packages' checkouts |
 
 The two agents behave the same, give their models the same tools in the same words, and write the same reference token, so either one prompts, and hands work to, the other.
 
@@ -45,7 +45,7 @@ What is at-least-once: a model turn or a tool call in flight when the process di
 
 ## Copy and adapt
 
-Copy `typescript/` or `python/`, and `env.example` to `.env`. A copy of `typescript/` goes anywhere: `npm install` there takes the packages from npm. The Python agent finds its packages by relative path (`pyproject.toml`'s uv path sources) until they are on PyPI, so keep a copy of `python/` next to the original, as `reference-agents/<yours>/`, or change those paths. What you change:
+Copy `typescript/` or `python/`, and `env.example` to `.env`. A copy of either goes anywhere: `npm install` in a copy of `typescript/` takes the packages from npm, and `uv run` in a copy of `python/` takes them from PyPI. What you change:
 
 **In `.env`.** Every variable is listed in `env.example`, with what it is and where your fabric gives it.
 
@@ -88,7 +88,16 @@ Keep the four behaviours; the fifth is yours to keep or leave. An agent without 
 
 **The TypeScript agent alone** needs Node 22.13 or later with npm (for the native ScratchPad writer; Node 20.12 runs it without ScratchPad) and nothing else: `npm install` in `typescript/` takes the four packages from npm.
 
-**Both agents, for work on this repository:** also Python 3.12 or later with `uv`, `nats-server` on PATH for the tests, and `bun`, which builds the SDK's TypeScript packages from their checkouts. Then:
+**The Python agent alone** needs git and `uv`, and nothing else: no other checkout, no Node, and no Python of your own. On its first run, `uv run` in `python/` installs the Python the agent names (3.13, in `.python-version`) when it is not there, and the four packages from PyPI, as `uv.lock` names them. From nothing:
+
+```sh
+git clone https://github.com/synadia-ai/agent-fabric-sdk.git
+cd agent-fabric-sdk/reference-agents/python
+eval "$(fabric env <name>)"     # an agent fabric connect set up; or cp env.example .env and fill it in ("Run it", below)
+uv run python -m fabric_agent
+```
+
+**Both agents, for work on this repository:** also Node and npm, `nats-server` on PATH for the tests, and `bun`, which builds the SDK's TypeScript packages from their checkouts. Then:
 
 ```sh
 make setup
@@ -96,13 +105,17 @@ make setup
 
 It installs four packages in each language. `@synadia-ai/agents` and `synadia-ai-agents` are the agent protocol's caller side and the agent tools. `@synadia-ai/agent-service` and `synadia-ai-agent-service` are its host side. `@synadia-ai/agent-fabric` and `synadia-ai-agent-fabric` are the fabric's tracing, its rules for ScratchPad references and the durable run's id and trace. `@synadia-ai/durable` and `synadia-durable` are the thin durable SDK behind the fifth behaviour and the durable agent, the client of the durable engine.
 
-Here the agents run against the packages as they stand in their checkouts, not as published. The TypeScript agent installs from npm, and `make setup` then links the four packages over that install (`npm install --no-save`, which leaves `package.json` and the lockfile alone); the Python agent takes them by uv path sources until they are on PyPI. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `main`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The thin durable SDK comes from its checkout next to this repository too, `../durable-sdk`. The durable tests spawn the engine, `durable-engine serve`, on their nats-server. The engine comes from Synadia: set `DE_ENGINE` to the path of its binary and `DE_LICENCE` to its licence file; without `DE_ENGINE` the durable tests skip. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build, `uv` installs all four editable. It is safe to run again.
+Here the TypeScript agent runs against the packages as they stand in their checkouts, not as published: it installs from npm, and `make setup` then links the four packages over that install (`npm install --no-save`, which leaves `package.json` and the lockfile alone). The Python agent runs on the published packages: `make setup` syncs them from PyPI (`uv sync`), as `uv.lock` names them. The protocol SDK comes from its checkout next to this repository, `../synadia-agents` on branch `main`; `make setup` checks it is there and on that branch (`ANY_BRANCH=1` builds another), and when it is missing says what to clone and where. The thin durable SDK comes from its checkout next to this repository too, `../durable-sdk`. The durable tests spawn the engine, `durable-engine serve`, on their nats-server. The engine comes from Synadia: set `DE_ENGINE` to the path of its binary and `DE_LICENCE` to its licence file; without `DE_ENGINE` the durable tests skip. The fabric package is this repository's own, `../typescript` and `../python`. `make setup` builds the TypeScript packages in place when their sources are newer than their builds; Python needs no build. It is safe to run again.
 
 ```sh
 make test         # both agents' tests; nats-server on PATH
 make agent-ts     # the TypeScript agent, from typescript/.env
 make agent-py     # the Python agent, from python/.env
 ```
+
+**The Python agent on the checkouts.** To test a change to one of the four packages before it is released, add `CHECKOUTS=1` to `make test-py`, `make agent-py` or `make test`. uv then installs the four checkouts editable (the two SDK packages and the thin durable SDK from the checkouts above, the fabric package from `../python`) over the synced environment, for that one run (`uv run --with-editable`). `pyproject.toml`, `uv.lock` and the environment stay on the published versions, so the next run without it is on PyPI's packages again. `tests/test_checkouts.py` checks, under `CHECKOUTS=1`, that the tests and the programs they start import the checkouts.
+
+**Which code `make test` compares.** A plain `make test` runs the TypeScript agent on the checkouts and the Python agent on PyPI's packages. Its interop and byte-parity tests then compare a checkout with a release, which agree only while the checkouts are what was released. Once a checkout moves ahead of its release, run `make test CHECKOUTS=1`, which puts both agents on the checkouts.
 
 ## Run it
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Installs the two agents' packages for work on this repository: the
-# agents run against the packages as they stand in the checkouts, not as
-# published. TypeScript installs from npm (package.json names the published
-# versions, which is what a copy of the agent gets with `npm install`) and
-# then links the four packages over that install: the protocol SDK and the
-# thin durable SDK from checkouts next to this repository, the fabric
-# package from this repository itself, their TypeScript halves built in
-# place first. Python takes all four by uv path sources (pyproject.toml)
-# until they are on PyPI.
+# Installs the two agents' packages for work on this repository.
+# TypeScript installs from npm (package.json names the published versions,
+# which is what a copy of the agent gets with `npm install`) and then links
+# the four packages over that install, so the TypeScript agent runs them as
+# they stand in the checkouts: the protocol SDK and the thin durable SDK from
+# checkouts next to this repository, the fabric package from this repository
+# itself, their TypeScript halves built in place first. Python syncs the four
+# from PyPI, as uv.lock names them; `make test-py CHECKOUTS=1` runs the Python
+# agent on the checkouts instead (the Makefile).
 #
 # Called by `make setup`, which names the SDK's checkout and its branch. Safe
 # to run twice: a package is built only when its sources are newer than its
@@ -103,7 +103,7 @@ fi
 echo "setup: linking the checkouts' packages into reference-agents/typescript"
 (cd "$ts" && npm install --no-save --no-audit --no-fund \
   "$repo/typescript" "$sdk/agent-sdk/typescript" "$sdk/client-sdk/typescript" "$de")
-# uv installs the Python packages editable, the fabric package from ../python;
+# The Python agent: the four packages from PyPI, as uv.lock names them;
 # nothing to build. `--locked` refuses to change uv.lock, and prints nothing
 # when all is there.
 (cd "$here/python" && uv sync --locked --quiet)

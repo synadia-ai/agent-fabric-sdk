@@ -44,16 +44,17 @@ New here? `../docs/getting-started/python.md` walks through this agent in six st
 
 ## Prerequisites
 
-- Python 3.12 or later and `uv`.
+- `uv`. On the first `uv run` it installs the Python this directory names (3.13, `.python-version`) when it is not there; the code needs 3.12 or later (`pyproject.toml`).
 - `nats-server` on PATH for the tests (`brew install nats-server`); without it the fabric tests skip themselves.
-- Until the packages are published, run `make setup` in `reference-agents/`. It checks the sibling `synadia-agents` checkout and installs both agents. Python resolves the two protocol packages and this repository's fabric package through the path sources in `pyproject.toml`; `uv sync` installs them editable. The protocol SDK supplies `AgentTools`. The fabric package supplies tracing, reference policy, and `native_scratchpad_from_env`. `fabric_agent/agent.py` wires the prompt interceptor on `Agents`, then tracing, tools, and reference request interceptors on `AgentService`, plus heartbeat extras, the grant endpoint, and four concurrent prompts.
-- For the interop test: `../typescript` installed (`make setup` does it) and `node` on PATH.
+- Nothing else: the four packages come from PyPI, as `uv.lock` names them, and `uv run` installs them on its first run. The protocol SDK (`synadia-ai-agents`, `synadia-ai-agent-service`) supplies `AgentTools`. The fabric package (`synadia-ai-agent-fabric`) supplies tracing, reference policy, and `native_scratchpad_from_env`. The thin durable SDK (`synadia-durable`) runs the durable workflows. `fabric_agent/agent.py` wires the prompt interceptor on `Agents`, then tracing, tools, and reference request interceptors on `AgentService`, plus heartbeat extras, the grant endpoint, and four concurrent prompts.
+- For the tests that start the TypeScript agent, the interop test among them: `../typescript` installed (`npm install` there) and `node` on PATH; they skip themselves otherwise.
+- For `tests/test_tools.py`: the protocol SDK's checkout next to this repository, `../synadia-agents`, whose contract files it compares the tools with; it skips itself otherwise.
+- To run on the four packages' checkouts instead, for a change not yet released: `make test-py CHECKOUTS=1` or `make agent-py CHECKOUTS=1` in `reference-agents/` (its README, "Install").
 - For ScratchPad, which is optional: a service import in the agent's NATS account, an allocated volume, and a private persistent workspace.
 
 ## Install and test
 
 ```sh
-make setup            # in reference-agents/
 uv run pytest
 ```
 

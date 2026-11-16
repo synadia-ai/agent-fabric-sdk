@@ -178,13 +178,26 @@ the checkout of `synadia-agents` on `main` (everything of the rollout merged the
 
 - The reference agents, `reference-agents/typescript` and
   `reference-agents/python`. TypeScript names the published versions on
-  npm (`^0.1.0`, `^0.6.0`, `^0.1.1`), so a copy of the directory installs
+  npm (`@synadia-ai/agents` and `@synadia-ai/agent-service` `^0.6.0`,
+  `@synadia-ai/agent-fabric` `^0.3.0` on `main` since #98,
+  `@synadia-ai/durable` `^0.2.0`), so a copy of the directory installs
   anywhere with `npm install`; `make setup` then links this package
   (`../../typescript`), the SDK (`../../../synadia-agents/…`) and the thin
   durable SDK (`../../../durable-sdk`) over that install with
-  `npm install --no-save`, so the tests run the checkouts. Python takes them
-  by uv path sources (`path = "../../python"`, the SDK's, and an editable
-  source to `../durable-sdk/python`) until they are on PyPI. Their durable
+  `npm install --no-save`, so the tests run the checkouts. Python names the
+  published versions on PyPI (`synadia-ai-agents>=0.8.1`,
+  `synadia-ai-agent-service>=0.5.0`, `synadia-ai-agent-fabric>=0.3.0`,
+  `synadia-durable>=0.2.0,<0.3`; since 2026-11-16, no uv path sources), so a copy
+  of the directory runs anywhere with `uv run python -m fabric_agent`, and
+  `make setup` installs them with `uv sync`. For a change not yet released,
+  `make test-py CHECKOUTS=1` (also `agent-py`, `test`) runs the Python agent
+  on the four checkouts: `uv run --with-editable` layers them, editable, over
+  the synced environment for that one run, and leaves `pyproject.toml`,
+  `uv.lock` and the environment as they are; `tests/test_checkouts.py`
+  checks the copies imported. A plain `make test` runs the TypeScript agent
+  on the checkouts and the Python agent on PyPI's packages, so its interop
+  and byte-parity tests compare a checkout with a release: once a checkout
+  moves ahead of its release, run `make test CHECKOUTS=1`. Their durable
   tests spawn the engine, `durable-engine serve`, standalone on the test's
   nats-server. The engine is not in a public repository: it comes from
   Synadia, with a licence. `DE_ENGINE` is the path of its binary and
@@ -197,9 +210,9 @@ the checkout of `synadia-agents` on `main` (everything of the rollout merged the
 
 When the SDK is published, replace both with the released versions
 (`^0.x` / `>=0.x`), regenerate the lockfiles, and drop this section.
-**At the publication of this package**, the reference agents' links switch
-to the published versions of all three packages, and `make setup` shrinks
-to `npm install` and `uv sync`.
+The reference agents name the published versions in both languages. The
+Python agent runs on them unless `CHECKOUTS=1` says otherwise; `make setup`
+still links the checkouts over the TypeScript agent's npm install.
 
 ## Running the suites
 
@@ -227,6 +240,7 @@ npm run build                 # dist/, what SYNADIA_PI_EXTENSIONS (…_OPENCLAW_
 cd ../../reference-agents     # after typescript/ is built; `make setup` builds and installs
 make setup
 make test                     # typescript: typecheck + npm test; python: pytest, with the TS agent in the interop
+make test-py CHECKOUTS=1      # the Python agent's tests on the checkouts instead of PyPI's packages
 ```
 
 All suites green means all of these: the two packages', the three add-ons',

@@ -72,17 +72,24 @@ from tests.harness.nats_server import LocalNatsServer, nats_server_on_path, new_
 # service, the prompt interceptor on each client that prompts.
 TRACING = fabric_tracing()
 
-# The contract's own files, in the SDK checkout this repository links: the
-# definitions a model reads and the shapes of what comes back.
+# The contract's own files, in the SDK's checkout next to this repository: the
+# definitions a model reads and the shapes of what comes back. A clone without
+# that checkout skips the two word-for-word tests and checks no result's shape;
+# every other test runs.
 CONTRACT_DIR = Path(__file__).resolve().parents[4] / "synadia-agents" / "test-fixtures" / "agent-tools"
+HAS_CONTRACT = CONTRACT_DIR.is_dir()
+needs_the_contract = pytest.mark.skipif(
+    not HAS_CONTRACT,
+    reason="needs the protocol SDK's checkout next to this repository (../synadia-agents), for the agent tools' contract files",
+)
 
 
 def contract(name: str) -> dict[str, Any]:
     return json.loads((CONTRACT_DIR / name).read_text(encoding="utf-8"))
 
 
-DISCOVER_RESULT = Draft202012Validator(contract("discover_agents.result.json"))
-CALL_RESULT = Draft202012Validator(contract("prompt_agent.result.json"))
+DISCOVER_RESULT = Draft202012Validator(contract("discover_agents.result.json")) if HAS_CONTRACT else None
+CALL_RESULT = Draft202012Validator(contract("prompt_agent.result.json")) if HAS_CONTRACT else None
 TOOL_NAMES = ["discover_agents", "prompt_agent", "wait_agent", "answer_agent", "cancel_agent", "list_agent_calls"]
 
 
@@ -95,7 +102,10 @@ async def reply_text(stream) -> str:
     return "".join(parts)
 
 
-def assert_valid(validator: Draft202012Validator, value: Any) -> None:
+def assert_valid(validator: Draft202012Validator | None, value: Any) -> None:
+    """A result against the contract's schema; nothing without the contract's files."""
+    if validator is None:
+        return
     errors = [e.message for e in validator.iter_errors(value)]
     assert not errors, errors
 
@@ -163,6 +173,7 @@ async def test_serialized_chat_tools_are_explicitly_non_strict(setting: str) -> 
         fake.stop()
 
 
+@needs_the_contract
 def test_definitions_are_by_default_the_sdks_three_blocking_ones_not_a_word_changed() -> None:
     offered = offered_by("blocking")
     assert [t["function"]["name"] for t in offered] == ["discover_agents", "prompt_agent", "answer_agent"]
@@ -177,6 +188,7 @@ def test_definitions_are_by_default_the_sdks_three_blocking_ones_not_a_word_chan
     assert tool_runner(tools).definitions == chat_tools(tools)
 
 
+@needs_the_contract
 def test_definitions_are_the_sdks_six_with_all_word_for_word_the_contracts_files() -> None:
     offered = offered_by("all")
     assert [t["function"]["name"] for t in offered] == TOOL_NAMES
