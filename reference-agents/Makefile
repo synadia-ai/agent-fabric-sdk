@@ -3,26 +3,43 @@
 # if you use it. `typescript/env.example` and `python/env.example` list what
 # an agent is told.
 #
-#   make setup      install both agents' packages; builds the SDK in the checkout
-#                   below and this repository's package first, until they are published
+# A user of the Python agent needs none of this file: in python/,
+# `uv run python -m fabric_agent` takes the four packages from PyPI.
+#
+#   make setup      install both agents' packages for work on this repository:
+#                   TypeScript's from npm, with the checkouts below built and
+#                   linked over them; Python's from PyPI (uv sync)
 #   make agent-ts   run the TypeScript agent from typescript/.env
 #   make agent-py   run the Python agent from python/.env
 #   make test       both agents' tests (test-ts, test-py); nats-server on PATH.
 #                   The durable tests spawn the durable engine from Synadia:
 #                   DE_ENGINE (its binary) and DE_LICENCE (its licence file);
 #                   they skip without DE_ENGINE
+#
+#   CHECKOUTS=1     with agent-py, test-py or test: the Python agent runs on the
+#                   four packages' checkouts instead of PyPI's, for testing
+#                   changes not yet released (`make test-py CHECKOUTS=1`)
 
-# Until the protocol SDK is published, it comes from this checkout, next to
-# this repository, on this branch. `make setup` refuses another branch unless
-# ANY_BRANCH=1. The fabric package is this repository's own: ../typescript
-# and ../python.
+# The protocol SDK's checkout, next to this repository, on this branch: the
+# TypeScript agent's link and the Python agent's CHECKOUTS=1. `make setup`
+# refuses another branch unless ANY_BRANCH=1. The fabric package is this
+# repository's own: ../typescript and ../python.
 SDK_DIR       := synadia-agents
 SDK_BRANCH    := main
 ANY_BRANCH    ?=
 # The thin durable SDK, for the durable workflows (AGENT_DURABLE=1, the
-# durable agent): from its checkout next to this repository, until it is
-# published. The engine behind it comes from Synadia (DE_ENGINE).
+# durable agent): its checkout next to this repository, the same way. The
+# engine behind it comes from Synadia (DE_ENGINE).
 DE_DIR        := durable-sdk
+CHECKOUTS     ?=
+
+# How the Python agent runs, from python/. With CHECKOUTS=1, uv layers the four
+# checkouts, installed editable, over the synced environment for that one run;
+# the environment, pyproject.toml and uv.lock stay on the published packages.
+PY_RUN := uv run$(if $(CHECKOUTS), --with-editable ../../python \
+  --with-editable ../../../$(SDK_DIR)/client-sdk/python \
+  --with-editable ../../../$(SDK_DIR)/agent-sdk/python \
+  --with-editable ../../../$(DE_DIR)/python)
 
 .PHONY: setup agent-ts test-ts agent-py test-py test test-reply-controls
 
@@ -40,11 +57,11 @@ test-ts:
 
 # One Python agent, configured by python/.env.
 agent-py:
-	cd python && uv run python -m fabric_agent
+	cd python && $(PY_RUN) python -m fabric_agent
 
 # The Python tests: the same two, plus the TypeScript agent and the Python one prompting each other.
 test-py:
-	cd python && uv run pytest -q
+	cd python && $(PY_RUN) pytest -q
 
 # Everything.
 test: test-ts test-py

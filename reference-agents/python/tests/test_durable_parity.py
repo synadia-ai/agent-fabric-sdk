@@ -35,7 +35,7 @@ def _bytes(value: Any) -> bytes:
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
 
 
-@pytest.mark.skipif(node is None or not ts_ready, reason="needs node and reference-agents/typescript installed")
+@pytest.mark.skipif(node is None or not ts_ready, reason="needs node and reference-agents/typescript installed (npm install there)")
 def test_the_durable_pieces_are_byte_identical_across_the_agents() -> None:
     out = subprocess.run(
         [node, "--import", "tsx", "test/harness/durable-bytes.ts"],  # type: ignore[list-item]

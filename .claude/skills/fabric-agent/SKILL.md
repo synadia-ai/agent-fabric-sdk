@@ -31,7 +31,7 @@ It asks for a Synadia Cloud token with the Account Admin role on the account the
 
 ## 2. Build the agent
 
-Start from `reference-agents/typescript/` (Node 22.13 or later). Read `reference-agents/README.md` first: it says where each behaviour is and what to change. Python is `reference-agents/python/`; it needs this repository's `make setup` and two sibling checkouts, so prefer TypeScript unless asked.
+Start from `reference-agents/typescript/` (Node 22.13 or later). Read `reference-agents/README.md` first: it says where each behaviour is and what to change. Python is `reference-agents/python/` (Python 3.12 or later with `uv`; `uv run` there takes its packages from PyPI); prefer TypeScript unless asked.
 
 - **A new agent:** copy `reference-agents/typescript/` to a directory of its own, without `node_modules`, and run `npm install` there. It takes its packages from npm.
 - **The persona:** `AGENT_SYSTEM_PROMPT` (or `AGENT_SYSTEM_PROMPT_FILE`) in the agent's `.env`.

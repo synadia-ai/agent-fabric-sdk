@@ -62,7 +62,7 @@ node = shutil.which("node")
 ts_ready = (TS_DIR / "node_modules" / "tsx").is_dir()
 
 
-@pytest.mark.skipif(binary is None or node is None or not ts_ready, reason="needs nats-server, node and reference-agents/typescript installed")
+@pytest.mark.skipif(binary is None or node is None or not ts_ready, reason="needs nats-server, node and reference-agents/typescript installed (npm install there)")
 async def test_typescript_and_python_agents_prompt_each_other(tmp_path: Path) -> None:
     users = {name: new_user() for name in ("caller", "py", "ts")}
     server = LocalNatsServer.start(binary, list(users.values()))  # type: ignore[arg-type]
@@ -199,7 +199,7 @@ def ref_fields(reference: str) -> dict[str, Any]:
     return fields
 
 
-@pytest.mark.skipif(binary is None or node is None or not ts_ready, reason="needs nats-server, node and reference-agents/typescript installed")
+@pytest.mark.skipif(binary is None or node is None or not ts_ready, reason="needs nats-server, node and reference-agents/typescript installed (npm install there)")
 async def test_a_reference_the_typescript_agent_committed_is_read_by_the_python_agent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
