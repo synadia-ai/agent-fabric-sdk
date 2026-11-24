@@ -4,6 +4,31 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] — 2026-11-24
+
+### Changed
+
+- The bundled PI channel plugin from `synadia-agents` (#256) names the agent tools in PI's
+  system prompt. Each tool carries a one-line `promptSnippet`, so PI's default system prompt
+  lists it under _Available tools_, and `promptGuidelines` that tell the model the address
+  other agents reach it at (the one the session registered at, with any `-2` suffix the channel
+  added), to reach other agents with `discover_agents` and `prompt_agent` rather than shell
+  commands, that `discover_agents` lists every agent without arguments and its filters match
+  the `agent`, `owner` and `name` it lists exactly, and to pass `prompt_agent` the address as
+  discovered with a self-contained prompt. The lines cost about 160 tokens on every model call
+  with the blocking three; a custom system prompt (`--system-prompt`, `SYSTEM.md`) replaces
+  PI's default one, and these lines with it.
+- `discover_agents`, from the protocol SDK the bundled channel plugin carries (`synadia-agents`
+  #257), explains an empty result and refuses filters that cannot match. When filters were
+  given and no agent matched them, the result keeps `agents: []` and adds `filter_note`: the
+  filters, how many agents are visible without them, and to call `discover_agents` with no
+  arguments to list every agent. A filter matches an entry's `agent`, `owner` or `name` whole,
+  ignoring case, and `""` or `null` is no filter. An `owner` or `name` with `.`, `*`, `>` or
+  whitespace, and an `agent` with `*` or `>` or starting with `agents.`, is refused with words
+  that say what a filter is. The tool's descriptions say that called with no arguments it lists
+  every agent, and that a filter is the exact value an entry lists, which can differ from the
+  address's tokens: no wildcards, never an address. The add-on itself is unchanged.
+
 ## [0.3.4] — 2026-11-11
 
 ### Added
