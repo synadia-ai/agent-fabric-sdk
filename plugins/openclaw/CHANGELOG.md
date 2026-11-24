@@ -4,6 +4,21 @@ All notable changes to `@synadia-ai/agent-fabric-openclaw` are recorded here. Th
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] — 2026-11-24
+
+### Changed
+
+- `discover_agents`, from the protocol SDK the bundled channel plugin carries (`synadia-agents`
+  #257), explains an empty result and refuses filters that cannot match. When filters were
+  given and no agent matched them, the result keeps `agents: []` and adds `filter_note`: the
+  filters, how many agents are visible without them, and to call `discover_agents` with no
+  arguments to list every agent. A filter matches an entry's `agent`, `owner` or `name` whole,
+  ignoring case, and `""` or `null` is no filter. An `owner` or `name` with `.`, `*`, `>` or
+  whitespace, and an `agent` with `*` or `>` or starting with `agents.`, is refused with words
+  that say what a filter is. The tool's descriptions say that called with no arguments it lists
+  every agent, and that a filter is the exact value an entry lists, which can differ from the
+  address's tokens: no wildcards, never an address. The add-on itself is unchanged.
+
 ## [0.3.4] — 2026-11-11
 
 ### Added
