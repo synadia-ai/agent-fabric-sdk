@@ -4,6 +4,31 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## The agent tools in PI's system prompt, discover_agents' empty result, the add-ons 0.3.5
+
+[bundles-v0.1.8.json](bundles-v0.1.8.json) describes the prepared `bundles-v0.1.8` assets.
+The protocol source is `synadia-agents` main at `491b1b8` (#249, #256, #257).
+PI's system prompt lists the agent tools, one line each, and names the address other agents reach the session at, with guidelines to reach other agents through `discover_agents` and `prompt_agent`, never shell commands, and to pass `prompt_agent` the address as discovered (#256).
+In all three channels, `discover_agents` adds `filter_note` to an empty filtered result, matches a filter whole and ignoring case, takes `""` and `null` as no filter, and refuses a filter that cannot match; its descriptions say a filter is the exact `agent`, `owner` or `name` value an entry lists, which can differ from the address's tokens (#257).
+Claude Code's `/nats-channel:configure` reads and writes `config.json` in the channel's state directory, `NATS_STATE_DIR` when it is set, as the fabric CLI sets it (#249).
+The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7.
+The Fabric source is `9c94d78`: the three add-ons at 0.3.5, their own code unchanged from 0.3.4.
+ScratchPad is unchanged from `bundles-v0.1.7`: `sp-v0.1.8`.
+The archives hold the members of `bundles-v0.1.7`'s, with the same types and modes, but for the chunks of compiled code, which are named by their content: one in pi's and Claude Code's archives, two in OpenClaw's.
+What differs in substance is the shared chunk that holds the protocol SDK, in all three, pi's `nats-channel.js`, and Claude Code's `configure` skill (`SKILL.md`, `list-contexts.sh`); the other compiled files, the add-ons' `fabric.js` among them, are `bundles-v0.1.7`'s but for the chunk names they import.
+`BUILD`, each package's `package.json`, and Claude Code's plugin and marketplace manifests name the new versions and commits; each `README.md` and the whole ScratchPad skill are byte for byte `bundles-v0.1.7`'s.
+In each archive and each npm package, the compiled code holds `filter_note`, the new descriptions and the new refusal, and none of the old `discover_agents` words; pi's also holds the three snippets and the guidelines.
+Each archive's `bin/BUILD.json` names `sp-v0.1.8`, and its four executables match the release's hashes.
+At `9c94d78`, against `synadia-agents` at `491b1b8`, the fabric package's and the three add-ons' typecheck, lint, format check and tests pass, and so do `load-sp.mjs verify` and the distribution suite.
+Each archive installed with `fabric plugins install --from` into an empty home, with fabric v0.21.0, and each installed folder equals its archive.
+Against a NATS server on the build machine alone, with no deployment and no credentials, so unsigned: a session of PI 0.85.1 loaded the pi bundle's manifest entry, and the Claude Code bundle's server started as its `.mcp.json` starts it, spoken to over MCP.
+PI's system prompt listed the three blocking tools with their snippets and named the session's address once, with the three guidelines.
+Through each agent's own `discover_agents`, the other was listed; a filter that matched nothing returned `filter_note`; an owner in capitals, an empty name, a null owner and an agent in capitals matched; the address's token `cc` matched no agent, whose listed `agent` is `claude-code`; an owner with a dot, a name with a space and an agent that is an address were refused with the new words.
+OpenClaw's bundle was not started.
+Each npm package holds its archive's plugin folder file for file, and none has dependencies.
+The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
+Not yet checked against a test deployment: agents of the three harnesses connected with `fabric connect`, a model's turn in each reading the new lines, are owed before publication if the release owner asks for them.
+
 ## The agents' descriptions, the add-ons 0.3.4
 
 [bundles-v0.1.7.json](bundles-v0.1.7.json) describes the prepared `bundles-v0.1.7` assets.
