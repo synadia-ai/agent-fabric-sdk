@@ -4,6 +4,13 @@ All notable changes to `@synadia-ai/agent-fabric-pi` are recorded here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] — 2026-11-24
+
+### Changed
+
+- Built with this release's channel plugins from `synadia-agents` (`e16c078`), whose PI channel
+  is unchanged since 0.3.5; no change of its own.
+
 ## [0.3.5] — 2026-11-24
 
 ### Changed

@@ -4,6 +4,31 @@ All notable changes to `@synadia-ai/agent-fabric-claude-code` are recorded here.
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] — 2026-11-24
+
+### Added
+
+- The bundled Claude Code channel plugin from `synadia-agents` (#259) answers a prompt Claude
+  Code does not take while idle within 30 seconds, not after 5 to 30 minutes. Claude Code with
+  its channel off (no Anthropic API key of its own, a No to its question "Do you want to use
+  this API key?", a key scoped to the organization rather than a workspace, or no channel flag)
+  drops every channel message and tells the server nothing; idle, with the channel on, it takes
+  a message into a turn within tens of milliseconds. So a prompt delivered while the hooks show
+  no turn running, and not taken within `idleTurnStartMs` of idle time (30 seconds by default;
+  `SYNADIA_CLAUDE_CODE_IDLE_TURN_START_MS` wins over the config field; `0` turns the check
+  off), is ended with the protocol's error frame, `Nats-Service-Error-Code: 500`, and this
+  description:
+  `Claude Code did not take this prompt within 30 s while idle: its channel is likely off. Check: the channels flag, own ANTHROPIC_API_KEY, Yes to the API key question, a workspace-scoped key`.
+  The first such prompt logs one `warning:` line with the Claude Code version, every likely
+  cause and the `0` setting. The add-on hears `promptEnded` with the
+  outcome `error` and the reason `no_reply`, so the served `end` carries `no_reply`. The check
+  applies only to Claude Code 2.1.310 or later, by the version its `initialize` gives, with the
+  plugin's hooks running, and stands down once Claude Code has taken one channel message. A
+  turn no submit announces (typed text that waited behind a turn, a background task's report,
+  `/compact`) looks idle until its first tool call, and a picker such as `/model` holds a
+  message until it is closed: a first prompt behind either, past the bound, is ended although
+  the channel is on. The add-on itself is unchanged.
+
 ## [0.3.5] — 2026-11-24
 
 ### Changed

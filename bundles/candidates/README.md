@@ -4,6 +4,33 @@ These manifests identify built release candidates by exact source commits and as
 Candidate preparation does not publish a release or change an installed agent.
 The release owner reviews the candidate PR before publication.
 
+## A prompt Claude Code does not take, the add-ons 0.3.6
+
+[bundles-v0.1.9.json](bundles-v0.1.9.json) describes the prepared `bundles-v0.1.9` assets.
+The protocol source is `synadia-agents` main at `e16c078` (#259), whose only change since `491b1b8` is Claude Code's channel and its documentation.
+Claude Code's channel ends a prompt Claude Code has not taken into a turn within 30 s of idle time with the protocol's error frame, `Nats-Service-Error-Code: 500` and `Claude Code did not take this prompt within 30 s while idle: its channel is likely off. Check: the channels flag, own ANTHROPIC_API_KEY, Yes to the API key question, a workspace-scoped key`, and logs one warning at the first; before, such a prompt stayed open for 5 to 30 minutes.
+The bound is `idleTurnStartMs`, which `SYNADIA_CLAUDE_CODE_IDLE_TURN_START_MS` overrides and `0` turns off; the check applies only to Claude Code 2.1.310 or later, by the version its `initialize` gives, with the plugin's hooks running, and stands down once Claude Code has taken one channel message.
+The channels keep their versions: pi 0.5.6, Claude Code 0.6.0, OpenClaw 0.5.7.
+The Fabric source is `879aa22`: the three add-ons at 0.3.6, their own code unchanged from 0.3.5; pi's and OpenClaw's move with the release, since each archive's plugin folder is its npm package at the add-on's version.
+ScratchPad is unchanged from `bundles-v0.1.8`: `sp-v0.1.8`.
+The archives hold the members of `bundles-v0.1.8`'s, with the same names, types and modes; the chunks of compiled code keep their names.
+In Claude Code's archive what differs is the channel's `runtime/server.js` and `hooks/session-event.js`, `BUILD`, `package.json`, and the plugin and marketplace manifests, whose versions name the new commits; in pi's and OpenClaw's, `BUILD` and `package.json` alone, whose version is 0.3.6.
+The add-ons' `fabric.js`, the shared chunks, each `README.md` and the whole ScratchPad skill are byte for byte `bundles-v0.1.8`'s.
+In Claude Code's archive and npm package, the channel's compiled code holds that description, beside a constant `500` that the untaken prompt is rejected with, the default bound of 30000 ms, the version gate 2.1.310, the warning and `SYNADIA_CLAUDE_CODE_IDLE_TURN_START_MS`; `bundles-v0.1.8`'s holds none of them, and pi's and OpenClaw's hold none.
+`bundles-v0.1.8`'s new code, PI's tool lines and `discover_agents`' `filter_note`, is in each archive and each npm package still.
+Each archive's `bin/BUILD.json` names `sp-v0.1.8`, and its four executables match the release's hashes.
+At `879aa22`, against `synadia-agents` at `e16c078`, the fabric package's and the three add-ons' typecheck, lint, format check and tests pass, and so do `load-sp.mjs verify` and the distribution suite.
+Each archive installed with `fabric plugins install --from` into an empty home, with fabric v0.22.0, and each installed folder equals its archive.
+Against a NATS server on the build machine alone, with no deployment and no credentials, so unsigned: the Claude Code bundle's server was started as its `.mcp.json` starts it, its hooks run as its `hooks.json` runs them, and spoken to over MCP by a stand-in for Claude Code that took no channel message unless told to.
+Given Claude Code 2.1.331 in `initialize`, with the default bound, its prompt was ended 30.7 s after it was sent with the `500` frame and that description, then a clean end; one warning line named Claude Code 2.1.331, `ANTHROPIC_API_KEY`, the channel flags and the `0` setting, and the prompt was logged with the reason `not taken while idle`.
+Once the stand-in took a prompt into a turn, it was answered, and a later prompt left untaken for 32.5 s was not ended.
+With `SYNADIA_CLAUDE_CODE_IDLE_TURN_START_MS=0`, with Claude Code 2.1.309 given in `initialize`, and without the hooks, a prompt left untaken for 33.7 s was not ended, and the model's reply answered it.
+A session of PI 0.85.1 loaded the pi bundle's manifest entry; its system prompt and each agent's `discover_agents`, PI's and the Claude Code bundle server's, behaved as in `bundles-v0.1.8`'s check.
+OpenClaw's bundle was not started.
+Each npm package holds its archive's plugin folder file for file, and none has dependencies.
+The archives are `build.sh`'s, repacked with the headers above and without the build's pax headers; their members and bytes are the build's.
+Not yet checked: a Claude Code agent connected to a test deployment with `fabric connect`, its channel off and then on, is owed before publication if the release owner asks for it.
+
 ## The agent tools in PI's system prompt, discover_agents' empty result, the add-ons 0.3.5
 
 [bundles-v0.1.8.json](bundles-v0.1.8.json) describes the prepared `bundles-v0.1.8` assets.
